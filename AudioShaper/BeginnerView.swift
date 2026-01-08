@@ -4,7 +4,6 @@ import SwiftUI
 
 struct BeginnerView: View {
     @ObservedObject var audioEngine: AudioEngine
-    @ObservedObject var presetManager: PresetManager
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
     @State private var showSignalFlow = false
@@ -21,9 +20,6 @@ struct BeginnerView: View {
     @State private var lassoCurrent: CGPoint?
     @State private var selectionDragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedWireID: UUID?
-    @State private var showingSaveGraph = false
-    @State private var showingLoadGraph = false
-    @State private var graphNameInput = ""
 
     @State private var startNodeID = UUID()
     @State private var endNodeID = UUID()
@@ -72,18 +68,6 @@ struct BeginnerView: View {
                         applyChainToEngine()
                     }
                     .disabled(manualConnections.isEmpty)
-
-                    Divider()
-                        .frame(height: 18)
-
-                    Button("Save Graph") {
-                        graphNameInput = ""
-                        showingSaveGraph = true
-                    }
-
-                    Button("Load Graph") {
-                        showingLoadGraph = true
-                    }
                 }
             }
             .padding()
@@ -433,6 +417,11 @@ struct BeginnerView: View {
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
         }
+        .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
+            guard let snapshot else { return }
+            applyGraphSnapshot(snapshot)
+            audioEngine.pendingGraphSnapshot = nil
+        }
         .contextMenu {
             if wiringMode == .manual && !selectedNodeIDs.isEmpty {
                 Button("Delete Selected Nodes") {
@@ -442,33 +431,6 @@ struct BeginnerView: View {
                     deleteWiresForSelected()
                 }
             }
-        }
-        .sheet(isPresented: $showingSaveGraph) {
-            SaveGraphDialog(
-                graphName: $graphNameInput,
-                onSave: {
-                    saveGraphPreset()
-                    showingSaveGraph = false
-                },
-                onCancel: {
-                    showingSaveGraph = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingLoadGraph) {
-            LoadGraphDialog(
-                presets: presetManager.graphPresets,
-                onLoad: { preset in
-                    loadGraphPreset(preset)
-                    showingLoadGraph = false
-                },
-                onDelete: { preset in
-                    presetManager.deleteGraphPreset(preset)
-                },
-                onClose: {
-                    showingLoadGraph = false
-                }
-            )
         }
     }
 
@@ -529,29 +491,28 @@ struct BeginnerView: View {
             // TEMP DEBUG: surface the DSP chain in the UI for visual verification.
             updateDebugChainText(path)
         }
+        audioEngine.updateGraphSnapshot(currentGraphSnapshot())
     }
 
-    private func saveGraphPreset() {
-        guard !graphNameInput.isEmpty else { return }
-        let snapshot = GraphSnapshot(
+    private func applyGraphSnapshot(_ snapshot: GraphSnapshot) {
+        effectChain = snapshot.nodes
+        manualConnections = snapshot.connections
+        startNodeID = snapshot.startNodeID
+        endNodeID = snapshot.endNodeID
+        wiringMode = snapshot.wiringMode == .manual ? .manual : .automatic
+        selectedNodeIDs.removeAll()
+        selectedWireID = nil
+        applyChainToEngine()
+    }
+
+    private func currentGraphSnapshot() -> GraphSnapshot {
+        GraphSnapshot(
             wiringMode: wiringMode == .manual ? .manual : .automatic,
             nodes: effectChain,
             connections: manualConnections,
             startNodeID: startNodeID,
             endNodeID: endNodeID
         )
-        presetManager.saveGraphPreset(name: graphNameInput, snapshot: snapshot)
-    }
-
-    private func loadGraphPreset(_ preset: SavedGraphPreset) {
-        effectChain = preset.graph.nodes
-        manualConnections = preset.graph.connections
-        startNodeID = preset.graph.startNodeID
-        endNodeID = preset.graph.endNodeID
-        wiringMode = preset.graph.wiringMode == .manual ? .manual : .automatic
-        selectedNodeIDs.removeAll()
-        selectedWireID = nil
-        applyChainToEngine()
     }
 
     private func updateDebugChainText(_ path: [BeginnerNode]) {
@@ -1010,94 +971,6 @@ struct BeginnerView: View {
     }
 }
 
-// MARK: - Graph Preset Dialogs
-
-struct SaveGraphDialog: View {
-    @Binding var graphName: String
-    let onSave: () -> Void
-    let onCancel: () -> Void
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Save Graph")
-                .font(.headline)
-
-            TextField("Graph Name", text: $graphName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 300)
-
-            HStack(spacing: 12) {
-                Button("Cancel") {
-                    onCancel()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button("Save") {
-                    onSave()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(graphName.isEmpty)
-            }
-        }
-        .padding()
-        .frame(width: 360, height: 160)
-    }
-}
-
-struct LoadGraphDialog: View {
-    let presets: [SavedGraphPreset]
-    let onLoad: (SavedGraphPreset) -> Void
-    let onDelete: (SavedGraphPreset) -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Load Graph")
-                .font(.headline)
-
-            if presets.isEmpty {
-                Text("No saved graphs")
-                    .foregroundColor(.secondary)
-            } else {
-                ScrollView {
-                    VStack(spacing: 10) {
-                        ForEach(presets) { preset in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(preset.name)
-                                        .font(.subheadline)
-                                    Text(preset.createdDate, style: .date)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Button("Load") {
-                                    onLoad(preset)
-                                }
-                                Button("Delete") {
-                                    onDelete(preset)
-                                }
-                                .foregroundColor(.red)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(Color.black.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
-                    .padding(.horizontal, 6)
-                }
-                .frame(maxHeight: 240)
-            }
-
-            Button("Close") {
-                onClose()
-            }
-        }
-        .padding()
-        .frame(width: 420, height: 360)
-    }
-}
 
 // MARK: - Canvas Drop Delegate
 
@@ -1721,5 +1594,5 @@ struct CompactSlider: View {
 // MARK: - Supporting Types
 
 #Preview {
-    BeginnerView(audioEngine: AudioEngine(), presetManager: PresetManager())
+    BeginnerView(audioEngine: AudioEngine())
 }

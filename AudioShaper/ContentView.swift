@@ -27,7 +27,6 @@ struct ContentView: View {
             Picker("Mode", selection: $selectedTab) {
                 Text("Presets").tag(0)
                 Text("Beginner").tag(1)
-                Text("Advanced").tag(2)
             }
             .pickerStyle(.segmented)
             .padding()
@@ -40,15 +39,13 @@ struct ContentView: View {
                 case 0:
                     PresetView(
                         audioEngine: audioEngine,
-                        presetManager: presetManager
+                        presetManager: presetManager,
+                        onPresetApplied: {
+                            selectedTab = 1
+                        }
                     )
                 case 1:
-                    BeginnerView(
-                        audioEngine: audioEngine,
-                        presetManager: presetManager
-                    )
-                case 2:
-                    AdvancedView(audioEngine: audioEngine)
+                    BeginnerView(audioEngine: audioEngine)
                 default:
                     EmptyView()
                 }
@@ -75,7 +72,8 @@ struct ContentView: View {
 
         // Get current effect chain from audio engine
         let chain = audioEngine.getCurrentEffectChain()
-        presetManager.savePreset(name: presetNameInput, chain: chain)
+        let graph = audioEngine.currentGraphSnapshot
+        presetManager.savePreset(name: presetNameInput, chain: chain, graph: graph)
 
         print("✅ Preset saved: \(presetNameInput)")
     }
@@ -211,6 +209,7 @@ struct HeaderView: View {
 struct PresetView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var presetManager: PresetManager
+    let onPresetApplied: () -> Void
 
     var body: some View {
         VStack {
@@ -236,7 +235,11 @@ struct PresetView: View {
                             PresetCard(
                                 preset: preset,
                                 onApply: {
+                                    if let graph = preset.graph {
+                                        audioEngine.requestGraphLoad(graph)
+                                    }
                                     audioEngine.applyEffectChain(preset.chain)
+                                    onPresetApplied()
                                 },
                                 onDelete: {
                                     presetManager.deletePreset(preset)
@@ -285,25 +288,6 @@ struct PresetCard: View {
 }
 
 // BeginnerView is now in BeginnerView.swift
-
-// MARK: - Advanced View
-
-struct AdvancedView: View {
-    @ObservedObject var audioEngine: AudioEngine
-
-    var body: some View {
-        VStack {
-            Spacer()
-            Text("Advanced Mode")
-                .font(.title)
-                .foregroundColor(.secondary)
-            Text("Node graph editor coming soon")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Spacer()
-        }
-    }
-}
 
 #Preview {
     ContentView()

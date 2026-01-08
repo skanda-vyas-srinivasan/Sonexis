@@ -152,6 +152,9 @@ class AudioEngine: ObservableObject {
             }
         }
     }
+    @Published var pendingGraphSnapshot: GraphSnapshot?
+
+    private(set) var currentGraphSnapshot: GraphSnapshot?
 
     private var outputQueue: AudioQueueRef?
     private var outputDeviceID: AudioDeviceID?
@@ -1924,6 +1927,14 @@ class AudioEngine: ObservableObject {
         delayEnabled = activeTypes.contains(.delay)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+    }
+
+    func updateGraphSnapshot(_ snapshot: GraphSnapshot?) {
+        currentGraphSnapshot = snapshot
+    }
+
+    func requestGraphLoad(_ snapshot: GraphSnapshot?) {
+        pendingGraphSnapshot = snapshot
     }
 }
 
