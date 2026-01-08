@@ -438,13 +438,19 @@ struct BeginnerView: View {
                                 }
                         )
                         .contextMenu {
+                            Button("Delete Node") {
+                                removeEffect(id: effectValue.id)
+                            }
                             if wiringMode == .manual {
-                                Button("Delete Node") {
-                                    removeEffect(id: effectValue.id)
-                                }
                                 Button("Delete Node Wires") {
                                     removeWires(for: effectValue.id)
                                 }
+                            }
+                            Button("Duplicate Node") {
+                                duplicateEffect(id: effectValue.id)
+                            }
+                            Button("Reset Node Params") {
+                                resetEffectParameters(id: effectValue.id)
                             }
                         }
                         .gesture(
@@ -587,6 +593,27 @@ struct BeginnerView: View {
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
         selectedNodeIDs.remove(id)
         normalizeAllOutgoingGains()
+        applyChainToEngine()
+    }
+
+    private func duplicateEffect(id: UUID) {
+        guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
+        let source = effectChain[index]
+        var clone = BeginnerNode(
+            type: source.type,
+            position: CGPoint(x: source.position.x + 40, y: source.position.y + 40),
+            lane: source.lane,
+            isEnabled: source.isEnabled,
+            parameters: source.parameters
+        )
+        clone.position = clamp(clone.position, to: canvasSize, lane: graphMode == .split ? clone.lane : nil)
+        effectChain.append(clone)
+        applyChainToEngine()
+    }
+
+    private func resetEffectParameters(id: UUID) {
+        guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
+        effectChain[index].parameters = NodeEffectParameters.defaults()
         applyChainToEngine()
     }
 
