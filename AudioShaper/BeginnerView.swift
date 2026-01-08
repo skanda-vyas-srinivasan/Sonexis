@@ -1098,7 +1098,6 @@ struct FlowLine: View {
     let to: CGPoint
     let isActive: Bool
     let level: Float
-    @State private var phase: CGFloat = 0
     @State private var bounce: CGFloat = 0
 
     var body: some View {
@@ -1106,50 +1105,67 @@ struct FlowLine: View {
         let baseOpacity = 0.25 + 0.6 * intensity
         let glowColor = Color.blue.opacity(0.35 + 0.55 * intensity)
         let thickness: CGFloat = 2 + 5 * intensity + 2 * bounce
-        ZStack {
-            Path { path in
-                path.move(to: from)
-                path.addLine(to: to)
-            }
-            .stroke(Color.blue.opacity(baseOpacity), lineWidth: thickness)
-            .contentShape(Path { path in
-                path.move(to: from)
-                path.addLine(to: to)
-            }.strokedPath(.init(lineWidth: thickness + 10)))
+        let packetCount = 4
+        let dotsPerPacket = 8
+        let packetSpan: CGFloat = 0.22
+        let baseDotSize: CGFloat = 2.5 + 3.5 * intensity
+        let jitterScale: CGFloat = 6 + 8 * intensity
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = max(sqrt(dx * dx + dy * dy), 0.001)
+        let nx = -dy / length
+        let ny = dx / length
+        TimelineView(.animation) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            let speed = isActive ? 0.35 : 0.0
+            let phase = CGFloat((time * speed).truncatingRemainder(dividingBy: 1.0))
 
-            if isActive {
+            ZStack {
                 Path { path in
                     path.move(to: from)
                     path.addLine(to: to)
                 }
-                .stroke(glowColor, lineWidth: thickness + 4)
-                .blur(radius: 6 + 6 * intensity)
+                .stroke(Color.blue.opacity(baseOpacity), lineWidth: thickness)
+                .contentShape(Path { path in
+                    path.move(to: from)
+                    path.addLine(to: to)
+                }.strokedPath(.init(lineWidth: thickness + 10)))
 
-                Circle()
-                    .fill(glowColor)
-                    .frame(width: 6 + 8 * intensity, height: 6 + 8 * intensity)
-                    .position(pointAlongLine(from: from, to: to, t: phase))
-                    .scaleEffect(1 + 0.35 * bounce + 0.4 * intensity)
-                    .shadow(color: glowColor.opacity(0.8), radius: 10)
+                if isActive {
+                    Path { path in
+                        path.move(to: from)
+                        path.addLine(to: to)
+                    }
+                    .stroke(glowColor, lineWidth: thickness + 4)
+                    .blur(radius: 6 + 6 * intensity)
+
+                    ForEach(0..<packetCount, id: \.self) { packetIndex in
+                        ForEach(0..<dotsPerPacket, id: \.self) { dotIndex in
+                            let packetOffset = CGFloat(packetIndex) / CGFloat(packetCount)
+                            let localOffset = (CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1))) * packetSpan
+                            let t = (phase + packetOffset + localOffset).truncatingRemainder(dividingBy: 1.0)
+                            let sizeScale = 0.5 + 0.6 * (1 - CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1)))
+                            let dotSize = baseDotSize * sizeScale
+                            let drift = sin((phase * 6.28318) + CGFloat(packetIndex * 7 + dotIndex)) * jitterScale
+                            let basePoint = pointAlongLine(from: from, to: to, t: t)
+                            let particlePoint = CGPoint(
+                                x: basePoint.x + nx * drift,
+                                y: basePoint.y + ny * drift
+                            )
+
+                            Circle()
+                                .fill(glowColor)
+                                .frame(width: dotSize, height: dotSize)
+                                .position(particlePoint)
+                                .shadow(color: glowColor.opacity(0.7), radius: 6)
+                        }
+                    }
+                }
             }
         }
         .onAppear {
-            if isActive {
-                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                    phase = 1
-                }
-            }
             withAnimation(.interpolatingSpring(stiffness: 120, damping: 8).repeatForever(autoreverses: true)) {
                 bounce = 1
-            }
-        }
-        .onChange(of: isActive) { active in
-            if active {
-                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                    phase = 1
-                }
-            } else {
-                phase = 0
             }
         }
     }
