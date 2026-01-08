@@ -703,7 +703,7 @@ class AudioEngine: ObservableObject {
             frameLength: inputBuffer.first?.count ?? 0,
             channelCount: channelCount
         )
-        let limited = clampBuffer(mixed)
+        let limited = applySafetyLimiter(mixed)
 
         return (limited, levelSnapshot)
     }
@@ -765,16 +765,27 @@ class AudioEngine: ObservableObject {
         return merged
     }
 
-    private func clampBuffer(_ buffer: [[Float]]) -> [[Float]] {
-        var clamped = buffer
-        for channel in clamped.indices {
-            for index in clamped[channel].indices {
-                let sample = clamped[channel][index]
-                if sample > 1 { clamped[channel][index] = 1 }
-                else if sample < -1 { clamped[channel][index] = -1 }
+    private func applySafetyLimiter(_ buffer: [[Float]]) -> [[Float]] {
+        var peak: Float = 0
+        for channel in buffer {
+            for sample in channel {
+                let magnitude = abs(sample)
+                if magnitude > peak {
+                    peak = magnitude
+                }
             }
         }
-        return clamped
+
+        guard peak > 1 else { return buffer }
+
+        let scale = 1.0 / peak
+        var limited = buffer
+        for channel in limited.indices {
+            for index in limited[channel].indices {
+                limited[channel][index] *= scale
+            }
+        }
+        return limited
     }
 
     private func deinterleavedInput(
