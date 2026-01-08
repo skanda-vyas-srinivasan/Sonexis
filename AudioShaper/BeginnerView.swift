@@ -406,19 +406,22 @@ struct BeginnerView: View {
                     }
 
                     ForEach(effectChain, id: \.id) { effect in
-                        let nodePos = nodePosition(effect, in: geometry.size)
-                        let isWired = pathIDs.contains(effect.id)
-                        let isSelected = selectedNodeIDs.contains(effect.id)
+                        let effectValue = effect
+                        let nodePos = nodePosition(effectValue, in: geometry.size)
+                        let isWired = pathIDs.contains(effectValue.id)
+                        let isSelected = selectedNodeIDs.contains(effectValue.id)
 
                         EffectBlockHorizontal(
-                            effect: effect,
-                            audioEngine: audioEngine,
+                            effect: bindingForEffect(effectValue.id),
                             isWired: isWired,
                             isSelected: isSelected,
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    removeEffect(id: effect.id)
+                                    removeEffect(id: effectValue.id)
                                 }
+                            },
+                            onUpdate: {
+                                applyChainToEngine()
                             }
                         )
                         .position(nodePos)
@@ -428,19 +431,19 @@ struct BeginnerView: View {
                                     guard wiringMode == .manual else { return }
                                     let isShift = NSEvent.modifierFlags.contains(.shift)
                                     if isShift {
-                                        toggleSelection(effect.id)
+                                        toggleSelection(effectValue.id)
                                     } else {
-                                        selectedNodeIDs = [effect.id]
+                                        selectedNodeIDs = [effectValue.id]
                                     }
                                 }
                         )
                         .contextMenu {
                             if wiringMode == .manual {
                                 Button("Delete Node") {
-                                    removeEffect(id: effect.id)
+                                    removeEffect(id: effectValue.id)
                                 }
                                 Button("Delete Node Wires") {
-                                    removeWires(for: effect.id)
+                                    removeWires(for: effectValue.id)
                                 }
                             }
                         }
@@ -451,19 +454,19 @@ struct BeginnerView: View {
                                     if hasOption {
                                         // Wiring mode
                                         print("🖱️ EFFECT drag with Option held")
-                                        activeConnectionFromID = effect.id
+                                        activeConnectionFromID = effectValue.id
                                         activeConnectionPoint = CGPoint(
                                             x: nodePos.x + value.translation.width,
                                             y: nodePos.y + value.translation.height
                                         )
                                     } else {
                                         // Move mode
-                                        if draggingNodeID != effect.id {
-                                            draggingNodeID = effect.id
+                                        if draggingNodeID != effectValue.id {
+                                            draggingNodeID = effectValue.id
                                             dragStartPosition = nodePos
                                             if wiringMode == .manual {
-                                                if !selectedNodeIDs.contains(effect.id) && !NSEvent.modifierFlags.contains(.shift) {
-                                                    selectedNodeIDs = [effect.id]
+                                                if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
+                                                    selectedNodeIDs = [effectValue.id]
                                                 }
                                                 selectionDragStartPositions = selectedNodeIDs.reduce(into: [:]) { result, id in
                                                     if let node = effectChain.first(where: { $0.id == id }) {
@@ -481,11 +484,11 @@ struct BeginnerView: View {
                                                 y: dragStartPosition.y + value.translation.height
                                             )
                                             updateNodePosition(
-                                                effect.id,
+                                                effectValue.id,
                                                 position: clamp(
                                                     newPosition,
                                                     to: geometry.size,
-                                                    lane: graphMode == .split ? effect.lane : nil
+                                                    lane: graphMode == .split ? effectValue.lane : nil
                                                 )
                                             )
                                         }
@@ -500,7 +503,7 @@ struct BeginnerView: View {
                                             x: nodePos.x + value.translation.width,
                                             y: nodePos.y + value.translation.height
                                         )
-                                        finalizeConnection(from: effect.id, dropPoint: dropPoint)
+                                        finalizeConnection(from: effectValue.id, dropPoint: dropPoint)
                                     } else {
                                         activeConnectionFromID = nil
                                         activeConnectionPoint = .zero
@@ -653,8 +656,21 @@ struct BeginnerView: View {
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
     }
 
+    private func bindingForEffect(_ id: UUID) -> Binding<BeginnerNode> {
+        Binding(
+            get: {
+                effectChain.first(where: { $0.id == id }) ?? BeginnerNode(type: .bassBoost)
+            },
+            set: { updated in
+                guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
+                effectChain[index] = updated
+            }
+        )
+    }
+
     private func applyGraphSnapshot(_ snapshot: GraphSnapshot) {
-        effectChain = snapshot.nodes
+        let nodes = snapshot.hasNodeParameters ? snapshot.nodes : migrateNodeParameters(snapshot.nodes)
+        effectChain = nodes
         manualConnections = snapshot.connections
         startNodeID = snapshot.startNodeID
         endNodeID = snapshot.endNodeID
@@ -672,6 +688,59 @@ struct BeginnerView: View {
         applyChainToEngine()
     }
 
+    private func migrateNodeParameters(_ nodes: [BeginnerNode]) -> [BeginnerNode] {
+        nodes.map { node in
+            var updated = node
+            var params = NodeEffectParameters.defaults()
+            switch node.type {
+            case .bassBoost:
+                params.bassBoostAmount = audioEngine.bassBoostAmount
+            case .pitchShift:
+                params.nightcoreIntensity = audioEngine.nightcoreIntensity
+            case .clarity:
+                params.clarityAmount = audioEngine.clarityAmount
+            case .deMud:
+                params.deMudStrength = audioEngine.deMudStrength
+            case .simpleEQ:
+                params.eqBass = audioEngine.eqBass
+                params.eqMids = audioEngine.eqMids
+                params.eqTreble = audioEngine.eqTreble
+            case .tenBandEQ:
+                params.tenBandGains = [
+                    audioEngine.tenBand31,
+                    audioEngine.tenBand62,
+                    audioEngine.tenBand125,
+                    audioEngine.tenBand250,
+                    audioEngine.tenBand500,
+                    audioEngine.tenBand1k,
+                    audioEngine.tenBand2k,
+                    audioEngine.tenBand4k,
+                    audioEngine.tenBand8k,
+                    audioEngine.tenBand16k
+                ]
+            case .compressor:
+                params.compressorStrength = audioEngine.compressorStrength
+            case .reverb:
+                params.reverbMix = audioEngine.reverbMix
+                params.reverbSize = audioEngine.reverbSize
+            case .stereoWidth:
+                params.stereoWidthAmount = audioEngine.stereoWidthAmount
+            case .delay:
+                params.delayTime = audioEngine.delayTime
+                params.delayFeedback = audioEngine.delayFeedback
+                params.delayMix = audioEngine.delayMix
+            case .distortion:
+                params.distortionDrive = audioEngine.distortionDrive
+                params.distortionMix = audioEngine.distortionMix
+            case .tremolo:
+                params.tremoloRate = audioEngine.tremoloRate
+                params.tremoloDepth = audioEngine.tremoloDepth
+            }
+            updated.parameters = params
+            return updated
+        }
+    }
+
     private func currentGraphSnapshot() -> GraphSnapshot {
         GraphSnapshot(
             graphMode: graphMode,
@@ -683,7 +752,8 @@ struct BeginnerView: View {
             leftStartNodeID: leftStartNodeID,
             leftEndNodeID: leftEndNodeID,
             rightStartNodeID: rightStartNodeID,
-            rightEndNodeID: rightEndNodeID
+            rightEndNodeID: rightEndNodeID,
+            hasNodeParameters: true
         )
     }
 
@@ -1695,11 +1765,11 @@ private struct CanvasConnection: Identifiable {
 // MARK: - Effect Block
 
 struct EffectBlockHorizontal: View {
-    let effect: BeginnerNode
-    @ObservedObject var audioEngine: AudioEngine
+    @Binding var effect: BeginnerNode
     let isWired: Bool
     let isSelected: Bool
     let onRemove: () -> Void
+    let onUpdate: () -> Void
     @State private var isHovered = false
     @State private var isExpanded = false
 
@@ -1790,7 +1860,11 @@ struct EffectBlockHorizontal: View {
             // Expanded parameters
             if isExpanded && getEffectEnabled() {
                 VStack(spacing: 12) {
-                    EffectParametersViewCompact(effectType: effect.type, audioEngine: audioEngine)
+                    EffectParametersViewCompact(
+                        effectType: effect.type,
+                        parameters: $effect.parameters,
+                        onChange: onUpdate
+                    )
                 }
                 .padding()
                 .frame(width: 200)
@@ -1806,37 +1880,12 @@ struct EffectBlockHorizontal: View {
     }
 
     private func getEffectEnabled() -> Bool {
-        switch effect.type {
-        case .bassBoost: return audioEngine.bassBoostEnabled
-        case .pitchShift: return audioEngine.nightcoreEnabled
-        case .clarity: return audioEngine.clarityEnabled
-        case .reverb: return audioEngine.reverbEnabled
-        case .compressor: return audioEngine.compressorEnabled
-        case .stereoWidth: return audioEngine.stereoWidthEnabled
-        case .simpleEQ: return audioEngine.simpleEQEnabled
-        case .tenBandEQ: return audioEngine.tenBandEQEnabled
-        case .deMud: return audioEngine.deMudEnabled
-        case .delay: return audioEngine.delayEnabled
-        case .distortion: return audioEngine.distortionEnabled
-        case .tremolo: return audioEngine.tremoloEnabled
-        }
+        effect.isEnabled
     }
 
     private func setEffectEnabled(_ enabled: Bool) {
-        switch effect.type {
-        case .bassBoost: audioEngine.bassBoostEnabled = enabled
-        case .pitchShift: audioEngine.nightcoreEnabled = enabled
-        case .clarity: audioEngine.clarityEnabled = enabled
-        case .reverb: audioEngine.reverbEnabled = enabled
-        case .compressor: audioEngine.compressorEnabled = enabled
-        case .stereoWidth: audioEngine.stereoWidthEnabled = enabled
-        case .simpleEQ: audioEngine.simpleEQEnabled = enabled
-        case .tenBandEQ: audioEngine.tenBandEQEnabled = enabled
-        case .deMud: audioEngine.deMudEnabled = enabled
-        case .delay: audioEngine.delayEnabled = enabled
-        case .distortion: audioEngine.distortionEnabled = enabled
-        case .tremolo: audioEngine.tremoloEnabled = enabled
-        }
+        effect.isEnabled = enabled
+        onUpdate()
     }
 }
 
@@ -1844,67 +1893,85 @@ struct EffectBlockHorizontal: View {
 
 struct EffectParametersViewCompact: View {
     let effectType: EffectType
-    @ObservedObject var audioEngine: AudioEngine
+    @Binding var parameters: NodeEffectParameters
+    let onChange: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
             switch effectType {
             case .bassBoost:
-                CompactSlider(label: "Amount", value: $audioEngine.bassBoostAmount, range: 0...1, format: .percent)
+                CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, range: 0...1, format: .percent, onChange: onChange)
 
             case .pitchShift:
-                CompactSlider(label: "Intensity", value: $audioEngine.nightcoreIntensity, range: 0...1, format: .percent)
+                CompactSlider(label: "Intensity", value: $parameters.nightcoreIntensity, range: 0...1, format: .percent, onChange: onChange)
 
             case .clarity:
-                CompactSlider(label: "Amount", value: $audioEngine.clarityAmount, range: 0...1, format: .percent)
+                CompactSlider(label: "Amount", value: $parameters.clarityAmount, range: 0...1, format: .percent, onChange: onChange)
 
             case .deMud:
-                CompactSlider(label: "Strength", value: $audioEngine.deMudStrength, range: 0...1, format: .percent)
+                CompactSlider(label: "Strength", value: $parameters.deMudStrength, range: 0...1, format: .percent, onChange: onChange)
 
             case .simpleEQ:
-                CompactSlider(label: "Bass", value: $audioEngine.eqBass, range: -1...1, format: .db)
-                CompactSlider(label: "Mids", value: $audioEngine.eqMids, range: -1...1, format: .db)
-                CompactSlider(label: "Treble", value: $audioEngine.eqTreble, range: -1...1, format: .db)
+                CompactSlider(label: "Bass", value: $parameters.eqBass, range: -1...1, format: .db, onChange: onChange)
+                CompactSlider(label: "Mids", value: $parameters.eqMids, range: -1...1, format: .db, onChange: onChange)
+                CompactSlider(label: "Treble", value: $parameters.eqTreble, range: -1...1, format: .db, onChange: onChange)
 
             case .tenBandEQ:
                 let columns = [GridItem(.flexible()), GridItem(.flexible())]
                 LazyVGrid(columns: columns, spacing: 8) {
-                    CompactSlider(label: "31", value: $audioEngine.tenBand31, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "62", value: $audioEngine.tenBand62, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "125", value: $audioEngine.tenBand125, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "250", value: $audioEngine.tenBand250, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "500", value: $audioEngine.tenBand500, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "1k", value: $audioEngine.tenBand1k, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "2k", value: $audioEngine.tenBand2k, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "4k", value: $audioEngine.tenBand4k, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "8k", value: $audioEngine.tenBand8k, range: -12...12, format: .dbValue)
-                    CompactSlider(label: "16k", value: $audioEngine.tenBand16k, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "31", value: bandBinding(0), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "62", value: bandBinding(1), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "125", value: bandBinding(2), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "250", value: bandBinding(3), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "500", value: bandBinding(4), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "1k", value: bandBinding(5), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "2k", value: bandBinding(6), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "4k", value: bandBinding(7), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "8k", value: bandBinding(8), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "16k", value: bandBinding(9), range: -12...12, format: .dbValue, onChange: onChange)
                 }
 
             case .compressor:
-                CompactSlider(label: "Strength", value: $audioEngine.compressorStrength, range: 0...1, format: .percent)
+                CompactSlider(label: "Strength", value: $parameters.compressorStrength, range: 0...1, format: .percent, onChange: onChange)
 
             case .reverb:
-                CompactSlider(label: "Mix", value: $audioEngine.reverbMix, range: 0...1, format: .percent)
-                CompactSlider(label: "Size", value: $audioEngine.reverbSize, range: 0...1, format: .percent)
+                CompactSlider(label: "Mix", value: $parameters.reverbMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Size", value: $parameters.reverbSize, range: 0...1, format: .percent, onChange: onChange)
 
             case .stereoWidth:
-                CompactSlider(label: "Width", value: $audioEngine.stereoWidthAmount, range: 0...1, format: .percent)
+                CompactSlider(label: "Width", value: $parameters.stereoWidthAmount, range: 0...1, format: .percent, onChange: onChange)
 
             case .delay:
-                CompactSlider(label: "Time", value: $audioEngine.delayTime, range: 0.01...2.0, format: .ms)
-                CompactSlider(label: "Feedback", value: $audioEngine.delayFeedback, range: 0...1, format: .percent)
-                CompactSlider(label: "Mix", value: $audioEngine.delayMix, range: 0...1, format: .percent)
+                CompactSlider(label: "Time", value: $parameters.delayTime, range: 0.01...2.0, format: .ms, onChange: onChange)
+                CompactSlider(label: "Feedback", value: $parameters.delayFeedback, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.delayMix, range: 0...1, format: .percent, onChange: onChange)
 
             case .distortion:
-                CompactSlider(label: "Drive", value: $audioEngine.distortionDrive, range: 0...1, format: .percent)
-                CompactSlider(label: "Mix", value: $audioEngine.distortionMix, range: 0...1, format: .percent)
+                CompactSlider(label: "Drive", value: $parameters.distortionDrive, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.distortionMix, range: 0...1, format: .percent, onChange: onChange)
 
             case .tremolo:
-                CompactSlider(label: "Rate", value: $audioEngine.tremoloRate, range: 0.1...20, format: .hz)
-                CompactSlider(label: "Depth", value: $audioEngine.tremoloDepth, range: 0...1, format: .percent)
+                CompactSlider(label: "Rate", value: $parameters.tremoloRate, range: 0.1...20, format: .hz, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.tremoloDepth, range: 0...1, format: .percent, onChange: onChange)
             }
         }
+    }
+
+    private func bandBinding(_ index: Int) -> Binding<Double> {
+        Binding(
+            get: {
+                guard parameters.tenBandGains.indices.contains(index) else { return 0 }
+                return parameters.tenBandGains[index]
+            },
+            set: { newValue in
+                if parameters.tenBandGains.count < 10 {
+                    parameters.tenBandGains += Array(repeating: 0, count: 10 - parameters.tenBandGains.count)
+                }
+                if parameters.tenBandGains.indices.contains(index) {
+                    parameters.tenBandGains[index] = newValue
+                }
+            }
+        )
     }
 }
 
@@ -1913,6 +1980,21 @@ struct CompactSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let format: ValueFormat
+    let onChange: (() -> Void)?
+
+    init(
+        label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        format: ValueFormat,
+        onChange: (() -> Void)? = nil
+    ) {
+        self.label = label
+        self._value = value
+        self.range = range
+        self.format = format
+        self.onChange = onChange
+    }
 
     enum ValueFormat {
         case percent
@@ -1937,6 +2019,9 @@ struct CompactSlider: View {
 
             Slider(value: $value, in: range)
                 .controlSize(.small)
+                .onChange(of: value) { _ in
+                    onChange?()
+                }
         }
     }
 

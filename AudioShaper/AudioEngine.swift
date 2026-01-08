@@ -177,6 +177,8 @@ class AudioEngine: ObservableObject {
     private var splitRightStartID: UUID?
     private var splitRightEndID: UUID?
     private var useSplitGraph = false
+    private var nodeParameters: [UUID: NodeEffectParameters] = [:]
+    private var nodeEnabled: [UUID: Bool] = [:]
     private var levelUpdateCounter = 0
     private let effectStateLock = NSLock()
     private var isReconfiguring = false
@@ -186,18 +188,22 @@ class AudioEngine: ObservableObject {
     private var bassBoostCoefficients = BiquadCoefficients()
     private var bassBoostLastSampleRate: Double = 0
     private var bassBoostLastAmount: Double = -1
+    private var bassBoostStatesByNode: [UUID: [BiquadState]] = [:]
 
     // Clarity state (high shelf boost)
     private var clarityState: [BiquadState] = []
     private var clarityCoefficients = BiquadCoefficients()
     private var clarityLastSampleRate: Double = 0
     private var clarityLastAmount: Double = -1
+    private var clarityStatesByNode: [UUID: [BiquadState]] = [:]
+    private var nightcoreStatesByNode: [UUID: [BiquadState]] = [:]
 
     // De-mud state (mid frequency cut)
     private var deMudState: [BiquadState] = []
     private var deMudCoefficients = BiquadCoefficients()
     private var deMudLastSampleRate: Double = 0
     private var deMudLastStrength: Double = -1
+    private var deMudStatesByNode: [UUID: [BiquadState]] = [:]
 
     // Simple EQ state (3 bands)
     private var eqBassState: [BiquadState] = []
@@ -207,6 +213,9 @@ class AudioEngine: ObservableObject {
     private var eqTrebleState: [BiquadState] = []
     private var eqTrebleCoefficients = BiquadCoefficients()
     private var eqLastSampleRate: Double = 0
+    private var eqBassStatesByNode: [UUID: [BiquadState]] = [:]
+    private var eqMidsStatesByNode: [UUID: [BiquadState]] = [:]
+    private var eqTrebleStatesByNode: [UUID: [BiquadState]] = [:]
 
     // 10-band EQ state (peaking filters)
     private let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -214,6 +223,7 @@ class AudioEngine: ObservableObject {
     private var tenBandCoefficients: [BiquadCoefficients] = []
     private var tenBandLastSampleRate: Double = 0
     private var tenBandLastGains: [Double] = []
+    private var tenBandStatesByNode: [UUID: [[BiquadState]]] = [:]
 
     // Compressor state (simple dynamic range compression)
     private var compressorEnvelope: [Float] = []
@@ -221,27 +231,19 @@ class AudioEngine: ObservableObject {
     // Reverb buffer (simple delay-based reverb)
     private var reverbBuffer: [[Float]] = []
     private var reverbWriteIndex = 0
+    private var reverbBuffersByNode: [UUID: [[Float]]] = [:]
+    private var reverbWriteIndexByNode: [UUID: Int] = [:]
 
     // Delay buffer (circular buffer for echo)
     private var delayBuffer: [[Float]] = []
     private var delayWriteIndex = 0
+    private var delayBuffersByNode: [UUID: [[Float]]] = [:]
+    private var delayWriteIndexByNode: [UUID: Int] = [:]
 
     // Tremolo state (LFO phase)
     private var tremoloPhase: Double = 0
+    private var tremoloPhaseByNode: [UUID: Double] = [:]
 
-    // Split mode right-channel state
-    private var splitRightBassBoostState: [BiquadState] = []
-    private var splitRightClarityState: [BiquadState] = []
-    private var splitRightDeMudState: [BiquadState] = []
-    private var splitRightEqBassState: [BiquadState] = []
-    private var splitRightEqMidsState: [BiquadState] = []
-    private var splitRightEqTrebleState: [BiquadState] = []
-    private var splitRightCompressorEnvelope: [Float] = []
-    private var splitRightReverbBuffer: [[Float]] = []
-    private var splitRightReverbWriteIndex = 0
-    private var splitRightDelayBuffer: [[Float]] = []
-    private var splitRightDelayWriteIndex = 0
-    private var splitRightTremoloPhase: Double = 0
 
     // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
     private let audioFormat = AVAudioFormat(
@@ -905,18 +907,15 @@ class AudioEngine: ObservableObject {
                 startID: splitLeftStartID,
                 endID: splitLeftEndID
             )
-            initializeSplitRightStates(channelCount: 1)
-            let (rightProcessed, rightSnapshot) = withSplitRightState {
-                processGraph(
-                    inputBuffer: rightInput,
-                    channelCount: 1,
-                    sampleRate: sampleRate,
-                    nodes: splitRightNodes,
-                    connections: splitRightConnections,
-                    startID: splitRightStartID,
-                    endID: splitRightEndID
-                )
-            }
+            let (rightProcessed, rightSnapshot) = processGraph(
+                inputBuffer: rightInput,
+                channelCount: 1,
+                sampleRate: sampleRate,
+                nodes: splitRightNodes,
+                connections: splitRightConnections,
+                startID: splitRightStartID,
+                endID: splitRightEndID
+            )
 
             var combined = inputBuffer
             if let leftChannel = leftProcessed.first {
@@ -1017,6 +1016,16 @@ class AudioEngine: ObservableObject {
         let type: EffectType
     }
 
+    private func nodeParams(for nodeId: UUID?) -> NodeEffectParameters? {
+        guard let nodeId else { return nil }
+        return nodeParameters[nodeId]
+    }
+
+    private func nodeIsEnabled(_ nodeId: UUID?) -> Bool {
+        guard let nodeId else { return true }
+        return nodeEnabled[nodeId] ?? true
+    }
+
     private var tenBandGains: [Double] {
         [
             tenBand31,
@@ -1043,147 +1052,331 @@ class AudioEngine: ObservableObject {
     ) {
         switch effect {
         case .bassBoost:
-            guard bassBoostEnabled, bassBoostAmount > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            updateBassBoostCoefficients(sampleRate: sampleRate)
+            guard nodeId == nil ? bassBoostEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let amount = nodeParams(for: nodeId)?.bassBoostAmount ?? bassBoostAmount
+            guard amount > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let gainDb = min(max(amount, 0), 1) * 24.0
+            let coefficients = BiquadCoefficients.lowShelf(
+                sampleRate: sampleRate,
+                frequency: 80,
+                gainDb: gainDb,
+                q: 0.8
+            )
+            var states: [BiquadState]
+            if let id = nodeId {
+                states = bassBoostStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+            } else {
+                states = bassBoostState
+            }
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
-                    var state = bassBoostState[channel]
-                    let y = bassBoostCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                    let gain = 1.0 + Float(min(max(bassBoostAmount, 0), 1)) * 0.35
+                    var state = states[channel]
+                    let y = coefficients.process(x: processedAudio[channel][frame], state: &state)
+                    let gain = 1.0 + Float(min(max(amount, 0), 1)) * 0.35
                     processedAudio[channel][frame] = y * gain
-                    bassBoostState[channel] = state
+                    states[channel] = state
                 }
+            }
+            if let id = nodeId {
+                bassBoostStatesByNode[id] = states
+            } else {
+                bassBoostState = states
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .pitchShift:
-            guard nightcoreEnabled, nightcoreIntensity > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            updateClarityCoefficients(sampleRate: sampleRate, intensity: nightcoreIntensity)
+            guard nodeId == nil ? nightcoreEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let intensity = nodeParams(for: nodeId)?.nightcoreIntensity ?? nightcoreIntensity
+            guard intensity > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let gainDb = min(max(intensity, 0), 1) * 12.0
+            let coefficients = BiquadCoefficients.highShelf(
+                sampleRate: sampleRate,
+                frequency: 3000,
+                gainDb: gainDb,
+                q: 0.7
+            )
+            var states: [BiquadState]
+            if let id = nodeId {
+                states = nightcoreStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+            } else {
+                states = clarityState
+            }
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
-                    var state = clarityState[channel]
-                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                    let nightcoreGain = 1.0 + Float(nightcoreIntensity) * 0.15
+                    var state = states[channel]
+                    let y = coefficients.process(x: processedAudio[channel][frame], state: &state)
+                    let nightcoreGain = 1.0 + Float(intensity) * 0.15
                     processedAudio[channel][frame] = y * nightcoreGain
-                    clarityState[channel] = state
+                    states[channel] = state
                 }
+            }
+            if let id = nodeId {
+                nightcoreStatesByNode[id] = states
+            } else {
+                clarityState = states
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .clarity:
-            guard clarityEnabled, clarityAmount > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            updateClarityCoefficients(sampleRate: sampleRate, intensity: clarityAmount)
+            guard nodeId == nil ? clarityEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let amount = nodeParams(for: nodeId)?.clarityAmount ?? clarityAmount
+            guard amount > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let gainDb = min(max(amount, 0), 1) * 12.0
+            let coefficients = BiquadCoefficients.highShelf(
+                sampleRate: sampleRate,
+                frequency: 3000,
+                gainDb: gainDb,
+                q: 0.7
+            )
+            var states: [BiquadState]
+            if let id = nodeId {
+                states = clarityStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+            } else {
+                states = clarityState
+            }
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
-                    var state = clarityState[channel]
-                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    var state = states[channel]
+                    let y = coefficients.process(x: processedAudio[channel][frame], state: &state)
                     processedAudio[channel][frame] = y
-                    clarityState[channel] = state
+                    states[channel] = state
                 }
+            }
+            if let id = nodeId {
+                clarityStatesByNode[id] = states
+            } else {
+                clarityState = states
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .deMud:
-            guard deMudEnabled, deMudStrength > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            updateDeMudCoefficients(sampleRate: sampleRate)
+            guard nodeId == nil ? deMudEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let strength = nodeParams(for: nodeId)?.deMudStrength ?? deMudStrength
+            guard strength > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let gainDb = -min(max(strength, 0), 1) * 8.0
+            let coefficients = BiquadCoefficients.peakingEQ(
+                sampleRate: sampleRate,
+                frequency: 250,
+                gainDb: gainDb,
+                q: 1.5
+            )
+            var states: [BiquadState]
+            if let id = nodeId {
+                states = deMudStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+            } else {
+                states = deMudState
+            }
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
-                    var state = deMudState[channel]
-                    let y = deMudCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    var state = states[channel]
+                    let y = coefficients.process(x: processedAudio[channel][frame], state: &state)
                     processedAudio[channel][frame] = y
-                    deMudState[channel] = state
+                    states[channel] = state
                 }
+            }
+            if let id = nodeId {
+                deMudStatesByNode[id] = states
+            } else {
+                deMudState = states
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .simpleEQ:
-            guard simpleEQEnabled, (eqBass != 0 || eqMids != 0 || eqTreble != 0) else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            updateSimpleEQCoefficients(sampleRate: sampleRate)
+            guard nodeId == nil ? simpleEQEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let params = nodeParams(for: nodeId)
+            let bass = params?.eqBass ?? eqBass
+            let mids = params?.eqMids ?? eqMids
+            let treble = params?.eqTreble ?? eqTreble
+            guard bass != 0 || mids != 0 || treble != 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let bassCoefficients = BiquadCoefficients.lowShelf(
+                sampleRate: sampleRate,
+                frequency: 80,
+                gainDb: bass * 12.0,
+                q: 0.7
+            )
+            let midsCoefficients = BiquadCoefficients.peakingEQ(
+                sampleRate: sampleRate,
+                frequency: 1000,
+                gainDb: mids * 12.0,
+                q: 1.0
+            )
+            let trebleCoefficients = BiquadCoefficients.highShelf(
+                sampleRate: sampleRate,
+                frequency: 8000,
+                gainDb: treble * 12.0,
+                q: 0.7
+            )
+            let targetId = nodeId
+            var bassStates = targetId.flatMap { eqBassStatesByNode[$0] } ?? eqBassState
+            var midsStates = targetId.flatMap { eqMidsStatesByNode[$0] } ?? eqMidsState
+            var trebleStates = targetId.flatMap { eqTrebleStatesByNode[$0] } ?? eqTrebleState
 
-            if eqBass != 0 {
+            if bass != 0 {
                 for channel in 0..<channelCount {
                     for frame in 0..<frameLength {
-                        var state = eqBassState[channel]
-                        let y = eqBassCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        var state = bassStates[channel]
+                        let y = bassCoefficients.process(x: processedAudio[channel][frame], state: &state)
                         processedAudio[channel][frame] = y
-                        eqBassState[channel] = state
+                        bassStates[channel] = state
                     }
                 }
             }
 
-            if eqMids != 0 {
+            if mids != 0 {
                 for channel in 0..<channelCount {
                     for frame in 0..<frameLength {
-                        var state = eqMidsState[channel]
-                        let y = eqMidsCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        var state = midsStates[channel]
+                        let y = midsCoefficients.process(x: processedAudio[channel][frame], state: &state)
                         processedAudio[channel][frame] = y
-                        eqMidsState[channel] = state
+                        midsStates[channel] = state
                     }
                 }
             }
 
-            if eqTreble != 0 {
+            if treble != 0 {
                 for channel in 0..<channelCount {
                     for frame in 0..<frameLength {
-                        var state = eqTrebleState[channel]
-                        let y = eqTrebleCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        var state = trebleStates[channel]
+                        let y = trebleCoefficients.process(x: processedAudio[channel][frame], state: &state)
                         processedAudio[channel][frame] = y
-                        eqTrebleState[channel] = state
+                        trebleStates[channel] = state
                     }
                 }
+            }
+            if let id = targetId {
+                eqBassStatesByNode[id] = bassStates
+                eqMidsStatesByNode[id] = midsStates
+                eqTrebleStatesByNode[id] = trebleStates
+            } else {
+                eqBassState = bassStates
+                eqMidsState = midsStates
+                eqTrebleState = trebleStates
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .tenBandEQ:
-            let gains = tenBandGains
-            guard tenBandEQEnabled, gains.contains(where: { $0 != 0 }) else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            updateTenBandCoefficients(sampleRate: sampleRate)
+            guard nodeId == nil ? tenBandEQEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let gains = nodeParams(for: nodeId)?.tenBandGains ?? tenBandGains
+            guard gains.contains(where: { $0 != 0 }) else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let clampedGains = gains.map { min(max($0, -12), 12) }
+            var bandCoefficients: [BiquadCoefficients] = []
+            bandCoefficients.reserveCapacity(tenBandFrequencies.count)
+            for (index, frequency) in tenBandFrequencies.enumerated() {
+                let gain = index < clampedGains.count ? clampedGains[index] : 0
+                bandCoefficients.append(
+                    BiquadCoefficients.peakingEQ(
+                        sampleRate: sampleRate,
+                        frequency: frequency,
+                        gainDb: gain,
+                        q: 1.0
+                    )
+                )
+            }
+            let targetId = nodeId
+            var bandStates = targetId.flatMap { tenBandStatesByNode[$0] }
+                ?? tenBandFrequencies.map { _ in [BiquadState](repeating: BiquadState(), count: channelCount) }
 
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     var sample = processedAudio[channel][frame]
                     for band in 0..<tenBandFrequencies.count {
-                        var state = tenBandStates[band][channel]
-                        sample = tenBandCoefficients[band].process(x: sample, state: &state)
-                        tenBandStates[band][channel] = state
+                        var state = bandStates[band][channel]
+                        sample = bandCoefficients[band].process(x: sample, state: &state)
+                        bandStates[band][channel] = state
                     }
                     processedAudio[channel][frame] = sample
                 }
+            }
+            if let id = targetId {
+                tenBandStatesByNode[id] = bandStates
+            } else {
+                tenBandStates = bandStates
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .compressor:
-            guard compressorEnabled, compressorStrength > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? compressorEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let strength = nodeParams(for: nodeId)?.compressorStrength ?? compressorStrength
+            guard strength > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
@@ -1191,7 +1384,7 @@ class AudioEngine: ObservableObject {
                 for frame in 0..<frameLength {
                     let input = processedAudio[channel][frame]
                     let threshold: Float = 0.5
-                    let ratio: Float = 1.0 + Float(compressorStrength) * 3.0
+                    let ratio: Float = 1.0 + Float(strength) * 3.0
                     let absInput = abs(input)
 
                     let output: Float
@@ -1203,7 +1396,7 @@ class AudioEngine: ObservableObject {
                         output = input
                     }
 
-                    processedAudio[channel][frame] = output * (1.0 + Float(compressorStrength) * 0.3)
+                    processedAudio[channel][frame] = output * (1.0 + Float(strength) * 0.3)
                 }
             }
             if let id = nodeId {
@@ -1211,64 +1404,116 @@ class AudioEngine: ObservableObject {
             }
 
         case .reverb:
-            guard reverbEnabled, reverbMix > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let delayTime = 0.03 * reverbSize
+            guard nodeId == nil ? reverbEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let mixValue = nodeParams(for: nodeId)?.reverbMix ?? reverbMix
+            let sizeValue = nodeParams(for: nodeId)?.reverbSize ?? reverbSize
+            guard mixValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let delayTime = 0.03 * sizeValue
             let delayFrames = Int(sampleRate * delayTime)
-            if reverbBuffer.count != channelCount || reverbBuffer.first?.count != delayFrames {
-                reverbBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
-                reverbWriteIndex = 0
+            let targetId = nodeId
+            var buffer = targetId.flatMap { reverbBuffersByNode[$0] } ?? reverbBuffer
+            var writeIndex = targetId.flatMap { reverbWriteIndexByNode[$0] } ?? reverbWriteIndex
+
+            if buffer.count != channelCount || buffer.first?.count != delayFrames {
+                buffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
+                writeIndex = 0
             }
 
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
                     let dry = processedAudio[channel][frame]
-                    let wet = reverbBuffer[channel][reverbWriteIndex]
-                    let mix = Float(reverbMix)
+                    let wet = buffer[channel][writeIndex]
+                    let mix = Float(mixValue)
                     processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
-                    reverbBuffer[channel][reverbWriteIndex] = dry + wet * 0.5
+                    buffer[channel][writeIndex] = dry + wet * 0.5
                 }
-                reverbWriteIndex = (reverbWriteIndex + 1) % delayFrames
+                writeIndex = (writeIndex + 1) % delayFrames
+            }
+            if let id = targetId {
+                reverbBuffersByNode[id] = buffer
+                reverbWriteIndexByNode[id] = writeIndex
+            } else {
+                reverbBuffer = buffer
+                reverbWriteIndex = writeIndex
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .delay:
-            guard delayEnabled, delayMix > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let delayFrames = Int(sampleRate * delayTime)
-            if delayBuffer.count != channelCount || delayBuffer.first?.count != delayFrames {
-                delayBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
-                delayWriteIndex = 0
+            guard nodeId == nil ? delayEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let mixValue = nodeParams(for: nodeId)?.delayMix ?? delayMix
+            let feedbackValue = nodeParams(for: nodeId)?.delayFeedback ?? delayFeedback
+            let timeValue = nodeParams(for: nodeId)?.delayTime ?? delayTime
+            guard mixValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let delayFrames = Int(sampleRate * timeValue)
+            let targetId = nodeId
+            var buffer = targetId.flatMap { delayBuffersByNode[$0] } ?? delayBuffer
+            var writeIndex = targetId.flatMap { delayWriteIndexByNode[$0] } ?? delayWriteIndex
+            if buffer.count != channelCount || buffer.first?.count != delayFrames {
+                buffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
+                writeIndex = 0
             }
 
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     let dry = processedAudio[channel][frame]
-                    let wet = delayBuffer[channel][delayWriteIndex]
-                    let mix = Float(delayMix)
+                    let wet = buffer[channel][writeIndex]
+                    let mix = Float(mixValue)
                     processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
-                    let feedback = Float(delayFeedback)
-                    delayBuffer[channel][delayWriteIndex] = dry + wet * feedback
-                    delayWriteIndex = (delayWriteIndex + 1) % delayFrames
+                    let feedback = Float(feedbackValue)
+                    buffer[channel][writeIndex] = dry + wet * feedback
+                    writeIndex = (writeIndex + 1) % delayFrames
                 }
+            }
+            if let id = targetId {
+                delayBuffersByNode[id] = buffer
+                delayWriteIndexByNode[id] = writeIndex
+            } else {
+                delayBuffer = buffer
+                delayWriteIndex = writeIndex
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .distortion:
-            guard distortionEnabled, distortionDrive > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let drive = Float(distortionDrive) * 10.0
-            let mix = Float(distortionMix)
+            guard nodeId == nil ? distortionEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let driveValue = nodeParams(for: nodeId)?.distortionDrive ?? distortionDrive
+            let mixValue = nodeParams(for: nodeId)?.distortionMix ?? distortionMix
+            guard driveValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let drive = Float(driveValue) * 10.0
+            let mix = Float(mixValue)
 
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
@@ -1283,31 +1528,56 @@ class AudioEngine: ObservableObject {
             }
 
         case .tremolo:
-            guard tremoloEnabled, tremoloDepth > 0 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let rate = Float(tremoloRate)
-            let depth = Float(tremoloDepth)
+            guard nodeId == nil ? tremoloEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let rateValue = nodeParams(for: nodeId)?.tremoloRate ?? tremoloRate
+            let depthValue = nodeParams(for: nodeId)?.tremoloDepth ?? tremoloDepth
+            guard depthValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let rate = Float(rateValue)
+            let depth = Float(depthValue)
+            var phase = nodeId.flatMap { tremoloPhaseByNode[$0] } ?? tremoloPhase
 
             for frame in 0..<frameLength {
-                let lfoValue = (sin(Float(tremoloPhase)) + 1.0) * 0.5
+                let lfoValue = (sin(Float(phase)) + 1.0) * 0.5
                 let gain = 1.0 - (depth * (1.0 - lfoValue))
                 for channel in 0..<channelCount {
                     processedAudio[channel][frame] *= gain
                 }
 
-                tremoloPhase += Double(rate) * 2.0 * .pi / sampleRate
-                if tremoloPhase >= 2.0 * .pi {
-                    tremoloPhase -= 2.0 * .pi
+                phase += Double(rate) * 2.0 * .pi / sampleRate
+                if phase >= 2.0 * .pi {
+                    phase -= 2.0 * .pi
                 }
+            }
+            if let id = nodeId {
+                tremoloPhaseByNode[id] = phase
+            } else {
+                tremoloPhase = phase
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .stereoWidth:
-            guard stereoWidthEnabled, stereoWidthAmount > 0, channelCount == 2 else {
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? stereoWidthEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let amount = nodeParams(for: nodeId)?.stereoWidthAmount ?? stereoWidthAmount
+            guard amount > 0, channelCount == 2 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
@@ -1316,7 +1586,7 @@ class AudioEngine: ObservableObject {
                 let right = processedAudio[1][frame]
                 let mid = (left + right) * 0.5
                 let side = (left - right) * 0.5
-                let width = Float(stereoWidthAmount)
+                let width = Float(amount)
                 let wideSide = side * (1.0 + width)
                 processedAudio[0][frame] = mid + wideSide
                 processedAudio[1][frame] = mid - wideSide
@@ -1369,58 +1639,6 @@ class AudioEngine: ObservableObject {
         }
     }
 
-    private func initializeSplitRightStates(channelCount: Int) {
-        if splitRightBassBoostState.count != channelCount {
-            splitRightBassBoostState = [BiquadState](repeating: BiquadState(), count: channelCount)
-        }
-        if splitRightClarityState.count != channelCount {
-            splitRightClarityState = [BiquadState](repeating: BiquadState(), count: channelCount)
-        }
-        if splitRightDeMudState.count != channelCount {
-            splitRightDeMudState = [BiquadState](repeating: BiquadState(), count: channelCount)
-        }
-        if splitRightEqBassState.count != channelCount {
-            splitRightEqBassState = [BiquadState](repeating: BiquadState(), count: channelCount)
-        }
-        if splitRightEqMidsState.count != channelCount {
-            splitRightEqMidsState = [BiquadState](repeating: BiquadState(), count: channelCount)
-        }
-        if splitRightEqTrebleState.count != channelCount {
-            splitRightEqTrebleState = [BiquadState](repeating: BiquadState(), count: channelCount)
-        }
-        if splitRightCompressorEnvelope.count != channelCount {
-            splitRightCompressorEnvelope = [Float](repeating: 0, count: channelCount)
-        }
-    }
-
-    private func withSplitRightState<T>(_ work: () -> T) -> T {
-        Swift.swap(&bassBoostState, &splitRightBassBoostState)
-        Swift.swap(&clarityState, &splitRightClarityState)
-        Swift.swap(&deMudState, &splitRightDeMudState)
-        Swift.swap(&eqBassState, &splitRightEqBassState)
-        Swift.swap(&eqMidsState, &splitRightEqMidsState)
-        Swift.swap(&eqTrebleState, &splitRightEqTrebleState)
-        Swift.swap(&compressorEnvelope, &splitRightCompressorEnvelope)
-        Swift.swap(&reverbBuffer, &splitRightReverbBuffer)
-        Swift.swap(&reverbWriteIndex, &splitRightReverbWriteIndex)
-        Swift.swap(&delayBuffer, &splitRightDelayBuffer)
-        Swift.swap(&delayWriteIndex, &splitRightDelayWriteIndex)
-        Swift.swap(&tremoloPhase, &splitRightTremoloPhase)
-        let result = work()
-        Swift.swap(&bassBoostState, &splitRightBassBoostState)
-        Swift.swap(&clarityState, &splitRightClarityState)
-        Swift.swap(&deMudState, &splitRightDeMudState)
-        Swift.swap(&eqBassState, &splitRightEqBassState)
-        Swift.swap(&eqMidsState, &splitRightEqMidsState)
-        Swift.swap(&eqTrebleState, &splitRightEqTrebleState)
-        Swift.swap(&compressorEnvelope, &splitRightCompressorEnvelope)
-        Swift.swap(&reverbBuffer, &splitRightReverbBuffer)
-        Swift.swap(&reverbWriteIndex, &splitRightReverbWriteIndex)
-        Swift.swap(&delayBuffer, &splitRightDelayBuffer)
-        Swift.swap(&delayWriteIndex, &splitRightDelayWriteIndex)
-        Swift.swap(&tremoloPhase, &splitRightTremoloPhase)
-        return result
-    }
 
     private func updateBassBoostCoefficients(sampleRate: Double) {
         if sampleRate != bassBoostLastSampleRate || bassBoostAmount != bassBoostLastAmount {
@@ -1647,18 +1865,19 @@ class AudioEngine: ObservableObject {
             tremoloPhase = 0
             resetReverbStateUnlocked()
             resetDelayStateUnlocked()
-            splitRightBassBoostState = splitRightBassBoostState.map { _ in BiquadState() }
-            splitRightClarityState = splitRightClarityState.map { _ in BiquadState() }
-            splitRightDeMudState = splitRightDeMudState.map { _ in BiquadState() }
-            splitRightEqBassState = splitRightEqBassState.map { _ in BiquadState() }
-            splitRightEqMidsState = splitRightEqMidsState.map { _ in BiquadState() }
-            splitRightEqTrebleState = splitRightEqTrebleState.map { _ in BiquadState() }
-            splitRightCompressorEnvelope = splitRightCompressorEnvelope.map { _ in 0 }
-            splitRightTremoloPhase = 0
-            splitRightReverbBuffer.removeAll()
-            splitRightReverbWriteIndex = 0
-            splitRightDelayBuffer.removeAll()
-            splitRightDelayWriteIndex = 0
+            bassBoostStatesByNode.removeAll()
+            clarityStatesByNode.removeAll()
+            nightcoreStatesByNode.removeAll()
+            deMudStatesByNode.removeAll()
+            eqBassStatesByNode.removeAll()
+            eqMidsStatesByNode.removeAll()
+            eqTrebleStatesByNode.removeAll()
+            tenBandStatesByNode.removeAll()
+            reverbBuffersByNode.removeAll()
+            reverbWriteIndexByNode.removeAll()
+            delayBuffersByNode.removeAll()
+            delayWriteIndexByNode.removeAll()
+            tremoloPhaseByNode.removeAll()
         }
         DispatchQueue.main.async {
             self.effectLevels = [:]
@@ -2106,9 +2325,10 @@ class AudioEngine: ObservableObject {
             effectChainOrder = chain
             useManualGraph = false
             useSplitGraph = false
+            syncNodeState(chain)
         }
 
-        let activeTypes = Set(chain.map { $0.type })
+        let activeTypes = Set(chain.filter { $0.isEnabled }.map { $0.type })
 
         bassBoostEnabled = activeTypes.contains(.bassBoost)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
@@ -2144,9 +2364,10 @@ class AudioEngine: ObservableObject {
             manualGraphEndID = endID
             useManualGraph = true
             useSplitGraph = false
+            syncNodeState(nodes)
         }
 
-        let activeTypes = Set(nodes.map { $0.type })
+        let activeTypes = Set(nodes.filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
@@ -2182,9 +2403,10 @@ class AudioEngine: ObservableObject {
             splitRightEndID = rightEndID
             useSplitGraph = true
             useManualGraph = false
+            syncNodeState(leftNodes + rightNodes)
         }
 
-        let activeTypes = Set((leftNodes + rightNodes).map { $0.type })
+        let activeTypes = Set((leftNodes + rightNodes).filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
@@ -2205,6 +2427,25 @@ class AudioEngine: ObservableObject {
 
     func requestGraphLoad(_ snapshot: GraphSnapshot?) {
         pendingGraphSnapshot = snapshot
+    }
+
+    private func syncNodeState(_ nodes: [BeginnerNode]) {
+        let ids = Set(nodes.map { $0.id })
+        nodeParameters = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.parameters) })
+        nodeEnabled = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.isEnabled) })
+        bassBoostStatesByNode = bassBoostStatesByNode.filter { ids.contains($0.key) }
+        clarityStatesByNode = clarityStatesByNode.filter { ids.contains($0.key) }
+        nightcoreStatesByNode = nightcoreStatesByNode.filter { ids.contains($0.key) }
+        deMudStatesByNode = deMudStatesByNode.filter { ids.contains($0.key) }
+        eqBassStatesByNode = eqBassStatesByNode.filter { ids.contains($0.key) }
+        eqMidsStatesByNode = eqMidsStatesByNode.filter { ids.contains($0.key) }
+        eqTrebleStatesByNode = eqTrebleStatesByNode.filter { ids.contains($0.key) }
+        tenBandStatesByNode = tenBandStatesByNode.filter { ids.contains($0.key) }
+        reverbBuffersByNode = reverbBuffersByNode.filter { ids.contains($0.key) }
+        reverbWriteIndexByNode = reverbWriteIndexByNode.filter { ids.contains($0.key) }
+        delayBuffersByNode = delayBuffersByNode.filter { ids.contains($0.key) }
+        delayWriteIndexByNode = delayWriteIndexByNode.filter { ids.contains($0.key) }
+        tremoloPhaseByNode = tremoloPhaseByNode.filter { ids.contains($0.key) }
     }
 }
 

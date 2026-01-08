@@ -235,10 +235,10 @@ struct PresetView: View {
                             PresetCard(
                                 preset: preset,
                                 onApply: {
+                                    audioEngine.applyEffectChain(preset.chain)
                                     if let graph = preset.graph {
                                         audioEngine.requestGraphLoad(graph)
                                     }
-                                    audioEngine.applyEffectChain(preset.chain)
                                     onPresetApplied()
                                 },
                                 onDelete: {

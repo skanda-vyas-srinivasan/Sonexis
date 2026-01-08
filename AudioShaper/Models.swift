@@ -155,17 +155,73 @@ enum GraphLane: String, Codable {
     case right
 }
 
+struct NodeEffectParameters: Codable, Equatable {
+    var bassBoostAmount: Double
+    var nightcoreIntensity: Double
+    var clarityAmount: Double
+    var deMudStrength: Double
+    var eqBass: Double
+    var eqMids: Double
+    var eqTreble: Double
+    var tenBandGains: [Double]
+    var compressorStrength: Double
+    var reverbMix: Double
+    var reverbSize: Double
+    var stereoWidthAmount: Double
+    var delayTime: Double
+    var delayFeedback: Double
+    var delayMix: Double
+    var distortionDrive: Double
+    var distortionMix: Double
+    var tremoloRate: Double
+    var tremoloDepth: Double
+
+    static func defaults() -> NodeEffectParameters {
+        NodeEffectParameters(
+            bassBoostAmount: 0.6,
+            nightcoreIntensity: 0.6,
+            clarityAmount: 0.5,
+            deMudStrength: 0.5,
+            eqBass: 0,
+            eqMids: 0,
+            eqTreble: 0,
+            tenBandGains: Array(repeating: 0, count: 10),
+            compressorStrength: 0.4,
+            reverbMix: 0.3,
+            reverbSize: 0.5,
+            stereoWidthAmount: 0.3,
+            delayTime: 0.25,
+            delayFeedback: 0.4,
+            delayMix: 0.3,
+            distortionDrive: 0.5,
+            distortionMix: 0.5,
+            tremoloRate: 5.0,
+            tremoloDepth: 0.5
+        )
+    }
+}
+
 struct BeginnerNode: Identifiable, Codable {
     let id: UUID
     let type: EffectType
     var position: CGPoint
     var lane: GraphLane
+    var isEnabled: Bool
+    var parameters: NodeEffectParameters
 
-    init(type: EffectType, position: CGPoint = .zero, lane: GraphLane = .left) {
+    init(
+        type: EffectType,
+        position: CGPoint = .zero,
+        lane: GraphLane = .left,
+        isEnabled: Bool = true,
+        parameters: NodeEffectParameters = NodeEffectParameters.defaults()
+    ) {
         self.id = UUID()
         self.type = type
         self.position = position
         self.lane = lane
+        self.isEnabled = isEnabled
+        self.parameters = parameters
     }
 
     enum CodingKeys: String, CodingKey {
@@ -173,6 +229,8 @@ struct BeginnerNode: Identifiable, Codable {
         case type
         case position
         case lane
+        case isEnabled
+        case parameters
     }
 
     init(from decoder: Decoder) throws {
@@ -181,6 +239,8 @@ struct BeginnerNode: Identifiable, Codable {
         self.type = try container.decode(EffectType.self, forKey: .type)
         self.position = try container.decodeIfPresent(CGPoint.self, forKey: .position) ?? .zero
         self.lane = try container.decodeIfPresent(GraphLane.self, forKey: .lane) ?? .left
+        self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        self.parameters = try container.decodeIfPresent(NodeEffectParameters.self, forKey: .parameters) ?? NodeEffectParameters.defaults()
     }
 }
 
@@ -234,6 +294,7 @@ struct GraphSnapshot: Codable {
     var leftEndNodeID: UUID?
     var rightStartNodeID: UUID?
     var rightEndNodeID: UUID?
+    var hasNodeParameters: Bool
 
     init(
         graphMode: GraphMode,
@@ -245,7 +306,8 @@ struct GraphSnapshot: Codable {
         leftStartNodeID: UUID? = nil,
         leftEndNodeID: UUID? = nil,
         rightStartNodeID: UUID? = nil,
-        rightEndNodeID: UUID? = nil
+        rightEndNodeID: UUID? = nil,
+        hasNodeParameters: Bool = true
     ) {
         self.graphMode = graphMode
         self.wiringMode = wiringMode
@@ -257,6 +319,7 @@ struct GraphSnapshot: Codable {
         self.leftEndNodeID = leftEndNodeID
         self.rightStartNodeID = rightStartNodeID
         self.rightEndNodeID = rightEndNodeID
+        self.hasNodeParameters = hasNodeParameters
     }
 
     enum CodingKeys: String, CodingKey {
@@ -270,6 +333,7 @@ struct GraphSnapshot: Codable {
         case leftEndNodeID
         case rightStartNodeID
         case rightEndNodeID
+        case hasNodeParameters
     }
 
     init(from decoder: Decoder) throws {
@@ -284,6 +348,7 @@ struct GraphSnapshot: Codable {
         self.leftEndNodeID = try container.decodeIfPresent(UUID.self, forKey: .leftEndNodeID)
         self.rightStartNodeID = try container.decodeIfPresent(UUID.self, forKey: .rightStartNodeID)
         self.rightEndNodeID = try container.decodeIfPresent(UUID.self, forKey: .rightEndNodeID)
+        self.hasNodeParameters = try container.decodeIfPresent(Bool.self, forKey: .hasNodeParameters) ?? false
     }
 }
 
