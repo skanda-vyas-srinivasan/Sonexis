@@ -513,10 +513,10 @@ class AudioEngine: ObservableObject {
         let connections = manualGraphConnections
 
         var outEdges: [UUID: [UUID]] = [:]
-        var inEdges: [UUID: [UUID]] = [:]
+        var inEdges: [UUID: [(UUID, Double)]] = [:]
         for connection in connections {
             outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
-            inEdges[connection.toNodeId, default: []].append(connection.fromNodeId)
+            inEdges[connection.toNodeId, default: []].append((connection.fromNodeId, connection.gain))
         }
 
         let reachable = reachableNodes(from: startID, outEdges: outEdges)
@@ -533,16 +533,16 @@ class AudioEngine: ObservableObject {
 
         for sink in sinkNodes {
             outEdges[sink, default: []].append(endID)
-            inEdges[endID, default: []].append(sink)
+            inEdges[endID, default: []].append((sink, 1.0))
         }
 
         var indegree: [UUID: Int] = [:]
         for node in nodes {
             if reachable.contains(node.id) {
-                let incoming = inEdges[node.id] ?? []
-                let count = incoming.filter { $0 != startID }.count
-                indegree[node.id] = count
-            }
+            let incoming = inEdges[node.id] ?? []
+            let count = incoming.filter { $0.0 != startID }.count
+            indegree[node.id] = count
+        }
         }
 
         var queue: [UUID] = nodes.compactMap { node in
@@ -629,7 +629,7 @@ class AudioEngine: ObservableObject {
     }
 
     private func mergeInputs(
-        inputs: [UUID],
+        inputs: [(UUID, Double)],
         startID: UUID,
         inputBuffer: [[Float]],
         outputBuffers: [UUID: [[Float]]],
@@ -639,7 +639,7 @@ class AudioEngine: ObservableObject {
         var merged = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
         guard !inputs.isEmpty else { return merged }
 
-        for source in inputs {
+        for (source, gain) in inputs {
             let sourceBuffer: [[Float]]?
             if source == startID {
                 sourceBuffer = inputBuffer
@@ -648,9 +648,10 @@ class AudioEngine: ObservableObject {
             }
 
             guard let buffer = sourceBuffer else { continue }
+            let gainValue = Float(gain)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
-                    merged[channel][frame] += buffer[channel][frame]
+                    merged[channel][frame] += buffer[channel][frame] * gainValue
                 }
             }
         }

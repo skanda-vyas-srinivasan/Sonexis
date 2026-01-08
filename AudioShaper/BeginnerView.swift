@@ -4,6 +4,7 @@ import SwiftUI
 
 struct BeginnerView: View {
     @ObservedObject var audioEngine: AudioEngine
+    @ObservedObject var presetManager: PresetManager
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
     @State private var showSignalFlow = false
@@ -19,6 +20,10 @@ struct BeginnerView: View {
     @State private var lassoStart: CGPoint?
     @State private var lassoCurrent: CGPoint?
     @State private var selectionDragStartPositions: [UUID: CGPoint] = [:]
+    @State private var selectedWireID: UUID?
+    @State private var showingSaveGraph = false
+    @State private var showingLoadGraph = false
+    @State private var graphNameInput = ""
 
     @State private var startNodeID = UUID()
     @State private var endNodeID = UUID()
@@ -67,6 +72,18 @@ struct BeginnerView: View {
                         applyChainToEngine()
                     }
                     .disabled(manualConnections.isEmpty)
+
+                    Divider()
+                        .frame(height: 18)
+
+                    Button("Save Graph") {
+                        graphNameInput = ""
+                        showingSaveGraph = true
+                    }
+
+                    Button("Load Graph") {
+                        showingLoadGraph = true
+                    }
                 }
             }
             .padding()
@@ -169,6 +186,9 @@ struct BeginnerView: View {
                                     Button("Delete Wire") {
                                         deleteManualConnection(connection.id)
                                     }
+                                    Button("Set Gain…") {
+                                        selectedWireID = connection.id
+                                    }
                                 }
                             }
                         }
@@ -181,6 +201,45 @@ struct BeginnerView: View {
                             path.addLine(to: activeConnectionPoint)
                         }
                         .stroke(Color.blue.opacity(0.7), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    }
+
+                    if let wireID = selectedWireID,
+                       let binding = gainBinding(for: wireID),
+                       let wire = manualConnection(for: wireID) {
+                        let midpoint = CGPoint(
+                            x: (wire.from.x + wire.to.x) * 0.5,
+                            y: (wire.from.y + wire.to.y) * 0.5 - 28
+                        )
+
+                        VStack(spacing: 6) {
+                            Text("Gain")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.9))
+                            Slider(value: binding, in: 0...1)
+                                .controlSize(.mini)
+                                .frame(width: 140)
+                            Text(String(format: "%.0f%%", binding.wrappedValue * 100))
+                                .font(.caption2)
+                                .monospacedDigit()
+                                .foregroundColor(.white.opacity(0.7))
+                            Button("Done") {
+                                selectedWireID = nil
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .tint(.white.opacity(0.8))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.75))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .shadow(color: Color.black.opacity(0.5), radius: 6, y: 2)
+                        .position(midpoint)
+                        .zIndex(5)
                     }
 
                     if let start = lassoStart, let current = lassoCurrent {
@@ -384,6 +443,33 @@ struct BeginnerView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingSaveGraph) {
+            SaveGraphDialog(
+                graphName: $graphNameInput,
+                onSave: {
+                    saveGraphPreset()
+                    showingSaveGraph = false
+                },
+                onCancel: {
+                    showingSaveGraph = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingLoadGraph) {
+            LoadGraphDialog(
+                presets: presetManager.graphPresets,
+                onLoad: { preset in
+                    loadGraphPreset(preset)
+                    showingLoadGraph = false
+                },
+                onDelete: { preset in
+                    presetManager.deleteGraphPreset(preset)
+                },
+                onClose: {
+                    showingLoadGraph = false
+                }
+            )
+        }
     }
 
     private func addEffectToChain(_ type: EffectType) {
@@ -398,6 +484,7 @@ struct BeginnerView: View {
         effectChain.removeAll { $0.id == id }
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
         selectedNodeIDs.remove(id)
+        normalizeAllOutgoingGains()
         applyChainToEngine()
     }
 
@@ -405,11 +492,13 @@ struct BeginnerView: View {
         effectChain.removeAll { ids.contains($0.id) }
         manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
         selectedNodeIDs.subtract(ids)
+        normalizeAllOutgoingGains()
         applyChainToEngine()
     }
 
     private func deleteWiresForSelected() {
         manualConnections.removeAll { selectedNodeIDs.contains($0.fromNodeId) || selectedNodeIDs.contains($0.toNodeId) }
+        normalizeAllOutgoingGains()
         applyChainToEngine()
     }
 
@@ -440,6 +529,29 @@ struct BeginnerView: View {
             // TEMP DEBUG: surface the DSP chain in the UI for visual verification.
             updateDebugChainText(path)
         }
+    }
+
+    private func saveGraphPreset() {
+        guard !graphNameInput.isEmpty else { return }
+        let snapshot = GraphSnapshot(
+            wiringMode: wiringMode == .manual ? .manual : .automatic,
+            nodes: effectChain,
+            connections: manualConnections,
+            startNodeID: startNodeID,
+            endNodeID: endNodeID
+        )
+        presetManager.saveGraphPreset(name: graphNameInput, snapshot: snapshot)
+    }
+
+    private func loadGraphPreset(_ preset: SavedGraphPreset) {
+        effectChain = preset.graph.nodes
+        manualConnections = preset.graph.connections
+        startNodeID = preset.graph.startNodeID
+        endNodeID = preset.graph.endNodeID
+        wiringMode = preset.graph.wiringMode == .manual ? .manual : .automatic
+        selectedNodeIDs.removeAll()
+        selectedWireID = nil
+        applyChainToEngine()
     }
 
     private func updateDebugChainText(_ path: [BeginnerNode]) {
@@ -529,12 +641,74 @@ struct BeginnerView: View {
 
     private func removeWires(for nodeID: UUID) {
         manualConnections.removeAll { $0.fromNodeId == nodeID || $0.toNodeId == nodeID }
+        normalizeOutgoingGains(from: nodeID)
         applyChainToEngine()
     }
 
     private func deleteManualConnection(_ id: UUID) {
-        manualConnections.removeAll { $0.id == id }
+        if let connection = manualConnections.first(where: { $0.id == id }) {
+            manualConnections.removeAll { $0.id == id }
+            normalizeOutgoingGains(from: connection.fromNodeId)
+        }
         applyChainToEngine()
+    }
+
+    private func normalizeAllOutgoingGains() {
+        guard wiringMode == .manual else { return }
+        let sources = Set(manualConnections.map { $0.fromNodeId })
+        for source in sources {
+            normalizeOutgoingGains(from: source)
+        }
+    }
+
+    private func normalizeOutgoingGains(from fromID: UUID) {
+        guard wiringMode == .manual else { return }
+        let outgoing = manualConnections.filter { $0.fromNodeId == fromID }
+        guard !outgoing.isEmpty else { return }
+        let gain = 1.0 / Double(outgoing.count)
+        for index in manualConnections.indices {
+            if manualConnections[index].fromNodeId == fromID {
+                manualConnections[index].gain = gain
+            }
+        }
+    }
+
+    private func gainBinding(for wireID: UUID) -> Binding<Double>? {
+        guard let index = manualConnections.firstIndex(where: { $0.id == wireID }) else {
+            return nil
+        }
+        return Binding(
+            get: { manualConnections[index].gain },
+            set: { newValue in
+                manualConnections[index].gain = min(max(newValue, 0), 1)
+                applyChainToEngine()
+            }
+        )
+    }
+
+    private func manualConnection(for wireID: UUID) -> CanvasConnection? {
+        guard let connection = manualConnections.first(where: { $0.id == wireID }) else { return nil }
+        let size = canvasSize
+
+        let fromPoint: CGPoint
+        if connection.fromNodeId == startNodeID {
+            fromPoint = startNodePosition(in: size)
+        } else if let node = effectChain.first(where: { $0.id == connection.fromNodeId }) {
+            fromPoint = nodePosition(node, in: size)
+        } else {
+            return nil
+        }
+
+        let toPoint: CGPoint
+        if connection.toNodeId == endNodeID {
+            toPoint = endNodePosition(in: size)
+        } else if let node = effectChain.first(where: { $0.id == connection.toNodeId }) {
+            toPoint = nodePosition(node, in: size)
+        } else {
+            return nil
+        }
+
+        return CanvasConnection(id: connection.id, from: fromPoint, to: toPoint, toNodeId: connection.toNodeId, isManual: true)
     }
 
     private func visualManualConnections(in size: CGSize) -> [CanvasConnection] {
@@ -670,6 +844,9 @@ struct BeginnerView: View {
             manualConnections.removeAll { $0.fromNodeId == fromID && $0.toNodeId == targetID }
         }
         manualConnections.append(BeginnerConnection(fromNodeId: fromID, toNodeId: targetID))
+        if wiringMode == .manual {
+            normalizeOutgoingGains(from: fromID)
+        }
         print("   ✅ Connection created! Total connections: \(manualConnections.count)")
         applyChainToEngine()
     }
@@ -830,6 +1007,95 @@ struct BeginnerView: View {
 
     private func nodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
         node.position == .zero ? defaultNodePosition(in: size) : node.position
+    }
+}
+
+// MARK: - Graph Preset Dialogs
+
+struct SaveGraphDialog: View {
+    @Binding var graphName: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Save Graph")
+                .font(.headline)
+
+            TextField("Graph Name", text: $graphName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 300)
+
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    onSave()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(graphName.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 360, height: 160)
+    }
+}
+
+struct LoadGraphDialog: View {
+    let presets: [SavedGraphPreset]
+    let onLoad: (SavedGraphPreset) -> Void
+    let onDelete: (SavedGraphPreset) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Load Graph")
+                .font(.headline)
+
+            if presets.isEmpty {
+                Text("No saved graphs")
+                    .foregroundColor(.secondary)
+            } else {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(presets) { preset in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(preset.name)
+                                        .font(.subheadline)
+                                    Text(preset.createdDate, style: .date)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button("Load") {
+                                    onLoad(preset)
+                                }
+                                Button("Delete") {
+                                    onDelete(preset)
+                                }
+                                .foregroundColor(.red)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                }
+                .frame(maxHeight: 240)
+            }
+
+            Button("Close") {
+                onClose()
+            }
+        }
+        .padding()
+        .frame(width: 420, height: 360)
     }
 }
 
@@ -1455,5 +1721,5 @@ struct CompactSlider: View {
 // MARK: - Supporting Types
 
 #Preview {
-    BeginnerView(audioEngine: AudioEngine())
+    BeginnerView(audioEngine: AudioEngine(), presetManager: PresetManager())
 }

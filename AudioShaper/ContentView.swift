@@ -43,7 +43,10 @@ struct ContentView: View {
                         presetManager: presetManager
                     )
                 case 1:
-                    BeginnerView(audioEngine: audioEngine)
+                    BeginnerView(
+                        audioEngine: audioEngine,
+                        presetManager: presetManager
+                    )
                 case 2:
                     AdvancedView(audioEngine: audioEngine)
                 default:
