@@ -10,8 +10,29 @@ struct BeginnerView: View {
     @State private var canvasSize: CGSize = .zero
     @State private var draggingNodeID: UUID?
     @State private var dragStartPosition: CGPoint = .zero
+    @State private var manualConnections: [BeginnerConnection] = []
+    @State private var activeConnectionFromID: UUID?
+    @State private var activeConnectionPoint: CGPoint = .zero
+    @State private var wiringMode: WiringMode = .automatic
+    @State private var debugChainText: String? = nil
+    @State private var selectedNodeIDs: Set<UUID> = []
+    @State private var lassoStart: CGPoint?
+    @State private var lassoCurrent: CGPoint?
+    @State private var selectionDragStartPositions: [UUID: CGPoint] = [:]
+
+    @State private var startNodeID = UUID()
+    @State private var endNodeID = UUID()
+    private let connectionSnapRadius: CGFloat = 120
+
+    enum WiringMode {
+        case automatic  // Position-based with manual override
+        case manual     // Pure manual wiring only
+    }
 
     var body: some View {
+        let path = wiringMode == .automatic ? chainPath() : manualPathFromStart()
+        let pathIDs = Set(path.map { $0.id })
+
         VStack(spacing: 0) {
             // Effect palette at top
             HStack {
@@ -25,6 +46,28 @@ struct BeginnerView: View {
                 )
 
                 Spacer()
+
+                HStack(spacing: 12) {
+                    // Mode toggle
+                    Picker("Wiring Mode", selection: $wiringMode) {
+                        Text("Automatic").tag(WiringMode.automatic)
+                        Text("Manual").tag(WiringMode.manual)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                    .help(wiringMode == .automatic ?
+                          "Automatic: Effects flow left-to-right by position. Option+drag to override." :
+                          "Manual: Pure manual wiring. Option+drag to connect everything.")
+                    .onChange(of: wiringMode) { _ in
+                        applyChainToEngine()
+                    }
+
+                    Button("Reset Wiring") {
+                        manualConnections.removeAll()
+                        applyChainToEngine()
+                    }
+                    .disabled(manualConnections.isEmpty)
+                }
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
@@ -35,6 +78,52 @@ struct BeginnerView: View {
             GeometryReader { geometry in
                 ZStack {
                     Color(NSColor.textBackgroundColor)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if wiringMode == .manual {
+                                selectedNodeIDs.removeAll()
+                            }
+                        }
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    guard wiringMode == .manual else { return }
+                                    guard !NSEvent.modifierFlags.contains(.option) else { return }
+                                    guard draggingNodeID == nil else { return }
+
+                                    if lassoStart == nil {
+                                        lassoStart = value.startLocation
+                                    }
+                                    lassoCurrent = value.location
+                                }
+                                .onEnded { _ in
+                                    guard wiringMode == .manual else { return }
+                                    guard let start = lassoStart, let current = lassoCurrent else {
+                                        lassoStart = nil
+                                        lassoCurrent = nil
+                                        return
+                                    }
+
+                                    let rect = selectionRect(from: start, to: current)
+                                    let isShift = NSEvent.modifierFlags.contains(.shift)
+                                    updateSelection(in: rect, additive: isShift)
+                                    lassoStart = nil
+                                    lassoCurrent = nil
+                                }
+                        )
+
+                    // TEMP DEBUG: show DSP chain overlay (remove when wiring UX is finalized).
+                    if let chainText = debugChainText {
+                        Text(chainText)
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(Capsule())
+                            .padding(.top, 12)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    }
 
                     // Subtle grid pattern
                     Canvas { context, size in
@@ -55,47 +144,197 @@ struct BeginnerView: View {
                         )
                     }
 
-                    ForEach(connectionsForCanvas(), id: \.id) { connection in
-                        FlowLine(
-                            from: connection.from,
-                            to: connection.to,
-                            isActive: audioEngine.isRunning && showSignalFlow,
-                            level: levelForNode(connection.toNodeId)
-                        )
+                    // Draw connections based on mode
+                    if wiringMode == .automatic {
+                        // In automatic mode, show position-based flow
+                        ForEach(connectionsForCanvas(path: path), id: \.id) { connection in
+                            FlowLine(
+                                from: connection.from,
+                                to: connection.to,
+                                isActive: audioEngine.isRunning && showSignalFlow,
+                                level: levelForNode(connection.toNodeId)
+                            )
+                        }
+                    } else {
+                        // In manual mode, show explicit wires (always visible)
+                        ForEach(visualManualConnections(in: geometry.size), id: \.id) { connection in
+                            FlowLine(
+                                from: connection.from,
+                                to: connection.to,
+                                isActive: audioEngine.isRunning && showSignalFlow,
+                                level: levelForNode(connection.toNodeId)
+                            )
+                            .contextMenu {
+                                if connection.isManual {
+                                    Button("Delete Wire") {
+                                        deleteManualConnection(connection.id)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Draw preview line while dragging
+                    if let startPoint = connectionPreviewStartPoint(in: geometry.size) {
+                        Path { path in
+                            path.move(to: startPoint)
+                            path.addLine(to: activeConnectionPoint)
+                        }
+                        .stroke(Color.blue.opacity(0.7), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    }
+
+                    if let start = lassoStart, let current = lassoCurrent {
+                        let rect = selectionRect(from: start, to: current)
+                        Rectangle()
+                            .path(in: rect)
+                            .stroke(Color.blue.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            .background(Color.blue.opacity(0.08))
                     }
 
                     StartNodeView()
                         .position(startNodePosition(in: geometry.size))
+                        .contextMenu {
+                            if wiringMode == .manual {
+                                Button("Delete Node Wires") {
+                                    removeWires(for: startNodeID)
+                                }
+                            }
+                        }
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    if NSEvent.modifierFlags.contains(.option) {
+                                        print("🖱️ START drag with Option held")
+                                        let start = startNodePosition(in: geometry.size)
+                                        activeConnectionFromID = startNodeID
+                                        activeConnectionPoint = CGPoint(
+                                            x: start.x + value.translation.width,
+                                            y: start.y + value.translation.height
+                                        )
+                                    }
+                                }
+                                .onEnded { value in
+                                    if NSEvent.modifierFlags.contains(.option) {
+                                        print("🖱️ START drag ended with Option")
+                                        let start = startNodePosition(in: geometry.size)
+                                        let dropPoint = CGPoint(
+                                            x: start.x + value.translation.width,
+                                            y: start.y + value.translation.height
+                                        )
+                                        finalizeConnection(from: startNodeID, dropPoint: dropPoint)
+                                    } else {
+                                        activeConnectionFromID = nil
+                                        activeConnectionPoint = .zero
+                                    }
+                                }
+                        )
                     EndNodeView()
                         .position(endNodePosition(in: geometry.size))
+                        .contextMenu {
+                            if wiringMode == .manual {
+                                Button("Delete Node Wires") {
+                                    removeWires(for: endNodeID)
+                                }
+                            }
+                        }
 
                     ForEach(effectChain, id: \.id) { effect in
+                        let nodePos = nodePosition(effect, in: geometry.size)
+                        let isWired = pathIDs.contains(effect.id)
+                        let isSelected = selectedNodeIDs.contains(effect.id)
+
                         EffectBlockHorizontal(
                             effect: effect,
                             audioEngine: audioEngine,
+                            isWired: isWired,
+                            isSelected: isSelected,
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     removeEffect(id: effect.id)
                                 }
                             }
                         )
-                        .position(nodePosition(effect, in: geometry.size))
+                        .position(nodePos)
+                        .simultaneousGesture(
+                            TapGesture()
+                                .onEnded {
+                                    guard wiringMode == .manual else { return }
+                                    let isShift = NSEvent.modifierFlags.contains(.shift)
+                                    if isShift {
+                                        toggleSelection(effect.id)
+                                    } else {
+                                        selectedNodeIDs = [effect.id]
+                                    }
+                                }
+                        )
+                        .contextMenu {
+                            if wiringMode == .manual {
+                                Button("Delete Node") {
+                                    removeEffect(id: effect.id)
+                                }
+                                Button("Delete Node Wires") {
+                                    removeWires(for: effect.id)
+                                }
+                            }
+                        }
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    if draggingNodeID != effect.id {
-                                        draggingNodeID = effect.id
-                                        dragStartPosition = nodePosition(effect, in: geometry.size)
+                                    let hasOption = NSEvent.modifierFlags.contains(.option)
+                                    if hasOption {
+                                        // Wiring mode
+                                        print("🖱️ EFFECT drag with Option held")
+                                        activeConnectionFromID = effect.id
+                                        activeConnectionPoint = CGPoint(
+                                            x: nodePos.x + value.translation.width,
+                                            y: nodePos.y + value.translation.height
+                                        )
+                                    } else {
+                                        // Move mode
+                                        if draggingNodeID != effect.id {
+                                            draggingNodeID = effect.id
+                                            dragStartPosition = nodePos
+                                            if wiringMode == .manual {
+                                                if !selectedNodeIDs.contains(effect.id) && !NSEvent.modifierFlags.contains(.shift) {
+                                                    selectedNodeIDs = [effect.id]
+                                                }
+                                                selectionDragStartPositions = selectedNodeIDs.reduce(into: [:]) { result, id in
+                                                    if let node = effectChain.first(where: { $0.id == id }) {
+                                                        result[id] = nodePosition(node, in: geometry.size)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        let delta = CGSize(width: value.translation.width, height: value.translation.height)
+                                        if wiringMode == .manual, !selectedNodeIDs.isEmpty {
+                                            moveSelectedNodes(by: delta, in: geometry.size)
+                                        } else {
+                                            let newPosition = CGPoint(
+                                                x: dragStartPosition.x + value.translation.width,
+                                                y: dragStartPosition.y + value.translation.height
+                                            )
+                                            updateNodePosition(effect.id, position: clamp(newPosition, to: geometry.size))
+                                        }
                                     }
-                                    let newPosition = CGPoint(
-                                        x: dragStartPosition.x + value.translation.width,
-                                        y: dragStartPosition.y + value.translation.height
-                                    )
-                                    updateNodePosition(effect.id, position: clamp(newPosition, to: geometry.size))
                                 }
-                                .onEnded { _ in
-                                    draggingNodeID = nil
-                                    applyChainToEngine()
+                                .onEnded { value in
+                                    let hasOption = NSEvent.modifierFlags.contains(.option)
+                                    if hasOption {
+                                        // Finalize wiring
+                                        print("🖱️ EFFECT drag ended with Option")
+                                        let dropPoint = CGPoint(
+                                            x: nodePos.x + value.translation.width,
+                                            y: nodePos.y + value.translation.height
+                                        )
+                                        finalizeConnection(from: effect.id, dropPoint: dropPoint)
+                                    } else {
+                                        activeConnectionFromID = nil
+                                        activeConnectionPoint = .zero
+                                        // Finalize move
+                                        draggingNodeID = nil
+                                        selectionDragStartPositions.removeAll()
+                                        applyChainToEngine()
+                                    }
                                 }
                         )
                     }
@@ -135,6 +374,16 @@ struct BeginnerView: View {
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
         }
+        .contextMenu {
+            if wiringMode == .manual && !selectedNodeIDs.isEmpty {
+                Button("Delete Selected Nodes") {
+                    removeEffects(ids: selectedNodeIDs)
+                }
+                Button("Delete Wires for Selected") {
+                    deleteWiresForSelected()
+                }
+            }
+        }
     }
 
     private func addEffectToChain(_ type: EffectType) {
@@ -147,11 +396,50 @@ struct BeginnerView: View {
 
     private func removeEffect(id: UUID) {
         effectChain.removeAll { $0.id == id }
+        manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
+        selectedNodeIDs.remove(id)
+        applyChainToEngine()
+    }
+
+    private func removeEffects(ids: Set<UUID>) {
+        effectChain.removeAll { ids.contains($0.id) }
+        manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
+        selectedNodeIDs.subtract(ids)
+        applyChainToEngine()
+    }
+
+    private func deleteWiresForSelected() {
+        manualConnections.removeAll { selectedNodeIDs.contains($0.fromNodeId) || selectedNodeIDs.contains($0.toNodeId) }
         applyChainToEngine()
     }
 
     private func applyChainToEngine() {
-        audioEngine.updateEffectChain(orderedNodesByPosition())
+        let path = chainPath()
+        print("📊 Chain path (\(path.count) effects) - Mode: \(wiringMode == .automatic ? "AUTOMATIC" : "MANUAL")")
+        for (index, node) in path.enumerated() {
+            print("   \(index + 1). \(node.type.rawValue)")
+        }
+        print("   Manual connections: \(manualConnections.count)")
+        for conn in manualConnections {
+            let fromName = conn.fromNodeId == startNodeID ? "START" :
+                          (effectChain.first(where: { $0.id == conn.fromNodeId })?.type.rawValue ?? "?")
+            let toName = conn.toNodeId == endNodeID ? "END" :
+                        (effectChain.first(where: { $0.id == conn.toNodeId })?.type.rawValue ?? "?")
+        print("   🔗 \(fromName) → \(toName)")
+        }
+        audioEngine.updateEffectChain(path)
+
+        // TEMP DEBUG: surface the DSP chain in the UI for visual verification.
+        updateDebugChainText(path)
+    }
+
+    private func updateDebugChainText(_ path: [BeginnerNode]) {
+        if path.isEmpty {
+            debugChainText = "DSP chain: (empty)"
+            return
+        }
+        let names = path.map { $0.type.rawValue }.joined(separator: " → ")
+        debugChainText = "DSP chain: \(names)"
     }
 
     private func levelForNode(_ id: UUID) -> Float {
@@ -163,8 +451,103 @@ struct BeginnerView: View {
         effectChain[index].position = position
     }
 
-    private func connectionsForCanvas() -> [CanvasConnection] {
-        let ordered = orderedNodesByPosition()
+    private func moveSelectedNodes(by delta: CGSize, in size: CGSize) {
+        for (id, startPos) in selectionDragStartPositions {
+            let newPosition = CGPoint(
+                x: startPos.x + delta.width,
+                y: startPos.y + delta.height
+            )
+            updateNodePosition(id, position: clamp(newPosition, to: size))
+        }
+    }
+
+    private func selectionRect(from start: CGPoint, to end: CGPoint) -> CGRect {
+        CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: abs(end.x - start.x),
+            height: abs(end.y - start.y)
+        )
+    }
+
+    private func updateSelection(in rect: CGRect, additive: Bool) {
+        let matched = effectChain.filter { node in
+            rect.contains(nodePosition(node, in: canvasSize))
+        }
+        if additive {
+            selectedNodeIDs.formUnion(matched.map { $0.id })
+        } else {
+            selectedNodeIDs = Set(matched.map { $0.id })
+        }
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedNodeIDs.contains(id) {
+            selectedNodeIDs.remove(id)
+        } else {
+            selectedNodeIDs.insert(id)
+        }
+    }
+
+    private func removeWires(for nodeID: UUID) {
+        manualConnections.removeAll { $0.fromNodeId == nodeID || $0.toNodeId == nodeID }
+        applyChainToEngine()
+    }
+
+    private func deleteManualConnection(_ id: UUID) {
+        manualConnections.removeAll { $0.id == id }
+        applyChainToEngine()
+    }
+
+    private func visualManualConnections(in size: CGSize) -> [CanvasConnection] {
+        var connections: [CanvasConnection] = []
+
+        for connection in manualConnections {
+            let fromPoint: CGPoint
+            if connection.fromNodeId == startNodeID {
+                fromPoint = startNodePosition(in: size)
+            } else if let node = effectChain.first(where: { $0.id == connection.fromNodeId }) {
+                fromPoint = nodePosition(node, in: size)
+            } else {
+                continue
+            }
+
+            let toPoint: CGPoint
+            if connection.toNodeId == endNodeID {
+                toPoint = endNodePosition(in: size)
+            } else if let node = effectChain.first(where: { $0.id == connection.toNodeId }) {
+                toPoint = nodePosition(node, in: size)
+            } else {
+                continue
+            }
+
+            connections.append(
+                CanvasConnection(
+                    id: connection.id,
+                    from: fromPoint,
+                    to: toPoint,
+                    toNodeId: connection.toNodeId,
+                    isManual: true
+                )
+            )
+        }
+
+        if wiringMode == .manual {
+            let manualPath = manualPathFromStart()
+            if let lastNode = manualPath.last,
+               !manualConnections.contains(where: { $0.fromNodeId == lastNode.id && $0.toNodeId == endNodeID }) {
+                let fromPoint = nodePosition(lastNode, in: size)
+                let toPoint = endNodePosition(in: size)
+                connections.append(
+                    CanvasConnection(id: UUID(), from: fromPoint, to: toPoint, toNodeId: endNodeID, isManual: false)
+                )
+            }
+        }
+
+        return connections
+    }
+
+    private func connectionsForCanvas(path ordered: [BeginnerNode]) -> [CanvasConnection] {
         guard !ordered.isEmpty else { return [] }
 
         let startPoint = startNodePosition(in: canvasSize)
@@ -176,14 +559,14 @@ struct BeginnerView: View {
         for node in ordered {
             let currentPoint = nodePosition(node, in: canvasSize)
             connections.append(
-                CanvasConnection(id: UUID(), from: previousPoint, to: currentPoint, toNodeId: node.id)
+                CanvasConnection(id: UUID(), from: previousPoint, to: currentPoint, toNodeId: node.id, isManual: false)
             )
             previousPoint = currentPoint
         }
 
         if let last = ordered.last {
             connections.append(
-                CanvasConnection(id: UUID(), from: previousPoint, to: endPoint, toNodeId: last.id)
+                CanvasConnection(id: UUID(), from: previousPoint, to: endPoint, toNodeId: last.id, isManual: false)
             )
         }
 
@@ -207,6 +590,180 @@ struct BeginnerView: View {
         let x = min(max(point.x, padding), max(size.width - padding, padding))
         let y = min(max(point.y, padding), max(size.height - padding, padding))
         return CGPoint(x: x, y: y)
+    }
+
+    private func connectionPreviewStartPoint(in size: CGSize) -> CGPoint? {
+        guard let fromID = activeConnectionFromID else { return nil }
+        if fromID == startNodeID {
+            return startNodePosition(in: size)
+        }
+        if let fromNode = effectChain.first(where: { $0.id == fromID }) {
+            return nodePosition(fromNode, in: size)
+        }
+        return nil
+    }
+
+    private func finalizeConnection(from fromID: UUID, dropPoint: CGPoint) {
+        print("🔗 Attempting to finalize connection from \(fromID == startNodeID ? "START" : "node")")
+        print("   Drop point: \(dropPoint)")
+
+        defer {
+            activeConnectionFromID = nil
+            activeConnectionPoint = .zero
+        }
+
+        guard let targetID = nearestConnectionTarget(from: fromID, at: dropPoint),
+              targetID != fromID
+        else {
+            print("   ❌ No valid target found or same node")
+            return
+        }
+
+        print("   ✅ Found target: \(targetID == endNodeID ? "END" : "effect node")")
+
+        guard !createsCycle(from: fromID, to: targetID) else {
+            print("   ❌ Would create cycle")
+            return
+        }
+
+        print("   ✅ No cycle detected")
+        manualConnections.removeAll { $0.fromNodeId == fromID || $0.toNodeId == targetID }
+        manualConnections.append(BeginnerConnection(fromNodeId: fromID, toNodeId: targetID))
+        print("   ✅ Connection created! Total connections: \(manualConnections.count)")
+        applyChainToEngine()
+    }
+
+    private func nearestConnectionTarget(from fromID: UUID, at point: CGPoint) -> UUID? {
+        var closest: (id: UUID, distance: CGFloat)?
+
+        for node in effectChain {
+            let nodePoint = nodePosition(node, in: canvasSize)
+            let dx = nodePoint.x - point.x
+            let dy = nodePoint.y - point.y
+            let distance = sqrt(dx * dx + dy * dy)
+            if distance <= connectionSnapRadius {
+                if closest == nil || distance < closest!.distance {
+                    closest = (node.id, distance)
+                }
+            }
+        }
+
+        if fromID != endNodeID && fromID != startNodeID {
+            let endPoint = endNodePosition(in: canvasSize)
+            let dx = endPoint.x - point.x
+            let dy = endPoint.y - point.y
+            let distance = sqrt(dx * dx + dy * dy)
+            if distance <= connectionSnapRadius {
+                if closest == nil || distance < closest!.distance {
+                    closest = (endNodeID, distance)
+                }
+            }
+        }
+        return closest?.id
+    }
+
+    private func createsCycle(from: UUID, to: UUID) -> Bool {
+        var nextMap = buildNextMap()
+        nextMap[from] = to
+
+        var visited = Set<UUID>()
+        var current = to
+        while let next = nextMap[current] {
+            if next == from { return true }
+            if visited.contains(next) { break }
+            visited.insert(next)
+            current = next
+        }
+        return false
+    }
+
+    private func buildNextMap() -> [UUID: UUID] {
+        var nextMap: [UUID: UUID] = [:]
+
+        switch wiringMode {
+        case .automatic:
+            // Build automatic position-based connections
+            let ordered = orderedNodesByPosition()
+            guard !ordered.isEmpty else { return nextMap }
+
+            nextMap[startNodeID] = ordered[0].id
+            for index in 0..<(ordered.count - 1) {
+                nextMap[ordered[index].id] = ordered[index + 1].id
+            }
+            nextMap[ordered[ordered.count - 1].id] = endNodeID
+
+            // Manual connections override automatic ones
+            for connection in manualConnections {
+                let fromIsValid = connection.fromNodeId == startNodeID ||
+                    effectChain.contains(where: { $0.id == connection.fromNodeId })
+                let toIsValid = connection.toNodeId == endNodeID ||
+                    effectChain.contains(where: { $0.id == connection.toNodeId })
+                guard fromIsValid, toIsValid else { continue }
+                nextMap[connection.fromNodeId] = connection.toNodeId
+            }
+
+        case .manual:
+            // Only use manual connections, no automatic fallback
+            for connection in manualConnections {
+                let fromIsValid = connection.fromNodeId == startNodeID ||
+                    effectChain.contains(where: { $0.id == connection.fromNodeId })
+                let toIsValid = connection.toNodeId == endNodeID ||
+                    effectChain.contains(where: { $0.id == connection.toNodeId })
+                guard fromIsValid, toIsValid else { continue }
+                nextMap[connection.fromNodeId] = connection.toNodeId
+            }
+        }
+
+        return nextMap
+    }
+
+    private func chainPath() -> [BeginnerNode] {
+        let nextMap = buildNextMap()
+        guard let first = nextMap[startNodeID] else { return [] }
+
+        var ordered: [BeginnerNode] = []
+        var visited = Set<UUID>([startNodeID])
+        var current = first
+
+        while current != endNodeID {
+            if visited.contains(current) { break }
+            visited.insert(current)
+            guard let node = effectChain.first(where: { $0.id == current }) else { break }
+            ordered.append(node)
+            guard let next = nextMap[current] else { break }
+            current = next
+        }
+        return ordered
+    }
+
+    private func manualPathFromStart() -> [BeginnerNode] {
+        guard wiringMode == .manual else { return chainPath() }
+
+        var nextMap: [UUID: UUID] = [:]
+        for connection in manualConnections {
+            let fromIsValid = connection.fromNodeId == startNodeID ||
+                effectChain.contains(where: { $0.id == connection.fromNodeId })
+            let toIsValid = connection.toNodeId == endNodeID ||
+                effectChain.contains(where: { $0.id == connection.toNodeId })
+            guard fromIsValid, toIsValid else { continue }
+            nextMap[connection.fromNodeId] = connection.toNodeId
+        }
+
+        guard let first = nextMap[startNodeID] else { return [] }
+
+        var ordered: [BeginnerNode] = []
+        var visited = Set<UUID>([startNodeID])
+        var current = first
+
+        while current != endNodeID {
+            if visited.contains(current) { break }
+            visited.insert(current)
+            guard let node = effectChain.first(where: { $0.id == current }) else { break }
+            ordered.append(node)
+            guard let next = nextMap[current] else { break }
+            current = next
+        }
+        return ordered
     }
 
     private func orderedNodesByPosition() -> [BeginnerNode] {
@@ -548,13 +1105,17 @@ private struct CanvasConnection: Identifiable {
     let from: CGPoint
     let to: CGPoint
     let toNodeId: UUID
+    let isManual: Bool
 }
+
 
 // MARK: - Effect Block
 
 struct EffectBlockHorizontal: View {
     let effect: BeginnerNode
     @ObservedObject var audioEngine: AudioEngine
+    let isWired: Bool
+    let isSelected: Bool
     let onRemove: () -> Void
     @State private var isHovered = false
     @State private var isExpanded = false
@@ -632,6 +1193,11 @@ struct EffectBlockHorizontal: View {
                     .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
             )
             .scaleEffect(isHovered ? 1.03 : 1.0)
+            .opacity(isWired ? 1.0 : 0.45)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? Color.blue.opacity(0.8) : Color.clear, lineWidth: 2)
+            )
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isHovered = hovering

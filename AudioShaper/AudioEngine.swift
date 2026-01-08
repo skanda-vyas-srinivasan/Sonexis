@@ -157,6 +157,7 @@ class AudioEngine: ObservableObject {
     private var outputDeviceID: AudioDeviceID?
     private var outputQueueStarted = false
     private let outputQueueStartLock = NSLock()
+    private var chainLogTimer: DispatchSourceTimer?
     private var nightcoreRestartWorkItem: DispatchWorkItem?
     private var effectChainOrder: [BeginnerNode] = []
     private var levelUpdateCounter = 0
@@ -372,9 +373,6 @@ class AudioEngine: ObservableObject {
                 let frameLength = Int(buffer.frameLength)
 
                 tapCallCount += 1
-                if tapCallCount % 50 == 0 {
-                    print("🎤 Tap called \(tapCallCount) times, frames: \(frameLength)")
-                }
 
                 let interleavedData = self.interleavedData(from: buffer)
 
@@ -393,6 +391,7 @@ class AudioEngine: ObservableObject {
             print("✅ Audio engine started successfully")
             print("   Input: AVAudioEngine (\(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch)")
             print("   Output: AudioQueue → Speakers")
+            startChainLogTimer()
             isReconfiguring = false
         } catch {
             errorMessage = "Failed to start: \(error.localizedDescription)"
@@ -423,6 +422,38 @@ class AudioEngine: ObservableObject {
                 print("▶️ AudioQueue started after tap")
             }
         }
+    }
+
+    private func startChainLogTimer() {
+        chainLogTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timer.schedule(deadline: .now() + 10, repeating: 10)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.logActiveChain()
+        }
+        timer.resume()
+        chainLogTimer = timer
+    }
+
+    private func stopChainLogTimer() {
+        chainLogTimer?.cancel()
+        chainLogTimer = nil
+    }
+
+    private func logActiveChain() {
+        var chain: [BeginnerNode] = []
+        withEffectStateLock {
+            chain = effectChainOrder
+        }
+
+        if chain.isEmpty {
+            print("🔁 Active chain: (empty)")
+            return
+        }
+
+        let names = chain.map { $0.type.rawValue }.joined(separator: " → ")
+        print("🔁 Active chain: \(names)")
     }
 
     // Ring buffer for audio data
@@ -1369,6 +1400,7 @@ class AudioEngine: ObservableObject {
         outputQueueStartLock.lock()
         outputQueueStarted = false
         outputQueueStartLock.unlock()
+        stopChainLogTimer()
 
         // Clear ring buffer
         ringBufferLock.lock()
@@ -1819,9 +1851,6 @@ private func audioQueueOutputCallback(
                 }
             }
             inBuffer.pointee.mAudioDataByteSize = UInt32(byteCount)
-            if DebugCounter.callbackCount % 50 == 0 {
-                print("🔈 AudioQueue callback \(DebugCounter.callbackCount), bytes: \(byteCount)/\(bufferSize)")
-            }
         } else {
             // Buffer too small, fill with silence
             inBuffer.pointee.mAudioDataByteSize = 0
