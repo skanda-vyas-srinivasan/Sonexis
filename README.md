@@ -1,6 +1,14 @@
 # Audio Shaper
 
-Audio Shaper is a macOS app that processes all system audio in real time. It routes audio through a virtual device, runs it through an effect chain (currently passthrough), and outputs to your speakers with automatic device selection to avoid feedback loops.
+Audio Shaper is a macOS app that processes all system audio in real time. It listens to a virtual device (BlackHole), runs audio through an effect chain, then outputs to your speakers with automatic device selection to avoid feedback loops.
+
+## What’s working now
+
+- Real-time processing of all system audio
+- Beginner mode drag-and-drop effect chain with live signal flow
+- Preset save/apply (stored locally in Application Support)
+- Output device picker to choose speakers/headphones
+- Effects: Bass Boost, Pitch Effect (brightness/clarity boost), Clarity, De-Mud, Simple EQ, Soft Compression, Reverb, Stereo Widening, Delay, Distortion, Tremolo
 
 ## Requirements
 
@@ -49,6 +57,18 @@ In Xcode:
 2. Choose **My Mac**
 3. Press **⌘R**
 
+## Using the app
+
+- **Presets tab**: Save the current chain and reapply it later.
+- **Beginner tab**: Drag effects from the palette into the chain, reorder them, and toggle settings per block.
+- **Advanced tab**: Placeholder for the future node graph.
+
+Preset files are stored at:
+
+```
+~/Library/Application Support/AudioShaper/presets.json
+```
+
 ## Troubleshooting
 
 - **"No such module 'Observation'"**
@@ -72,14 +92,10 @@ AudioShaper/
 ├── ContentView.swift           # Main UI
 ├── AudioEngine.swift           # Core audio processing engine
 ├── Models.swift                # Effect/chain data models
+├── PresetManager.swift         # Preset persistence
 ├── Info.plist                  # App configuration
 └── AudioShaper.entitlements    # Sandbox permissions
 ```
-
-## Notes
-
-- The app currently runs in passthrough mode; effect blocks are planned.
-- Input auto-selects **BlackHole 2ch**, output auto-selects your real speakers to avoid feedback.
 
 ## License
 
