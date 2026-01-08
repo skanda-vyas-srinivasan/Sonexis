@@ -256,6 +256,8 @@ class AudioEngine: ObservableObject {
                 throw NSError(domain: "AudioEngine", code: 3, userInfo: [NSLocalizedDescriptionKey: "No output device configured"])
             }
 
+            setOutputDeviceVolume(deviceID: speakerDeviceID, volume: 1.0)
+
             // Create AudioQueue for output to speakers
             let inputFormat = engine.inputNode.outputFormat(forBus: 0)
 
@@ -1114,6 +1116,53 @@ class AudioEngine: ObservableObject {
 
         guard status == noErr else { return nil }
         return uid as String
+    }
+
+    private func setOutputDeviceVolume(deviceID: AudioDeviceID, volume: Float) {
+        var vol = volume
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var status = AudioObjectSetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            UInt32(MemoryLayout<Float>.size),
+            &vol
+        )
+
+        if status == noErr {
+            print("🔊 Output volume set to 100%")
+            return
+        }
+
+        // Fallback to per-channel volume when virtual master isn't supported.
+        for channel in 1...2 {
+            var channelAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyVolumeScalar,
+                mScope: kAudioDevicePropertyScopeOutput,
+                mElement: AudioObjectPropertyElement(channel)
+            )
+            var channelVol = volume
+            status = AudioObjectSetPropertyData(
+                deviceID,
+                &channelAddress,
+                0,
+                nil,
+                UInt32(MemoryLayout<Float>.size),
+                &channelVol
+            )
+        }
+
+        if status == noErr {
+            print("🔊 Output volume set to 100% (per-channel)")
+        } else {
+            print("⚠️ Could not set output volume (error: \(status))")
+        }
     }
 
     private func findRealOutputDevice() -> AudioDevice? {
