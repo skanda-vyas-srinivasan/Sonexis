@@ -80,6 +80,7 @@ class AudioEngine: ObservableObject {
     private var outputQueue: AudioQueueRef?
     private var outputDeviceID: AudioDeviceID?
     private var nightcoreRestartWorkItem: DispatchWorkItem?
+    private var effectChainOrder: [EffectType] = []
 
     // Bass boost state
     private var bassBoostState: [BiquadState] = []
@@ -355,248 +356,15 @@ class AudioEngine: ObservableObject {
             }
         }
 
-        // Effect chain processing (in order)
-        // 1. Bass Boost
-        if bassBoostEnabled && bassBoostAmount > 0 {
-            updateBassBoostCoefficients(sampleRate: sampleRate)
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    var state = bassBoostState[channel]
-                    let y = bassBoostCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                    let gain = 1.0 + Float(min(max(bassBoostAmount, 0), 1)) * 0.35
-                    processedAudio[channel][frame] = y * gain
-                    bassBoostState[channel] = state
-                }
-            }
-        }
-
-        // 2. Nightcore (brightness + slight speed-up effect using high-frequency emphasis)
-        if nightcoreEnabled && nightcoreIntensity > 0 {
-            // Apply high-frequency boost for brightness
-            updateClarityCoefficients(sampleRate: sampleRate, intensity: nightcoreIntensity)
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    var state = clarityState[channel]
-                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                    // Add extra gain for the "energetic" nightcore sound
-                    let nightcoreGain = 1.0 + Float(nightcoreIntensity) * 0.15
-                    processedAudio[channel][frame] = y * nightcoreGain
-                    clarityState[channel] = state
-                }
-            }
-        }
-
-        // 3. Clarity (high shelf boost)
-        if clarityEnabled && clarityAmount > 0 {
-            updateClarityCoefficients(sampleRate: sampleRate, intensity: clarityAmount)
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    var state = clarityState[channel]
-                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                    processedAudio[channel][frame] = y
-                    clarityState[channel] = state
-                }
-            }
-        }
-
-        // 4. De-Mud (mid frequency cut)
-        if deMudEnabled && deMudStrength > 0 {
-            updateDeMudCoefficients(sampleRate: sampleRate)
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    var state = deMudState[channel]
-                    let y = deMudCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                    processedAudio[channel][frame] = y
-                    deMudState[channel] = state
-                }
-            }
-        }
-
-        // 5. Simple EQ (3-band)
-        if simpleEQEnabled && (eqBass != 0 || eqMids != 0 || eqTreble != 0) {
-            updateSimpleEQCoefficients(sampleRate: sampleRate)
-
-            // Bass band
-            if eqBass != 0 {
-                for channel in 0..<channelCount {
-                    for frame in 0..<frameLength {
-                        var state = eqBassState[channel]
-                        let y = eqBassCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                        processedAudio[channel][frame] = y
-                        eqBassState[channel] = state
-                    }
-                }
-            }
-
-            // Mids band
-            if eqMids != 0 {
-                for channel in 0..<channelCount {
-                    for frame in 0..<frameLength {
-                        var state = eqMidsState[channel]
-                        let y = eqMidsCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                        processedAudio[channel][frame] = y
-                        eqMidsState[channel] = state
-                    }
-                }
-            }
-
-            // Treble band
-            if eqTreble != 0 {
-                for channel in 0..<channelCount {
-                    for frame in 0..<frameLength {
-                        var state = eqTrebleState[channel]
-                        let y = eqTrebleCoefficients.process(x: processedAudio[channel][frame], state: &state)
-                        processedAudio[channel][frame] = y
-                        eqTrebleState[channel] = state
-                    }
-                }
-            }
-        }
-
-        // 6. Compressor (simple dynamics)
-        if compressorEnabled && compressorStrength > 0 {
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    let input = processedAudio[channel][frame]
-                    let threshold: Float = 0.5
-                    let ratio: Float = 1.0 + Float(compressorStrength) * 3.0
-                    let absInput = abs(input)
-
-                    var output: Float
-                    if absInput > threshold {
-                        let excess = absInput - threshold
-                        let compressed = threshold + excess / ratio
-                        output = input > 0 ? compressed : -compressed
-                    } else {
-                        output = input
-                    }
-
-                    // Makeup gain
-                    output *= 1.0 + Float(compressorStrength) * 0.3
-
-                    processedAudio[channel][frame] = output
-                }
-            }
-        }
-
-        // 6. Reverb (simple delay-based)
-        if reverbEnabled && reverbMix > 0 {
-            let delayTime = 0.03 * reverbSize // 30-90ms delay based on size
-            let delayFrames = Int(sampleRate * delayTime)
-
-            // Initialize reverb buffer if needed
-            if reverbBuffer.count != channelCount || reverbBuffer[0].count != delayFrames {
-                reverbBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
-                reverbWriteIndex = 0
-            }
-
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    let dry = processedAudio[channel][frame]
-                    let wet = reverbBuffer[channel][reverbWriteIndex]
-
-                    // Mix dry and wet
-                    let mix = Float(reverbMix)
-                    let output = dry * (1.0 - mix) + wet * mix
-
-                    // Update reverb buffer with feedback
-                    reverbBuffer[channel][reverbWriteIndex] = dry + wet * 0.5
-
-                    processedAudio[channel][frame] = output
-                    reverbWriteIndex = (reverbWriteIndex + 1) % delayFrames
-                }
-            }
-        }
-
-        // 7. Delay (echo effect)
-        if delayEnabled && delayMix > 0 {
-            let delayFrames = Int(sampleRate * delayTime)
-
-            // Initialize delay buffer if needed
-            if delayBuffer.count != channelCount || delayBuffer[0].count != delayFrames {
-                delayBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
-                delayWriteIndex = 0
-            }
-
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    let dry = processedAudio[channel][frame]
-                    let wet = delayBuffer[channel][delayWriteIndex]
-
-                    // Mix dry and wet
-                    let mix = Float(delayMix)
-                    let output = dry * (1.0 - mix) + wet * mix
-
-                    // Update delay buffer with feedback
-                    let feedback = Float(delayFeedback)
-                    delayBuffer[channel][delayWriteIndex] = dry + wet * feedback
-
-                    processedAudio[channel][frame] = output
-                    delayWriteIndex = (delayWriteIndex + 1) % delayFrames
-                }
-            }
-        }
-
-        // 8. Distortion (waveshaping/saturation)
-        if distortionEnabled && distortionDrive > 0 {
-            let drive = Float(distortionDrive) * 10.0 // Scale to 0-10
-            let mix = Float(distortionMix)
-
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    let dry = processedAudio[channel][frame]
-
-                    // Apply soft clipping with drive
-                    let driven = dry * drive
-                    let wet = tanhf(driven) / (1.0 + drive * 0.1) // Normalize
-
-                    // Mix dry and wet
-                    processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
-                }
-            }
-        }
-
-        // 9. Tremolo (amplitude modulation)
-        if tremoloEnabled && tremoloDepth > 0 {
-            let rate = Float(tremoloRate)
-            let depth = Float(tremoloDepth)
-
-            for frame in 0..<frameLength {
-                // Calculate LFO value (sine wave 0 to 1)
-                let lfoValue = (sin(Float(tremoloPhase)) + 1.0) * 0.5
-                let gain = 1.0 - (depth * (1.0 - lfoValue))
-
-                // Apply to all channels
-                for channel in 0..<channelCount {
-                    processedAudio[channel][frame] *= gain
-                }
-
-                // Advance phase
-                tremoloPhase += Double(rate) * 2.0 * .pi / sampleRate
-                if tremoloPhase >= 2.0 * .pi {
-                    tremoloPhase -= 2.0 * .pi
-                }
-            }
-        }
-
-        // 10. Stereo Width (mid-side processing)
-        if stereoWidthEnabled && stereoWidthAmount > 0 && channelCount == 2 {
-            for frame in 0..<frameLength {
-                let left = processedAudio[0][frame]
-                let right = processedAudio[1][frame]
-
-                // Convert to mid-side
-                let mid = (left + right) * 0.5
-                let side = (left - right) * 0.5
-
-                // Widen by boosting side signal
-                let width = Float(stereoWidthAmount)
-                let wideSide = side * (1.0 + width)
-
-                // Convert back to left-right
-                processedAudio[0][frame] = mid + wideSide
-                processedAudio[1][frame] = mid - wideSide
-            }
+        let orderedEffects = effectChainOrder.isEmpty ? defaultEffectOrder : effectChainOrder
+        for effect in orderedEffects {
+            applyEffect(
+                effect,
+                to: &processedAudio,
+                sampleRate: sampleRate,
+                channelCount: channelCount,
+                frameLength: frameLength
+            )
         }
 
         // Convert to interleaved format
@@ -608,6 +376,226 @@ class AudioEngine: ObservableObject {
         }
 
         return interleaved
+    }
+
+    private var defaultEffectOrder: [EffectType] {
+        [
+            .bassBoost,
+            .pitchShift,
+            .clarity,
+            .deMud,
+            .simpleEQ,
+            .compressor,
+            .reverb,
+            .delay,
+            .distortion,
+            .tremolo,
+            .stereoWidth
+        ]
+    }
+
+    private func applyEffect(
+        _ effect: EffectType,
+        to processedAudio: inout [[Float]],
+        sampleRate: Double,
+        channelCount: Int,
+        frameLength: Int
+    ) {
+        switch effect {
+        case .bassBoost:
+            guard bassBoostEnabled, bassBoostAmount > 0 else { return }
+            updateBassBoostCoefficients(sampleRate: sampleRate)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = bassBoostState[channel]
+                    let y = bassBoostCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    let gain = 1.0 + Float(min(max(bassBoostAmount, 0), 1)) * 0.35
+                    processedAudio[channel][frame] = y * gain
+                    bassBoostState[channel] = state
+                }
+            }
+
+        case .pitchShift:
+            guard nightcoreEnabled, nightcoreIntensity > 0 else { return }
+            updateClarityCoefficients(sampleRate: sampleRate, intensity: nightcoreIntensity)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = clarityState[channel]
+                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    let nightcoreGain = 1.0 + Float(nightcoreIntensity) * 0.15
+                    processedAudio[channel][frame] = y * nightcoreGain
+                    clarityState[channel] = state
+                }
+            }
+
+        case .clarity:
+            guard clarityEnabled, clarityAmount > 0 else { return }
+            updateClarityCoefficients(sampleRate: sampleRate, intensity: clarityAmount)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = clarityState[channel]
+                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    processedAudio[channel][frame] = y
+                    clarityState[channel] = state
+                }
+            }
+
+        case .deMud:
+            guard deMudEnabled, deMudStrength > 0 else { return }
+            updateDeMudCoefficients(sampleRate: sampleRate)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = deMudState[channel]
+                    let y = deMudCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    processedAudio[channel][frame] = y
+                    deMudState[channel] = state
+                }
+            }
+
+        case .simpleEQ:
+            guard simpleEQEnabled, (eqBass != 0 || eqMids != 0 || eqTreble != 0) else { return }
+            updateSimpleEQCoefficients(sampleRate: sampleRate)
+
+            if eqBass != 0 {
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        var state = eqBassState[channel]
+                        let y = eqBassCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        processedAudio[channel][frame] = y
+                        eqBassState[channel] = state
+                    }
+                }
+            }
+
+            if eqMids != 0 {
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        var state = eqMidsState[channel]
+                        let y = eqMidsCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        processedAudio[channel][frame] = y
+                        eqMidsState[channel] = state
+                    }
+                }
+            }
+
+            if eqTreble != 0 {
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        var state = eqTrebleState[channel]
+                        let y = eqTrebleCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        processedAudio[channel][frame] = y
+                        eqTrebleState[channel] = state
+                    }
+                }
+            }
+
+        case .compressor:
+            guard compressorEnabled, compressorStrength > 0 else { return }
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let input = processedAudio[channel][frame]
+                    let threshold: Float = 0.5
+                    let ratio: Float = 1.0 + Float(compressorStrength) * 3.0
+                    let absInput = abs(input)
+
+                    let output: Float
+                    if absInput > threshold {
+                        let excess = absInput - threshold
+                        let compressed = threshold + excess / ratio
+                        output = input > 0 ? compressed : -compressed
+                    } else {
+                        output = input
+                    }
+
+                    processedAudio[channel][frame] = output * (1.0 + Float(compressorStrength) * 0.3)
+                }
+            }
+
+        case .reverb:
+            guard reverbEnabled, reverbMix > 0 else { return }
+            let delayTime = 0.03 * reverbSize
+            let delayFrames = Int(sampleRate * delayTime)
+            if reverbBuffer.count != channelCount || reverbBuffer.first?.count != delayFrames {
+                reverbBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
+                reverbWriteIndex = 0
+            }
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+                    let wet = reverbBuffer[channel][reverbWriteIndex]
+                    let mix = Float(reverbMix)
+                    processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
+                    reverbBuffer[channel][reverbWriteIndex] = dry + wet * 0.5
+                    reverbWriteIndex = (reverbWriteIndex + 1) % delayFrames
+                }
+            }
+
+        case .delay:
+            guard delayEnabled, delayMix > 0 else { return }
+            let delayFrames = Int(sampleRate * delayTime)
+            if delayBuffer.count != channelCount || delayBuffer.first?.count != delayFrames {
+                delayBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
+                delayWriteIndex = 0
+            }
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+                    let wet = delayBuffer[channel][delayWriteIndex]
+                    let mix = Float(delayMix)
+                    processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
+                    let feedback = Float(delayFeedback)
+                    delayBuffer[channel][delayWriteIndex] = dry + wet * feedback
+                    delayWriteIndex = (delayWriteIndex + 1) % delayFrames
+                }
+            }
+
+        case .distortion:
+            guard distortionEnabled, distortionDrive > 0 else { return }
+            let drive = Float(distortionDrive) * 10.0
+            let mix = Float(distortionMix)
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+                    let driven = dry * drive
+                    let wet = tanhf(driven) / (1.0 + drive * 0.1)
+                    processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
+                }
+            }
+
+        case .tremolo:
+            guard tremoloEnabled, tremoloDepth > 0 else { return }
+            let rate = Float(tremoloRate)
+            let depth = Float(tremoloDepth)
+
+            for frame in 0..<frameLength {
+                let lfoValue = (sin(Float(tremoloPhase)) + 1.0) * 0.5
+                let gain = 1.0 - (depth * (1.0 - lfoValue))
+                for channel in 0..<channelCount {
+                    processedAudio[channel][frame] *= gain
+                }
+
+                tremoloPhase += Double(rate) * 2.0 * .pi / sampleRate
+                if tremoloPhase >= 2.0 * .pi {
+                    tremoloPhase -= 2.0 * .pi
+                }
+            }
+
+        case .stereoWidth:
+            guard stereoWidthEnabled, stereoWidthAmount > 0, channelCount == 2 else { return }
+            for frame in 0..<frameLength {
+                let left = processedAudio[0][frame]
+                let right = processedAudio[1][frame]
+                let mid = (left + right) * 0.5
+                let side = (left - right) * 0.5
+                let width = Float(stereoWidthAmount)
+                let wideSide = side * (1.0 + width)
+                processedAudio[0][frame] = mid + wideSide
+                processedAudio[1][frame] = mid - wideSide
+            }
+        }
     }
 
     private func initializeEffectStates(channelCount: Int) {
@@ -1074,9 +1062,7 @@ class AudioEngine: ObservableObject {
     }
 
     func updateEffectChain(_ chain: [ChainedEffect]) {
-        // For now, just track which effects should be enabled
-        // The actual processing order is fixed in interleavedData()
-        // TODO: In the future, make the processing order dynamic based on chain order
+        effectChainOrder = chain.map { $0.type }
         print("📝 Effect chain updated with \(chain.count) effects")
     }
 }
