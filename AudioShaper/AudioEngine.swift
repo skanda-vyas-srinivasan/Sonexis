@@ -141,6 +141,7 @@ class AudioEngine: ObservableObject {
             }
         }
     }
+    @Published var limiterEnabled = true
 
     @Published var effectLevels: [UUID: Float] = [:]
 
@@ -703,7 +704,7 @@ class AudioEngine: ObservableObject {
             frameLength: inputBuffer.first?.count ?? 0,
             channelCount: channelCount
         )
-        let limited = applySafetyLimiter(mixed)
+        let limited = limiterEnabled ? applySoftLimiter(mixed) : mixed
 
         return (limited, levelSnapshot)
     }
@@ -765,24 +766,20 @@ class AudioEngine: ObservableObject {
         return merged
     }
 
-    private func applySafetyLimiter(_ buffer: [[Float]]) -> [[Float]] {
-        var peak: Float = 0
-        for channel in buffer {
-            for sample in channel {
-                let magnitude = abs(sample)
-                if magnitude > peak {
-                    peak = magnitude
-                }
-            }
-        }
-
-        guard peak > 1 else { return buffer }
-
-        let scale = 1.0 / peak
+    private func applySoftLimiter(_ buffer: [[Float]]) -> [[Float]] {
+        let threshold: Float = 0.9
         var limited = buffer
+
         for channel in limited.indices {
             for index in limited[channel].indices {
-                limited[channel][index] *= scale
+                let sample = limited[channel][index]
+                let magnitude = abs(sample)
+                if magnitude > threshold {
+                    let sign: Float = sample >= 0 ? 1 : -1
+                    let over = magnitude - threshold
+                    let compressed = threshold + (1 - exp(-over * 3.0)) * 0.2
+                    limited[channel][index] = sign * min(compressed, 1.0)
+                }
             }
         }
         return limited

@@ -155,6 +155,20 @@ struct HeaderView: View {
             Divider()
                 .frame(height: 30)
 
+            // Limiter toggle
+            Button(action: {
+                audioEngine.limiterEnabled.toggle()
+            }) {
+                Image(systemName: audioEngine.limiterEnabled ? "shield.fill" : "shield.slash")
+                    .font(.system(size: 18))
+                    .foregroundColor(audioEngine.limiterEnabled ? .orange : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(audioEngine.limiterEnabled ? "Limiter On" : "Limiter Off")
+
+            Divider()
+                .frame(height: 30)
+
             // Input device (read-only, shows BlackHole)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Input")
