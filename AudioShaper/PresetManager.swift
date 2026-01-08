@@ -65,8 +65,10 @@ struct EffectChainSnapshot: Codable {
 
 class PresetManager: ObservableObject {
     @Published var presets: [SavedPreset] = []
+    @Published var graphPresets: [SavedGraphPreset] = []
 
     private let presetsFileURL: URL
+    private let graphsFileURL: URL
 
     init() {
         // Store presets in Application Support directory
@@ -77,9 +79,11 @@ class PresetManager: ObservableObject {
         try? FileManager.default.createDirectory(at: audioShaperDir, withIntermediateDirectories: true)
 
         presetsFileURL = audioShaperDir.appendingPathComponent("presets.json")
+        graphsFileURL = audioShaperDir.appendingPathComponent("graphs.json")
 
         // Load presets
         loadPresets()
+        loadGraphPresets()
     }
 
     func savePreset(name: String, chain: EffectChainSnapshot) {
@@ -93,6 +97,17 @@ class PresetManager: ObservableObject {
         persistPresets()
     }
 
+    func saveGraphPreset(name: String, snapshot: GraphSnapshot) {
+        let preset = SavedGraphPreset(name: name, graph: snapshot)
+        graphPresets.append(preset)
+        persistGraphPresets()
+    }
+
+    func deleteGraphPreset(_ preset: SavedGraphPreset) {
+        graphPresets.removeAll { $0.id == preset.id }
+        persistGraphPresets()
+    }
+
     private func persistPresets() {
         do {
             let encoder = JSONEncoder()
@@ -102,6 +117,18 @@ class PresetManager: ObservableObject {
             print("✅ Presets saved to: \(presetsFileURL.path)")
         } catch {
             print("❌ Failed to save presets: \(error)")
+        }
+    }
+
+    private func persistGraphPresets() {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(graphPresets)
+            try data.write(to: graphsFileURL, options: .atomic)
+            print("✅ Graph presets saved to: \(graphsFileURL.path)")
+        } catch {
+            print("❌ Failed to save graph presets: \(error)")
         }
     }
 
@@ -120,5 +147,38 @@ class PresetManager: ObservableObject {
             print("❌ Failed to load presets: \(error)")
             presets = []
         }
+    }
+
+    private func loadGraphPresets() {
+        do {
+            guard FileManager.default.fileExists(atPath: graphsFileURL.path) else {
+                print("ℹ️ No graph presets file found, starting fresh")
+                return
+            }
+
+            let data = try Data(contentsOf: graphsFileURL)
+            let decoder = JSONDecoder()
+            graphPresets = try decoder.decode([SavedGraphPreset].self, from: data)
+            print("✅ Loaded \(graphPresets.count) graph presets from: \(graphsFileURL.path)")
+        } catch {
+            print("❌ Failed to load graph presets: \(error)")
+            graphPresets = []
+        }
+    }
+}
+
+// MARK: - Saved Graph Preset
+
+struct SavedGraphPreset: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let graph: GraphSnapshot
+    let createdDate: Date
+
+    init(id: UUID = UUID(), name: String, graph: GraphSnapshot) {
+        self.id = id
+        self.name = name
+        self.graph = graph
+        self.createdDate = Date()
     }
 }

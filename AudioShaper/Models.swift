@@ -166,12 +166,42 @@ struct BeginnerConnection: Identifiable, Codable {
     let id: UUID
     let fromNodeId: UUID
     let toNodeId: UUID
+    var gain: Double
 
-    init(fromNodeId: UUID, toNodeId: UUID) {
+    init(fromNodeId: UUID, toNodeId: UUID, gain: Double = 1.0) {
         self.id = UUID()
         self.fromNodeId = fromNodeId
         self.toNodeId = toNodeId
+        self.gain = gain
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fromNodeId
+        case toNodeId
+        case gain
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.fromNodeId = try container.decode(UUID.self, forKey: .fromNodeId)
+        self.toNodeId = try container.decode(UUID.self, forKey: .toNodeId)
+        self.gain = try container.decodeIfPresent(Double.self, forKey: .gain) ?? 1.0
+    }
+}
+
+enum GraphWiringMode: String, Codable {
+    case automatic
+    case manual
+}
+
+struct GraphSnapshot: Codable {
+    var wiringMode: GraphWiringMode
+    var nodes: [BeginnerNode]
+    var connections: [BeginnerConnection]
+    var startNodeID: UUID
+    var endNodeID: UUID
 }
 
 // MARK: - Preset
