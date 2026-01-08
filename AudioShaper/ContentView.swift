@@ -70,10 +70,11 @@ struct ContentView: View {
     private func saveCurrentPreset() {
         guard !presetNameInput.isEmpty else { return }
 
-        // Get current effect chain from audio engine
-        let chain = audioEngine.getCurrentEffectChain()
-        let graph = audioEngine.currentGraphSnapshot
-        presetManager.savePreset(name: presetNameInput, chain: chain, graph: graph)
+        guard let graph = audioEngine.currentGraphSnapshot else {
+            print("⚠️ No graph snapshot available to save")
+            return
+        }
+        presetManager.savePreset(name: presetNameInput, graph: graph)
 
         print("✅ Preset saved: \(presetNameInput)")
     }
@@ -235,10 +236,7 @@ struct PresetView: View {
                             PresetCard(
                                 preset: preset,
                                 onApply: {
-                                    audioEngine.applyEffectChain(preset.chain)
-                                    if let graph = preset.graph {
-                                        audioEngine.requestGraphLoad(graph)
-                                    }
+                                    audioEngine.requestGraphLoad(preset.graph)
                                     onPresetApplied()
                                 },
                                 onDelete: {
@@ -261,13 +259,13 @@ struct PresetCard: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(preset.name)
-                    .font(.headline)
-                Text("\(preset.chain.activeEffects.count) effects")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(preset.name)
+                        .font(.headline)
+                    Text("\(preset.graph.nodes.count) effects")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
 
             Spacer()
 
