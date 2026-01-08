@@ -10,8 +10,117 @@ class AudioEngine: ObservableObject {
     @Published var inputDeviceName: String = "Searching..."
     @Published var outputDeviceName: String = "Searching..."
 
+    // Pitch Shift effect (Nightcore) - now uses AVAudioUnitTimePitch
+    @Published var nightcoreEnabled = false
+    @Published var nightcoreIntensity: Double = 0.6 // 0 to 1, maps to 0 to +12 semitones
+
+    @Published var bassBoostEnabled = false {
+        didSet {
+            print("🎛️ Bass Boost enabled: \(bassBoostEnabled)")
+            if !bassBoostEnabled {
+                resetBassBoostState()
+            }
+        }
+    }
+    @Published var bassBoostAmount: Double = 0.6
+
+    // Clarity effect
+    @Published var clarityEnabled = false
+    @Published var clarityAmount: Double = 0.5
+
+    // Reverb effect
+    @Published var reverbEnabled = false
+    @Published var reverbMix: Double = 0.3
+    @Published var reverbSize: Double = 0.5
+
+    // Compressor effect
+    @Published var compressorEnabled = false
+    @Published var compressorStrength: Double = 0.4
+
+    // Stereo width effect
+    @Published var stereoWidthEnabled = false
+    @Published var stereoWidthAmount: Double = 0.3
+
+    // Simple EQ effect
+    @Published var simpleEQEnabled = false
+    @Published var eqBass: Double = 0 // -1 to 1
+    @Published var eqMids: Double = 0 // -1 to 1
+    @Published var eqTreble: Double = 0 // -1 to 1
+
+    // De-mud effect
+    @Published var deMudEnabled = false
+    @Published var deMudStrength: Double = 0.5
+
+    // Delay effect
+    @Published var delayEnabled = false
+    @Published var delayTime: Double = 0.25 // seconds (0.01 to 2.0)
+    @Published var delayFeedback: Double = 0.4 // 0 to 1
+    @Published var delayMix: Double = 0.3 // 0 to 1
+
+    // Distortion effect
+    @Published var distortionEnabled = false
+    @Published var distortionDrive: Double = 0.5 // 0 to 1
+    @Published var distortionMix: Double = 0.5 // 0 to 1
+
+    // Tremolo effect
+    @Published var tremoloEnabled = false
+    @Published var tremoloRate: Double = 5.0 // Hz (0.1 to 20)
+    @Published var tremoloDepth: Double = 0.5 // 0 to 1
+
+    @Published var outputDevices: [AudioDevice] = []
+    @Published var selectedOutputDeviceID: AudioDeviceID? {
+        didSet {
+            if isRunning {
+                stop()
+                start()
+            }
+        }
+    }
+
     private var outputQueue: AudioQueueRef?
     private var outputDeviceID: AudioDeviceID?
+    private var nightcoreRestartWorkItem: DispatchWorkItem?
+
+    // Bass boost state
+    private var bassBoostState: [BiquadState] = []
+    private var bassBoostCoefficients = BiquadCoefficients()
+    private var bassBoostLastSampleRate: Double = 0
+    private var bassBoostLastAmount: Double = -1
+
+    // Clarity state (high shelf boost)
+    private var clarityState: [BiquadState] = []
+    private var clarityCoefficients = BiquadCoefficients()
+    private var clarityLastSampleRate: Double = 0
+    private var clarityLastAmount: Double = -1
+
+    // De-mud state (mid frequency cut)
+    private var deMudState: [BiquadState] = []
+    private var deMudCoefficients = BiquadCoefficients()
+    private var deMudLastSampleRate: Double = 0
+    private var deMudLastStrength: Double = -1
+
+    // Simple EQ state (3 bands)
+    private var eqBassState: [BiquadState] = []
+    private var eqBassCoefficients = BiquadCoefficients()
+    private var eqMidsState: [BiquadState] = []
+    private var eqMidsCoefficients = BiquadCoefficients()
+    private var eqTrebleState: [BiquadState] = []
+    private var eqTrebleCoefficients = BiquadCoefficients()
+    private var eqLastSampleRate: Double = 0
+
+    // Compressor state (simple dynamic range compression)
+    private var compressorEnvelope: [Float] = []
+
+    // Reverb buffer (simple delay-based reverb)
+    private var reverbBuffer: [[Float]] = []
+    private var reverbWriteIndex = 0
+
+    // Delay buffer (circular buffer for echo)
+    private var delayBuffer: [[Float]] = []
+    private var delayWriteIndex = 0
+
+    // Tremolo state (LFO phase)
+    private var tremoloPhase: Double = 0
 
     // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
     private let audioFormat = AVAudioFormat(
@@ -23,6 +132,7 @@ class AudioEngine: ObservableObject {
 
     init() {
         setupNotifications()
+        refreshOutputDevices()
     }
 
     deinit {
@@ -75,6 +185,7 @@ class AudioEngine: ObservableObject {
     private func startAudioEngine() {
         do {
             // Configure audio devices FIRST
+            refreshOutputDevices()
             try configureAudioDevices()
 
             guard let speakerDeviceID = outputDeviceID else {
@@ -84,6 +195,7 @@ class AudioEngine: ObservableObject {
             // Create AudioQueue for output to speakers
             let inputFormat = engine.inputNode.outputFormat(forBus: 0)
 
+            // Use fixed sample rate (no more nightcore rate changes)
             var audioFormat = AudioStreamBasicDescription(
                 mSampleRate: inputFormat.sampleRate,
                 mFormatID: kAudioFormatLinearPCM,
@@ -158,27 +270,18 @@ class AudioEngine: ObservableObject {
 
             // Install tap to capture audio and send to AudioQueue
             var tapCallCount = 0
+            engine.inputNode.removeTap(onBus: 0)
             engine.inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(bufferFrameCount), format: inputFormat) { [weak self] buffer, time in
                 guard let self = self, let queue = self.outputQueue else { return }
 
-                // Get audio data from buffer
-                guard let channelData = buffer.floatChannelData else { return }
                 let frameLength = Int(buffer.frameLength)
-                let channelCount = Int(buffer.format.channelCount)
 
                 tapCallCount += 1
                 if tapCallCount % 50 == 0 {
                     print("🎤 Tap called \(tapCallCount) times, frames: \(frameLength)")
                 }
 
-                // Interleave the audio for AudioQueue (it expects interleaved format)
-                var interleavedData = [Float](repeating: 0, count: frameLength * channelCount)
-
-                for frame in 0..<frameLength {
-                    for channel in 0..<channelCount {
-                        interleavedData[frame * channelCount + channel] = channelData[channel][frame]
-                    }
-                }
+                let interleavedData = self.interleavedData(from: buffer)
 
                 // Write to AudioQueue buffer
                 self.enqueueAudioData(interleavedData, queue: queue)
@@ -232,6 +335,398 @@ class AudioEngine: ObservableObject {
         return audioRingBuffer.removeFirst()
     }
 
+    private func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
+        guard let channelData = buffer.floatChannelData else { return [] }
+
+        let frameLength = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        let sampleRate = buffer.format.sampleRate
+
+        // Initialize effect states
+        initializeEffectStates(channelCount: channelCount)
+
+        // Process audio through effect chain
+        var processedAudio = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+
+        // Copy input to processed audio
+        for channel in 0..<channelCount {
+            for frame in 0..<frameLength {
+                processedAudio[channel][frame] = channelData[channel][frame]
+            }
+        }
+
+        // Effect chain processing (in order)
+        // 1. Bass Boost
+        if bassBoostEnabled && bassBoostAmount > 0 {
+            updateBassBoostCoefficients(sampleRate: sampleRate)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = bassBoostState[channel]
+                    let y = bassBoostCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    let gain = 1.0 + Float(min(max(bassBoostAmount, 0), 1)) * 0.35
+                    processedAudio[channel][frame] = y * gain
+                    bassBoostState[channel] = state
+                }
+            }
+        }
+
+        // 2. Nightcore (brightness + slight speed-up effect using high-frequency emphasis)
+        if nightcoreEnabled && nightcoreIntensity > 0 {
+            // Apply high-frequency boost for brightness
+            updateClarityCoefficients(sampleRate: sampleRate, intensity: nightcoreIntensity)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = clarityState[channel]
+                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    // Add extra gain for the "energetic" nightcore sound
+                    let nightcoreGain = 1.0 + Float(nightcoreIntensity) * 0.15
+                    processedAudio[channel][frame] = y * nightcoreGain
+                    clarityState[channel] = state
+                }
+            }
+        }
+
+        // 3. Clarity (high shelf boost)
+        if clarityEnabled && clarityAmount > 0 {
+            updateClarityCoefficients(sampleRate: sampleRate, intensity: clarityAmount)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = clarityState[channel]
+                    let y = clarityCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    processedAudio[channel][frame] = y
+                    clarityState[channel] = state
+                }
+            }
+        }
+
+        // 4. De-Mud (mid frequency cut)
+        if deMudEnabled && deMudStrength > 0 {
+            updateDeMudCoefficients(sampleRate: sampleRate)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var state = deMudState[channel]
+                    let y = deMudCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                    processedAudio[channel][frame] = y
+                    deMudState[channel] = state
+                }
+            }
+        }
+
+        // 5. Simple EQ (3-band)
+        if simpleEQEnabled && (eqBass != 0 || eqMids != 0 || eqTreble != 0) {
+            updateSimpleEQCoefficients(sampleRate: sampleRate)
+
+            // Bass band
+            if eqBass != 0 {
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        var state = eqBassState[channel]
+                        let y = eqBassCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        processedAudio[channel][frame] = y
+                        eqBassState[channel] = state
+                    }
+                }
+            }
+
+            // Mids band
+            if eqMids != 0 {
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        var state = eqMidsState[channel]
+                        let y = eqMidsCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        processedAudio[channel][frame] = y
+                        eqMidsState[channel] = state
+                    }
+                }
+            }
+
+            // Treble band
+            if eqTreble != 0 {
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        var state = eqTrebleState[channel]
+                        let y = eqTrebleCoefficients.process(x: processedAudio[channel][frame], state: &state)
+                        processedAudio[channel][frame] = y
+                        eqTrebleState[channel] = state
+                    }
+                }
+            }
+        }
+
+        // 6. Compressor (simple dynamics)
+        if compressorEnabled && compressorStrength > 0 {
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let input = processedAudio[channel][frame]
+                    let threshold: Float = 0.5
+                    let ratio: Float = 1.0 + Float(compressorStrength) * 3.0
+                    let absInput = abs(input)
+
+                    var output: Float
+                    if absInput > threshold {
+                        let excess = absInput - threshold
+                        let compressed = threshold + excess / ratio
+                        output = input > 0 ? compressed : -compressed
+                    } else {
+                        output = input
+                    }
+
+                    // Makeup gain
+                    output *= 1.0 + Float(compressorStrength) * 0.3
+
+                    processedAudio[channel][frame] = output
+                }
+            }
+        }
+
+        // 6. Reverb (simple delay-based)
+        if reverbEnabled && reverbMix > 0 {
+            let delayTime = 0.03 * reverbSize // 30-90ms delay based on size
+            let delayFrames = Int(sampleRate * delayTime)
+
+            // Initialize reverb buffer if needed
+            if reverbBuffer.count != channelCount || reverbBuffer[0].count != delayFrames {
+                reverbBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
+                reverbWriteIndex = 0
+            }
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+                    let wet = reverbBuffer[channel][reverbWriteIndex]
+
+                    // Mix dry and wet
+                    let mix = Float(reverbMix)
+                    let output = dry * (1.0 - mix) + wet * mix
+
+                    // Update reverb buffer with feedback
+                    reverbBuffer[channel][reverbWriteIndex] = dry + wet * 0.5
+
+                    processedAudio[channel][frame] = output
+                    reverbWriteIndex = (reverbWriteIndex + 1) % delayFrames
+                }
+            }
+        }
+
+        // 7. Delay (echo effect)
+        if delayEnabled && delayMix > 0 {
+            let delayFrames = Int(sampleRate * delayTime)
+
+            // Initialize delay buffer if needed
+            if delayBuffer.count != channelCount || delayBuffer[0].count != delayFrames {
+                delayBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
+                delayWriteIndex = 0
+            }
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+                    let wet = delayBuffer[channel][delayWriteIndex]
+
+                    // Mix dry and wet
+                    let mix = Float(delayMix)
+                    let output = dry * (1.0 - mix) + wet * mix
+
+                    // Update delay buffer with feedback
+                    let feedback = Float(delayFeedback)
+                    delayBuffer[channel][delayWriteIndex] = dry + wet * feedback
+
+                    processedAudio[channel][frame] = output
+                    delayWriteIndex = (delayWriteIndex + 1) % delayFrames
+                }
+            }
+        }
+
+        // 8. Distortion (waveshaping/saturation)
+        if distortionEnabled && distortionDrive > 0 {
+            let drive = Float(distortionDrive) * 10.0 // Scale to 0-10
+            let mix = Float(distortionMix)
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+
+                    // Apply soft clipping with drive
+                    let driven = dry * drive
+                    let wet = tanhf(driven) / (1.0 + drive * 0.1) // Normalize
+
+                    // Mix dry and wet
+                    processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
+                }
+            }
+        }
+
+        // 9. Tremolo (amplitude modulation)
+        if tremoloEnabled && tremoloDepth > 0 {
+            let rate = Float(tremoloRate)
+            let depth = Float(tremoloDepth)
+
+            for frame in 0..<frameLength {
+                // Calculate LFO value (sine wave 0 to 1)
+                let lfoValue = (sin(Float(tremoloPhase)) + 1.0) * 0.5
+                let gain = 1.0 - (depth * (1.0 - lfoValue))
+
+                // Apply to all channels
+                for channel in 0..<channelCount {
+                    processedAudio[channel][frame] *= gain
+                }
+
+                // Advance phase
+                tremoloPhase += Double(rate) * 2.0 * .pi / sampleRate
+                if tremoloPhase >= 2.0 * .pi {
+                    tremoloPhase -= 2.0 * .pi
+                }
+            }
+        }
+
+        // 10. Stereo Width (mid-side processing)
+        if stereoWidthEnabled && stereoWidthAmount > 0 && channelCount == 2 {
+            for frame in 0..<frameLength {
+                let left = processedAudio[0][frame]
+                let right = processedAudio[1][frame]
+
+                // Convert to mid-side
+                let mid = (left + right) * 0.5
+                let side = (left - right) * 0.5
+
+                // Widen by boosting side signal
+                let width = Float(stereoWidthAmount)
+                let wideSide = side * (1.0 + width)
+
+                // Convert back to left-right
+                processedAudio[0][frame] = mid + wideSide
+                processedAudio[1][frame] = mid - wideSide
+            }
+        }
+
+        // Convert to interleaved format
+        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        for frame in 0..<frameLength {
+            for channel in 0..<channelCount {
+                interleaved[frame * channelCount + channel] = processedAudio[channel][frame]
+            }
+        }
+
+        return interleaved
+    }
+
+    private func initializeEffectStates(channelCount: Int) {
+        if bassBoostState.count != channelCount {
+            bassBoostState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if clarityState.count != channelCount {
+            clarityState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if deMudState.count != channelCount {
+            deMudState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if eqBassState.count != channelCount {
+            eqBassState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if eqMidsState.count != channelCount {
+            eqMidsState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if eqTrebleState.count != channelCount {
+            eqTrebleState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if compressorEnvelope.count != channelCount {
+            compressorEnvelope = [Float](repeating: 0, count: channelCount)
+        }
+    }
+
+    private func updateBassBoostCoefficients(sampleRate: Double) {
+        if sampleRate != bassBoostLastSampleRate || bassBoostAmount != bassBoostLastAmount {
+            bassBoostLastSampleRate = sampleRate
+            bassBoostLastAmount = bassBoostAmount
+
+            let gainDb = min(max(bassBoostAmount, 0), 1) * 24.0
+            bassBoostCoefficients = BiquadCoefficients.lowShelf(
+                sampleRate: sampleRate,
+                frequency: 80,
+                gainDb: gainDb,
+                q: 0.8
+            )
+            print("🎛️ Bass Boost coeffs updated: \(String(format: "%.1f dB", gainDb))")
+        }
+    }
+
+    private func updateClarityCoefficients(sampleRate: Double, intensity: Double) {
+        if sampleRate != clarityLastSampleRate || intensity != clarityLastAmount {
+            clarityLastSampleRate = sampleRate
+            clarityLastAmount = intensity
+
+            let gainDb = min(max(intensity, 0), 1) * 12.0 // Up to 12dB high shelf boost
+            clarityCoefficients = BiquadCoefficients.highShelf(
+                sampleRate: sampleRate,
+                frequency: 3000, // 3kHz and up
+                gainDb: gainDb,
+                q: 0.7
+            )
+            print("🎛️ Clarity coeffs updated: \(String(format: "%.1f dB", gainDb))")
+        }
+    }
+
+    private func updateDeMudCoefficients(sampleRate: Double) {
+        if sampleRate != deMudLastSampleRate || deMudStrength != deMudLastStrength {
+            deMudLastSampleRate = sampleRate
+            deMudLastStrength = deMudStrength
+
+            let gainDb = -min(max(deMudStrength, 0), 1) * 8.0 // Up to -8dB cut
+            deMudCoefficients = BiquadCoefficients.peakingEQ(
+                sampleRate: sampleRate,
+                frequency: 250, // 250Hz muddy range
+                gainDb: gainDb,
+                q: 1.5
+            )
+            print("🎛️ De-Mud coeffs updated: \(String(format: "%.1f dB", gainDb))")
+        }
+    }
+
+    private func updateSimpleEQCoefficients(sampleRate: Double) {
+        if sampleRate != eqLastSampleRate {
+            eqLastSampleRate = sampleRate
+        }
+
+        // Bass band (80Hz low shelf)
+        let bassGainDb = eqBass * 12.0 // -12 to +12 dB
+        eqBassCoefficients = BiquadCoefficients.lowShelf(
+            sampleRate: sampleRate,
+            frequency: 80,
+            gainDb: bassGainDb,
+            q: 0.7
+        )
+
+        // Mids band (1kHz peaking)
+        let midsGainDb = eqMids * 12.0 // -12 to +12 dB
+        eqMidsCoefficients = BiquadCoefficients.peakingEQ(
+            sampleRate: sampleRate,
+            frequency: 1000,
+            gainDb: midsGainDb,
+            q: 1.0
+        )
+
+        // Treble band (8kHz high shelf)
+        let trebleGainDb = eqTreble * 12.0 // -12 to +12 dB
+        eqTrebleCoefficients = BiquadCoefficients.highShelf(
+            sampleRate: sampleRate,
+            frequency: 8000,
+            gainDb: trebleGainDb,
+            q: 0.7
+        )
+    }
+
+    private func resetBassBoostState() {
+        if !bassBoostState.isEmpty {
+            for index in bassBoostState.indices {
+                bassBoostState[index] = BiquadState()
+            }
+        }
+    }
+
+    // Note: Proper pitch shifting without tempo change requires complex DSP (phase vocoder, etc.)
+    // For now, nightcore is implemented as a simple brightness/clarity boost
+    // True pitch shifting will be added in a future update
+
     // MARK: - Device Configuration
 
     private func configureAudioDevices() throws {
@@ -269,8 +764,12 @@ class AudioEngine: ObservableObject {
             )
         }
 
+        // Use user-selected output device when available
+        let selectedDevice = outputDevices.first { $0.id == selectedOutputDeviceID }
+        let outputDevice = selectedDevice ?? findRealOutputDevice()
+
         // Find real speakers for output (not BlackHole, not Multi-Output)
-        guard let speakersDevice = findRealOutputDevice() else {
+        guard let speakersDevice = outputDevice else {
             throw NSError(
                 domain: "AudioEngine",
                 code: 2,
@@ -381,7 +880,19 @@ class AudioEngine: ObservableObject {
         }
     }
 
+    private func refreshOutputDevices() {
+        let devices = getAllAudioDevices().filter { $0.hasOutput }
+        outputDevices = devices
+
+        if selectedOutputDeviceID == nil {
+            selectedOutputDeviceID = findRealOutputDevice()?.id
+        }
+    }
+
     func stop() {
+        nightcoreRestartWorkItem?.cancel()
+        nightcoreRestartWorkItem = nil
+
         // Stop AudioQueue first
         if let queue = outputQueue {
             AudioQueueStop(queue, true)
@@ -425,11 +936,154 @@ class AudioEngine: ObservableObject {
             }
         }
     }
+
+    // MARK: - Preset Support
+
+    func getCurrentEffectChain() -> EffectChainSnapshot {
+        var activeEffects: [EffectChainSnapshot.EffectSnapshot] = []
+
+        // Bass Boost
+        if bassBoostEnabled {
+            let params = EffectChainSnapshot.EffectParameters(bassBoostAmount: bassBoostAmount)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .bassBoost, isEnabled: true, parameters: params))
+        }
+
+        // Nightcore
+        if nightcoreEnabled {
+            let params = EffectChainSnapshot.EffectParameters(nightcoreIntensity: nightcoreIntensity)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .pitchShift, isEnabled: true, parameters: params))
+        }
+
+        // Clarity
+        if clarityEnabled {
+            let params = EffectChainSnapshot.EffectParameters(clarityAmount: clarityAmount)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .clarity, isEnabled: true, parameters: params))
+        }
+
+        // De-Mud
+        if deMudEnabled {
+            let params = EffectChainSnapshot.EffectParameters(deMudStrength: deMudStrength)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .deMud, isEnabled: true, parameters: params))
+        }
+
+        // Simple EQ
+        if simpleEQEnabled {
+            let params = EffectChainSnapshot.EffectParameters(eqBass: eqBass, eqMids: eqMids, eqTreble: eqTreble)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .simpleEQ, isEnabled: true, parameters: params))
+        }
+
+        // Compressor
+        if compressorEnabled {
+            let params = EffectChainSnapshot.EffectParameters(compressorStrength: compressorStrength)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .compressor, isEnabled: true, parameters: params))
+        }
+
+        // Reverb
+        if reverbEnabled {
+            let params = EffectChainSnapshot.EffectParameters(reverbMix: reverbMix, reverbSize: reverbSize)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .reverb, isEnabled: true, parameters: params))
+        }
+
+        // Stereo Width
+        if stereoWidthEnabled {
+            let params = EffectChainSnapshot.EffectParameters(stereoWidthAmount: stereoWidthAmount)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .stereoWidth, isEnabled: true, parameters: params))
+        }
+
+        return EffectChainSnapshot(activeEffects: activeEffects)
+    }
+
+    func applyEffectChain(_ chain: EffectChainSnapshot) {
+        // First disable all effects
+        bassBoostEnabled = false
+        nightcoreEnabled = false
+        clarityEnabled = false
+        deMudEnabled = false
+        simpleEQEnabled = false
+        compressorEnabled = false
+        reverbEnabled = false
+        stereoWidthEnabled = false
+
+        // Then apply each effect from the chain
+        for effect in chain.activeEffects {
+            let params = effect.parameters
+
+            switch effect.type {
+            case .bassBoost:
+                bassBoostEnabled = effect.isEnabled
+                if let amount = params.bassBoostAmount {
+                    bassBoostAmount = amount
+                }
+
+            case .pitchShift: // Nightcore
+                nightcoreEnabled = effect.isEnabled
+                if let intensity = params.nightcoreIntensity {
+                    nightcoreIntensity = intensity
+                }
+
+            case .clarity:
+                clarityEnabled = effect.isEnabled
+                if let amount = params.clarityAmount {
+                    clarityAmount = amount
+                }
+
+            case .deMud:
+                deMudEnabled = effect.isEnabled
+                if let strength = params.deMudStrength {
+                    deMudStrength = strength
+                }
+
+            case .simpleEQ:
+                simpleEQEnabled = effect.isEnabled
+                if let bass = params.eqBass { eqBass = bass }
+                if let mids = params.eqMids { eqMids = mids }
+                if let treble = params.eqTreble { eqTreble = treble }
+
+            case .compressor:
+                compressorEnabled = effect.isEnabled
+                if let strength = params.compressorStrength {
+                    compressorStrength = strength
+                }
+
+            case .reverb:
+                reverbEnabled = effect.isEnabled
+                if let mix = params.reverbMix { reverbMix = mix }
+                if let size = params.reverbSize { reverbSize = size }
+
+            case .stereoWidth:
+                stereoWidthEnabled = effect.isEnabled
+                if let amount = params.stereoWidthAmount {
+                    stereoWidthAmount = amount
+                }
+
+            case .delay:
+                delayEnabled = effect.isEnabled
+                // Delay parameters will be added to EffectParameters later
+
+            case .distortion:
+                distortionEnabled = effect.isEnabled
+                // Distortion parameters will be added to EffectParameters later
+
+            case .tremolo:
+                tremoloEnabled = effect.isEnabled
+                // Tremolo parameters will be added to EffectParameters later
+            }
+        }
+
+        print("✅ Applied preset with \(chain.activeEffects.count) effects")
+    }
+
+    func updateEffectChain(_ chain: [ChainedEffect]) {
+        // For now, just track which effects should be enabled
+        // The actual processing order is fixed in interleavedData()
+        // TODO: In the future, make the processing order dynamic based on chain order
+        print("📝 Effect chain updated with \(chain.count) effects")
+    }
 }
 
 // MARK: - Audio Device Helper
 
-struct AudioDevice {
+struct AudioDevice: Identifiable, Hashable {
     let id: AudioDeviceID
     let name: String
     let hasInput: Bool
@@ -508,6 +1162,103 @@ extension AUAudioUnit {
     func setDeviceID(_ deviceID: AudioDeviceID) throws {
         let deviceIDValue = deviceID as NSNumber
         setValue(deviceIDValue, forKey: "deviceID")
+    }
+}
+
+// MARK: - Bass Boost Biquad
+
+private struct BiquadState {
+    var x1: Float = 0
+    var x2: Float = 0
+    var y1: Float = 0
+    var y2: Float = 0
+}
+
+private struct BiquadCoefficients {
+    var b0: Float = 1
+    var b1: Float = 0
+    var b2: Float = 0
+    var a1: Float = 0
+    var a2: Float = 0
+
+    static func lowShelf(sampleRate: Double, frequency: Double, gainDb: Double, q: Double) -> BiquadCoefficients {
+        let a = pow(10.0, gainDb / 40.0)
+        let w0 = 2.0 * Double.pi * frequency / sampleRate
+        let cosw0 = cos(w0)
+        let sinw0 = sin(w0)
+        let alpha = sinw0 / (2.0 * q)
+        let sqrtA = sqrt(a)
+
+        let b0 =    a * ((a + 1.0) - (a - 1.0) * cosw0 + 2.0 * sqrtA * alpha)
+        let b1 =  2.0 * a * ((a - 1.0) - (a + 1.0) * cosw0)
+        let b2 =    a * ((a + 1.0) - (a - 1.0) * cosw0 - 2.0 * sqrtA * alpha)
+        let a0 =        (a + 1.0) + (a - 1.0) * cosw0 + 2.0 * sqrtA * alpha
+        let a1 =   -2.0 * ((a - 1.0) + (a + 1.0) * cosw0)
+        let a2 =        (a + 1.0) + (a - 1.0) * cosw0 - 2.0 * sqrtA * alpha
+
+        return BiquadCoefficients(
+            b0: Float(b0 / a0),
+            b1: Float(b1 / a0),
+            b2: Float(b2 / a0),
+            a1: Float(a1 / a0),
+            a2: Float(a2 / a0)
+        )
+    }
+
+    static func highShelf(sampleRate: Double, frequency: Double, gainDb: Double, q: Double) -> BiquadCoefficients {
+        let a = pow(10.0, gainDb / 40.0)
+        let w0 = 2.0 * Double.pi * frequency / sampleRate
+        let cosw0 = cos(w0)
+        let sinw0 = sin(w0)
+        let alpha = sinw0 / (2.0 * q)
+        let sqrtA = sqrt(a)
+
+        let b0 =    a * ((a + 1.0) + (a - 1.0) * cosw0 + 2.0 * sqrtA * alpha)
+        let b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cosw0)
+        let b2 =    a * ((a + 1.0) + (a - 1.0) * cosw0 - 2.0 * sqrtA * alpha)
+        let a0 =        (a + 1.0) - (a - 1.0) * cosw0 + 2.0 * sqrtA * alpha
+        let a1 =    2.0 * ((a - 1.0) - (a + 1.0) * cosw0)
+        let a2 =        (a + 1.0) - (a - 1.0) * cosw0 - 2.0 * sqrtA * alpha
+
+        return BiquadCoefficients(
+            b0: Float(b0 / a0),
+            b1: Float(b1 / a0),
+            b2: Float(b2 / a0),
+            a1: Float(a1 / a0),
+            a2: Float(a2 / a0)
+        )
+    }
+
+    static func peakingEQ(sampleRate: Double, frequency: Double, gainDb: Double, q: Double) -> BiquadCoefficients {
+        let a = pow(10.0, gainDb / 40.0)
+        let w0 = 2.0 * Double.pi * frequency / sampleRate
+        let cosw0 = cos(w0)
+        let sinw0 = sin(w0)
+        let alpha = sinw0 / (2.0 * q)
+
+        let b0 =  1.0 + alpha * a
+        let b1 = -2.0 * cosw0
+        let b2 =  1.0 - alpha * a
+        let a0 =  1.0 + alpha / a
+        let a1 = -2.0 * cosw0
+        let a2 =  1.0 - alpha / a
+
+        return BiquadCoefficients(
+            b0: Float(b0 / a0),
+            b1: Float(b1 / a0),
+            b2: Float(b2 / a0),
+            a1: Float(a1 / a0),
+            a2: Float(a2 / a0)
+        )
+    }
+
+    func process(x: Float, state: inout BiquadState) -> Float {
+        let y = b0 * x + b1 * state.x1 + b2 * state.x2 - a1 * state.y1 - a2 * state.y2
+        state.x2 = state.x1
+        state.x1 = x
+        state.y2 = state.y1
+        state.y1 = y
+        return y
     }
 }
 

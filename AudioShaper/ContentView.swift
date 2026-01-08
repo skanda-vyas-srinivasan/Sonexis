@@ -1,114 +1,290 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var audioEngine = AudioEngine()
+    @StateObject private var audioEngine = AudioEngine()
+    @StateObject private var presetManager = PresetManager()
+    @State private var selectedTab = 1 // Start on Beginner mode
+    @State private var showingSaveDialog = false
+    @State private var presetNameInput = ""
 
     var body: some View {
-        VStack(spacing: 30) {
+        VStack(spacing: 0) {
             // Header
-            VStack(spacing: 8) {
-                Text("Audio Shaper")
-                    .font(.system(size: 32, weight: .bold))
+            HeaderView(
+                audioEngine: audioEngine,
+                onSave: {
+                    presetNameInput = ""
+                    showingSaveDialog = true
+                },
+                onLoad: {
+                    // TODO: Show load dialog
+                }
+            )
 
-                Text("Real-time Audio Processing")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            Divider()
+
+            // Tab selector
+            Picker("Mode", selection: $selectedTab) {
+                Text("Presets").tag(0)
+                Text("Beginner").tag(1)
+                Text("Advanced").tag(2)
             }
-            .padding(.top, 40)
+            .pickerStyle(.segmented)
+            .padding()
+
+            Divider()
+
+            // Content area based on selected tab
+            Group {
+                switch selectedTab {
+                case 0:
+                    PresetView(
+                        audioEngine: audioEngine,
+                        presetManager: presetManager
+                    )
+                case 1:
+                    BeginnerView(audioEngine: audioEngine)
+                case 2:
+                    AdvancedView(audioEngine: audioEngine)
+                default:
+                    EmptyView()
+                }
+            }
+        }
+        .frame(minWidth: 800, minHeight: 700)
+        .background(Color(NSColor.windowBackgroundColor))
+        .sheet(isPresented: $showingSaveDialog) {
+            SavePresetDialog(
+                presetName: $presetNameInput,
+                onSave: {
+                    saveCurrentPreset()
+                    showingSaveDialog = false
+                },
+                onCancel: {
+                    showingSaveDialog = false
+                }
+            )
+        }
+    }
+
+    private func saveCurrentPreset() {
+        guard !presetNameInput.isEmpty else { return }
+
+        // Get current effect chain from audio engine
+        let chain = audioEngine.getCurrentEffectChain()
+        presetManager.savePreset(name: presetNameInput, chain: chain)
+
+        print("✅ Preset saved: \(presetNameInput)")
+    }
+}
+
+// MARK: - Save Preset Dialog
+
+struct SavePresetDialog: View {
+    @Binding var presetName: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Save Preset")
+                .font(.headline)
+
+            TextField("Preset Name", text: $presetName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 300)
+
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    onSave()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(presetName.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 350, height: 150)
+    }
+}
+
+// MARK: - Header View
+
+struct HeaderView: View {
+    @ObservedObject var audioEngine: AudioEngine
+    let onSave: () -> Void
+    let onLoad: () -> Void
+
+    var body: some View {
+        HStack(spacing: 20) {
+            // Power button
+            Button(action: {
+                if audioEngine.isRunning {
+                    audioEngine.stop()
+                } else {
+                    audioEngine.start()
+                }
+            }) {
+                Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
+                    .font(.system(size: 24))
+                    .foregroundColor(audioEngine.isRunning ? .green : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(audioEngine.isRunning ? "Stop Processing" : "Start Processing")
+
+            Divider()
+                .frame(height: 30)
+
+            // Input device (read-only, shows BlackHole)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Input")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(audioEngine.inputDeviceName)
+                    .font(.system(size: 11))
+            }
+
+            // Output device picker
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Output")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Picker("", selection: $audioEngine.selectedOutputDeviceID) {
+                    ForEach(audioEngine.outputDevices, id: \.id) { device in
+                        Text(device.name).tag(Optional(device.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 200)
+            }
 
             Spacer()
-
-            // Status indicator
-            VStack(spacing: 12) {
-                Image(systemName: audioEngine.isRunning ? "waveform.circle.fill" : "waveform.circle")
-                    .font(.system(size: 60))
-                    .foregroundStyle(audioEngine.isRunning ? .green : .secondary)
-
-                Text(audioEngine.isRunning ? "Processing" : "Inactive")
-                    .font(.headline)
-                    .foregroundStyle(audioEngine.isRunning ? .primary : .secondary)
-            }
 
             // Error message if any
             if let error = audioEngine.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                    .foregroundColor(.red)
+                    .lineLimit(2)
+                    .frame(maxWidth: 250)
+            }
+
+            // Save/Load buttons
+            HStack(spacing: 8) {
+                Button("Save Preset") {
+                    onSave()
+                }
+
+                Button("Load Preset") {
+                    onLoad()
+                }
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+}
+
+// MARK: - Preset View
+
+struct PresetView: View {
+    @ObservedObject var audioEngine: AudioEngine
+    @ObservedObject var presetManager: PresetManager
+
+    var body: some View {
+        VStack {
+            if presetManager.presets.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No saved presets")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("Create effect chains in Beginner or Advanced mode, then save them as presets")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForEach(presetManager.presets) { preset in
+                            PresetCard(
+                                preset: preset,
+                                onApply: {
+                                    audioEngine.applyEffectChain(preset.chain)
+                                },
+                                onDelete: {
+                                    presetManager.deletePreset(preset)
+                                }
+                            )
+                        }
+                    }
+                    .padding()
+                }
+            }
+        }
+    }
+}
+
+struct PresetCard: View {
+    let preset: SavedPreset
+    let onApply: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(preset.name)
+                    .font(.headline)
+                Text("\(preset.chain.activeEffects.count) effects")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
 
-            // Control button
-            Toggle(isOn: Binding(
-                get: { audioEngine.isRunning },
-                set: { enabled in
-                    if enabled {
-                        audioEngine.start()
-                    } else {
-                        audioEngine.stop()
-                    }
-                }
-            )) {
-                Text(audioEngine.isRunning ? "Stop Processing" : "Start Processing")
-                    .frame(maxWidth: .infinity)
-            }
-            .toggleStyle(.button)
-            .controlSize(.large)
-            .tint(audioEngine.isRunning ? .red : .green)
-            .padding(.horizontal, 40)
-
-            // Device info
-            if audioEngine.isRunning {
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Input:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(audioEngine.inputDeviceName)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                    }
-
-                    HStack {
-                        Text("Output:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(audioEngine.outputDeviceName)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                    }
-                }
-                .padding()
-                .background(.quaternary.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 40)
+            Button("Apply") {
+                onApply()
             }
 
-            // Instructions
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Setup Instructions:")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-
-                Text("1. Install BlackHole 2ch")
-                Text("2. Audio MIDI Setup → Create Multi-Output Device")
-                Text("3. Multi-Output → Check BlackHole + Speakers")
-                Text("4. System Settings → Sound → Output → Multi-Output")
-                Text("5. Click 'Start Processing' above")
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .foregroundColor(.red)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-            .background(.quaternary.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 40)
-            .padding(.bottom, 40)
+            .buttonStyle(.plain)
         }
-        .frame(width: 500, height: 600)
-        .background(.background)
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+}
+
+// BeginnerView is now in BeginnerView.swift
+
+// MARK: - Advanced View
+
+struct AdvancedView: View {
+    @ObservedObject var audioEngine: AudioEngine
+
+    var body: some View {
+        VStack {
+            Spacer()
+            Text("Advanced Mode")
+                .font(.title)
+                .foregroundColor(.secondary)
+            Text("Node graph editor coming soon")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer()
+        }
     }
 }
 

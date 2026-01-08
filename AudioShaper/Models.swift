@@ -12,6 +12,9 @@ enum EffectType: String, Codable, CaseIterable {
     case pitchShift = "Pitch Effect"
     case simpleEQ = "Simple EQ"
     case deMud = "De-Mud"
+    case delay = "Delay"
+    case distortion = "Distortion"
+    case tremolo = "Tremolo"
 
     var description: String {
         switch self {
@@ -31,6 +34,12 @@ enum EffectType: String, Codable, CaseIterable {
             return "Adjust bass, middle, and treble"
         case .deMud:
             return "Removes muddiness and boxiness"
+        case .delay:
+            return "Repeating echoes and rhythmic delays"
+        case .distortion:
+            return "Adds warmth, grit, and harmonic saturation"
+        case .tremolo:
+            return "Pulsing volume modulation"
         }
     }
 
@@ -43,15 +52,21 @@ enum EffectType: String, Codable, CaseIterable {
         case .reverb:
             return "building.columns.fill"
         case .compressor:
-            return "waveform.path"
+            return "waveform.path.ecg"
         case .stereoWidth:
             return "arrow.left.and.right"
         case .pitchShift:
-            return "tuningfork"
+            return "hare.fill"
         case .simpleEQ:
             return "slider.horizontal.3"
         case .deMud:
-            return "eraser.fill"
+            return "bandage.fill"
+        case .delay:
+            return "arrow.3.trianglepath"
+        case .distortion:
+            return "waveform.path.badge.plus"
+        case .tremolo:
+            return "waveform"
         }
     }
 }
@@ -91,6 +106,12 @@ struct EffectBlock: Identifiable, Codable {
             return ["bass": 0.0, "mids": 0.0, "treble": 0.0] // -12 to +12 dB
         case .deMud:
             return ["strength": 50.0] // 0-100 scale
+        case .delay:
+            return ["time": 250.0, "feedback": 40.0, "mix": 30.0] // time in ms, feedback/mix 0-100
+        case .distortion:
+            return ["drive": 50.0, "mix": 50.0] // 0-100 scale
+        case .tremolo:
+            return ["rate": 5.0, "depth": 50.0] // rate in Hz, depth 0-100
         }
     }
 }
