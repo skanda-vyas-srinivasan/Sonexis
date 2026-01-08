@@ -301,6 +301,4 @@ struct PresetCard: View {
 
 // BeginnerView is now in BeginnerView.swift
 
-#Preview {
-    ContentView()
-}
+// Preview disabled to avoid build-time macro errors.

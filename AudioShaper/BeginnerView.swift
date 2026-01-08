@@ -558,6 +558,9 @@ struct BeginnerView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .onAppear {
+            showSignalFlow = audioEngine.isRunning
+        }
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
         }
@@ -2071,6 +2074,4 @@ struct CompactSlider: View {
 
 // MARK: - Supporting Types
 
-#Preview {
-    BeginnerView(audioEngine: AudioEngine())
-}
+// Preview disabled to avoid build-time macro errors.
