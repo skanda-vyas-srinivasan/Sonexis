@@ -160,6 +160,11 @@ class AudioEngine: ObservableObject {
     private var chainLogTimer: DispatchSourceTimer?
     private var nightcoreRestartWorkItem: DispatchWorkItem?
     private var effectChainOrder: [BeginnerNode] = []
+    private var manualGraphNodes: [BeginnerNode] = []
+    private var manualGraphConnections: [BeginnerConnection] = []
+    private var manualGraphStartID: UUID?
+    private var manualGraphEndID: UUID?
+    private var useManualGraph = false
     private var levelUpdateCounter = 0
     private let effectStateLock = NSLock()
     private var isReconfiguring = false
@@ -442,6 +447,43 @@ class AudioEngine: ObservableObject {
     }
 
     private func logActiveChain() {
+        if useManualGraph {
+            var connections: [BeginnerConnection] = []
+            var nodes: [BeginnerNode] = []
+            let startID = manualGraphStartID
+            let endID = manualGraphEndID
+            withEffectStateLock {
+                connections = manualGraphConnections
+                nodes = manualGraphNodes
+            }
+
+            if connections.isEmpty || startID == nil || endID == nil {
+                print("🔁 Active graph: (empty)")
+                return
+            }
+
+            let edges = connections.map { connection -> String in
+                let fromName: String
+                if connection.fromNodeId == startID {
+                    fromName = "Start"
+                } else {
+                    fromName = nodes.first(where: { $0.id == connection.fromNodeId })?.type.rawValue ?? "?"
+                }
+
+                let toName: String
+                if connection.toNodeId == endID {
+                    toName = "End"
+                } else {
+                    toName = nodes.first(where: { $0.id == connection.toNodeId })?.type.rawValue ?? "?"
+                }
+
+                return "\(fromName)→\(toName)"
+            }
+
+            print("🔁 Active graph: \(edges.joined(separator: " | "))")
+            return
+        }
+
         var chain: [BeginnerNode] = []
         withEffectStateLock {
             chain = effectChainOrder
@@ -454,6 +496,215 @@ class AudioEngine: ObservableObject {
 
         let names = chain.map { $0.type.rawValue }.joined(separator: " → ")
         print("🔁 Active chain: \(names)")
+    }
+
+    private func processManualGraph(
+        channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
+        frameLength: Int,
+        channelCount: Int,
+        sampleRate: Double
+    ) -> [Float] {
+        guard let startID = manualGraphStartID, let endID = manualGraphEndID else {
+            return interleaveInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
+        }
+
+        let inputBuffer = deinterleavedInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
+        let nodes = manualGraphNodes
+        let connections = manualGraphConnections
+
+        var outEdges: [UUID: [UUID]] = [:]
+        var inEdges: [UUID: [UUID]] = [:]
+        for connection in connections {
+            outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
+            inEdges[connection.toNodeId, default: []].append(connection.fromNodeId)
+        }
+
+        let reachable = reachableNodes(from: startID, outEdges: outEdges)
+
+        var sinkNodes: [UUID] = []
+        for nodeID in reachable where nodeID != startID && nodeID != endID {
+            let outs = outEdges[nodeID] ?? []
+            let hasReachableOut = outs.contains(where: { reachable.contains($0) && $0 != endID })
+            let hasEndOut = outs.contains(endID)
+            if !hasReachableOut && !hasEndOut {
+                sinkNodes.append(nodeID)
+            }
+        }
+
+        for sink in sinkNodes {
+            outEdges[sink, default: []].append(endID)
+            inEdges[endID, default: []].append(sink)
+        }
+
+        var indegree: [UUID: Int] = [:]
+        for node in nodes {
+            if reachable.contains(node.id) {
+                let incoming = inEdges[node.id] ?? []
+                let count = incoming.filter { $0 != startID }.count
+                indegree[node.id] = count
+            }
+        }
+
+        var queue: [UUID] = nodes.compactMap { node in
+            guard reachable.contains(node.id) else { return nil }
+            return (indegree[node.id] ?? 0) == 0 ? node.id : nil
+        }
+
+        var outputBuffers: [UUID: [[Float]]] = [:]
+        var levelSnapshot: [UUID: Float] = [:]
+
+        while let nodeID = queue.first {
+            queue.removeFirst()
+            guard let node = nodes.first(where: { $0.id == nodeID }) else { continue }
+
+            let inputs = inEdges[nodeID] ?? []
+            let merged = mergeInputs(
+                inputs: inputs,
+                startID: startID,
+                inputBuffer: inputBuffer,
+                outputBuffers: outputBuffers,
+                frameLength: frameLength,
+                channelCount: channelCount
+            )
+
+            var processed = merged
+            applyEffect(
+                node.type,
+                to: &processed,
+                sampleRate: sampleRate,
+                channelCount: channelCount,
+                frameLength: frameLength,
+                nodeId: node.id,
+                levelSnapshot: &levelSnapshot
+            )
+            outputBuffers[nodeID] = processed
+
+            for next in outEdges[nodeID] ?? [] {
+                guard reachable.contains(next), next != endID else { continue }
+                indegree[next, default: 0] -= 1
+                if indegree[next] == 0 {
+                    queue.append(next)
+                }
+            }
+        }
+
+        if !levelSnapshot.isEmpty {
+            levelUpdateCounter += 1
+            if levelUpdateCounter % 8 == 0 {
+                let snapshot = levelSnapshot
+                DispatchQueue.main.async {
+                    self.effectLevels = snapshot
+                }
+            }
+        }
+
+        let endInputs = inEdges[endID] ?? []
+        let mixed = mergeInputs(
+            inputs: endInputs,
+            startID: startID,
+            inputBuffer: inputBuffer,
+            outputBuffers: outputBuffers,
+            frameLength: frameLength,
+            channelCount: channelCount
+        )
+        let limited = clampBuffer(mixed)
+
+        return interleaveBuffer(limited, frameLength: frameLength, channelCount: channelCount)
+    }
+
+    private func reachableNodes(from startID: UUID, outEdges: [UUID: [UUID]]) -> Set<UUID> {
+        var visited: Set<UUID> = [startID]
+        var queue: [UUID] = [startID]
+
+        while let current = queue.first {
+            queue.removeFirst()
+            for next in outEdges[current] ?? [] {
+                if !visited.contains(next) {
+                    visited.insert(next)
+                    queue.append(next)
+                }
+            }
+        }
+        return visited
+    }
+
+    private func mergeInputs(
+        inputs: [UUID],
+        startID: UUID,
+        inputBuffer: [[Float]],
+        outputBuffers: [UUID: [[Float]]],
+        frameLength: Int,
+        channelCount: Int
+    ) -> [[Float]] {
+        var merged = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+        guard !inputs.isEmpty else { return merged }
+
+        for source in inputs {
+            let sourceBuffer: [[Float]]?
+            if source == startID {
+                sourceBuffer = inputBuffer
+            } else {
+                sourceBuffer = outputBuffers[source]
+            }
+
+            guard let buffer = sourceBuffer else { continue }
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    merged[channel][frame] += buffer[channel][frame]
+                }
+            }
+        }
+        return merged
+    }
+
+    private func clampBuffer(_ buffer: [[Float]]) -> [[Float]] {
+        var clamped = buffer
+        for channel in clamped.indices {
+            for index in clamped[channel].indices {
+                let sample = clamped[channel][index]
+                if sample > 1 { clamped[channel][index] = 1 }
+                else if sample < -1 { clamped[channel][index] = -1 }
+            }
+        }
+        return clamped
+    }
+
+    private func deinterleavedInput(
+        channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
+        frameLength: Int,
+        channelCount: Int
+    ) -> [[Float]] {
+        var output = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+        for channel in 0..<channelCount {
+            for frame in 0..<frameLength {
+                output[channel][frame] = channelData[channel][frame]
+            }
+        }
+        return output
+    }
+
+    private func interleaveInput(
+        channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
+        frameLength: Int,
+        channelCount: Int
+    ) -> [Float] {
+        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        for frame in 0..<frameLength {
+            for channel in 0..<channelCount {
+                interleaved[frame * channelCount + channel] = channelData[channel][frame]
+            }
+        }
+        return interleaved
+    }
+
+    private func interleaveBuffer(_ buffer: [[Float]], frameLength: Int, channelCount: Int) -> [Float] {
+        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        for frame in 0..<frameLength {
+            for channel in 0..<channelCount {
+                interleaved[frame * channelCount + channel] = buffer[channel][frame]
+            }
+        }
+        return interleaved
     }
 
     // Ring buffer for audio data
@@ -514,6 +765,15 @@ class AudioEngine: ObservableObject {
 
         // Initialize effect states
         initializeEffectStates(channelCount: channelCount)
+
+        if useManualGraph {
+            return processManualGraph(
+                channelData: channelData,
+                frameLength: frameLength,
+                channelCount: channelCount,
+                sampleRate: sampleRate
+            )
+        }
 
         // Process audio through effect chain
         var processedAudio = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
@@ -1610,6 +1870,7 @@ class AudioEngine: ObservableObject {
     func updateEffectChain(_ chain: [BeginnerNode]) {
         withEffectStateLock {
             effectChainOrder = chain
+            useManualGraph = false
         }
 
         let activeTypes = Set(chain.map { $0.type })
@@ -1638,6 +1899,30 @@ class AudioEngine: ObservableObject {
             }
         }
         print("📝 Effect chain updated with \(chain.count) effects")
+    }
+
+    func updateEffectGraph(nodes: [BeginnerNode], connections: [BeginnerConnection], startID: UUID, endID: UUID) {
+        withEffectStateLock {
+            manualGraphNodes = nodes
+            manualGraphConnections = connections
+            manualGraphStartID = startID
+            manualGraphEndID = endID
+            useManualGraph = true
+        }
+
+        let activeTypes = Set(nodes.map { $0.type })
+        bassBoostEnabled = activeTypes.contains(.bassBoost)
+        nightcoreEnabled = activeTypes.contains(.pitchShift)
+        clarityEnabled = activeTypes.contains(.clarity)
+        deMudEnabled = activeTypes.contains(.deMud)
+        simpleEQEnabled = activeTypes.contains(.simpleEQ)
+        tenBandEQEnabled = activeTypes.contains(.tenBandEQ)
+        compressorEnabled = activeTypes.contains(.compressor)
+        reverbEnabled = activeTypes.contains(.reverb)
+        stereoWidthEnabled = activeTypes.contains(.stereoWidth)
+        delayEnabled = activeTypes.contains(.delay)
+        distortionEnabled = activeTypes.contains(.distortion)
+        tremoloEnabled = activeTypes.contains(.tremolo)
     }
 }
 

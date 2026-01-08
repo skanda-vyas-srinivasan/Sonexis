@@ -30,8 +30,8 @@ struct BeginnerView: View {
     }
 
     var body: some View {
-        let path = wiringMode == .automatic ? chainPath() : manualPathFromStart()
-        let pathIDs = Set(path.map { $0.id })
+        let autoPath = chainPath()
+        let pathIDs = wiringMode == .automatic ? Set(autoPath.map { $0.id }) : reachableNodeIDsFromStart()
 
         VStack(spacing: 0) {
             // Effect palette at top
@@ -147,7 +147,7 @@ struct BeginnerView: View {
                     // Draw connections based on mode
                     if wiringMode == .automatic {
                         // In automatic mode, show position-based flow
-                        ForEach(connectionsForCanvas(path: path), id: \.id) { connection in
+                        ForEach(connectionsForCanvas(path: autoPath), id: \.id) { connection in
                             FlowLine(
                                 from: connection.from,
                                 to: connection.to,
@@ -416,21 +416,30 @@ struct BeginnerView: View {
     private func applyChainToEngine() {
         let path = chainPath()
         print("📊 Chain path (\(path.count) effects) - Mode: \(wiringMode == .automatic ? "AUTOMATIC" : "MANUAL")")
-        for (index, node) in path.enumerated() {
-            print("   \(index + 1). \(node.type.rawValue)")
+        if wiringMode == .automatic {
+            for (index, node) in path.enumerated() {
+                print("   \(index + 1). \(node.type.rawValue)")
+            }
+        } else {
+            let edges = manualGraphEdges()
+            print("   Manual edges (\(edges.count))")
+            for edge in edges {
+                print("   🔗 \(edge)")
+            }
         }
-        print("   Manual connections: \(manualConnections.count)")
-        for conn in manualConnections {
-            let fromName = conn.fromNodeId == startNodeID ? "START" :
-                          (effectChain.first(where: { $0.id == conn.fromNodeId })?.type.rawValue ?? "?")
-            let toName = conn.toNodeId == endNodeID ? "END" :
-                        (effectChain.first(where: { $0.id == conn.toNodeId })?.type.rawValue ?? "?")
-        print("   🔗 \(fromName) → \(toName)")
+        if wiringMode == .manual {
+            audioEngine.updateEffectGraph(
+                nodes: effectChain,
+                connections: manualConnections,
+                startID: startNodeID,
+                endID: endNodeID
+            )
+            updateDebugGraphText()
+        } else {
+            audioEngine.updateEffectChain(path)
+            // TEMP DEBUG: surface the DSP chain in the UI for visual verification.
+            updateDebugChainText(path)
         }
-        audioEngine.updateEffectChain(path)
-
-        // TEMP DEBUG: surface the DSP chain in the UI for visual verification.
-        updateDebugChainText(path)
     }
 
     private func updateDebugChainText(_ path: [BeginnerNode]) {
@@ -440,6 +449,35 @@ struct BeginnerView: View {
         }
         let names = path.map { $0.type.rawValue }.joined(separator: " → ")
         debugChainText = "DSP chain: \(names)"
+    }
+
+    private func updateDebugGraphText() {
+        let edges = manualGraphEdges()
+        if edges.isEmpty {
+            debugChainText = "DSP graph: (empty)"
+            return
+        }
+        debugChainText = "DSP graph: \(edges.joined(separator: " | "))"
+    }
+
+    private func manualGraphEdges() -> [String] {
+        var edges: [String] = []
+
+        func name(for id: UUID) -> String {
+            if id == startNodeID { return "Start" }
+            if id == endNodeID { return "End" }
+            return effectChain.first(where: { $0.id == id })?.type.rawValue ?? "?"
+        }
+
+        for connection in manualConnections {
+            edges.append("\(name(for: connection.fromNodeId))→\(name(for: connection.toNodeId))")
+        }
+
+        for nodeID in implicitEndNodes() {
+            edges.append("\(name(for: nodeID))→End")
+        }
+
+        return edges
     }
 
     private func levelForNode(_ id: UUID) -> Float {
@@ -533,10 +571,9 @@ struct BeginnerView: View {
         }
 
         if wiringMode == .manual {
-            let manualPath = manualPathFromStart()
-            if let lastNode = manualPath.last,
-               !manualConnections.contains(where: { $0.fromNodeId == lastNode.id && $0.toNodeId == endNodeID }) {
-                let fromPoint = nodePosition(lastNode, in: size)
+            for nodeID in implicitEndNodes() {
+                guard let node = effectChain.first(where: { $0.id == nodeID }) else { continue }
+                let fromPoint = nodePosition(node, in: size)
                 let toPoint = endNodePosition(in: size)
                 connections.append(
                     CanvasConnection(id: UUID(), from: fromPoint, to: toPoint, toNodeId: endNodeID, isManual: false)
@@ -627,7 +664,11 @@ struct BeginnerView: View {
         }
 
         print("   ✅ No cycle detected")
-        manualConnections.removeAll { $0.fromNodeId == fromID || $0.toNodeId == targetID }
+        if wiringMode == .automatic {
+            manualConnections.removeAll { $0.fromNodeId == fromID || $0.toNodeId == targetID }
+        } else {
+            manualConnections.removeAll { $0.fromNodeId == fromID && $0.toNodeId == targetID }
+        }
         manualConnections.append(BeginnerConnection(fromNodeId: fromID, toNodeId: targetID))
         print("   ✅ Connection created! Total connections: \(manualConnections.count)")
         applyChainToEngine()
@@ -648,7 +689,7 @@ struct BeginnerView: View {
             }
         }
 
-        if fromID != endNodeID && fromID != startNodeID {
+        if fromID != endNodeID {
             let endPoint = endNodePosition(in: canvasSize)
             let dx = endPoint.x - point.x
             let dy = endPoint.y - point.y
@@ -663,16 +704,23 @@ struct BeginnerView: View {
     }
 
     private func createsCycle(from: UUID, to: UUID) -> Bool {
-        var nextMap = buildNextMap()
-        nextMap[from] = to
+        var outEdges: [UUID: [UUID]] = [:]
+        for connection in manualConnections {
+            outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
+        }
+        outEdges[from, default: []].append(to)
 
-        var visited = Set<UUID>()
-        var current = to
-        while let next = nextMap[current] {
-            if next == from { return true }
-            if visited.contains(next) { break }
-            visited.insert(next)
-            current = next
+        var visited: Set<UUID> = []
+        var queue: [UUID] = [to]
+
+        while let current = queue.first {
+            queue.removeFirst()
+            if current == from { return true }
+            if visited.contains(current) { continue }
+            visited.insert(current)
+            for next in outEdges[current] ?? [] {
+                queue.append(next)
+            }
         }
         return false
     }
@@ -680,30 +728,18 @@ struct BeginnerView: View {
     private func buildNextMap() -> [UUID: UUID] {
         var nextMap: [UUID: UUID] = [:]
 
-        switch wiringMode {
-        case .automatic:
-            // Build automatic position-based connections
-            let ordered = orderedNodesByPosition()
-            guard !ordered.isEmpty else { return nextMap }
+        // Build automatic position-based connections
+        let ordered = orderedNodesByPosition()
+        guard !ordered.isEmpty else { return nextMap }
 
-            nextMap[startNodeID] = ordered[0].id
-            for index in 0..<(ordered.count - 1) {
-                nextMap[ordered[index].id] = ordered[index + 1].id
-            }
-            nextMap[ordered[ordered.count - 1].id] = endNodeID
+        nextMap[startNodeID] = ordered[0].id
+        for index in 0..<(ordered.count - 1) {
+            nextMap[ordered[index].id] = ordered[index + 1].id
+        }
+        nextMap[ordered[ordered.count - 1].id] = endNodeID
 
-            // Manual connections override automatic ones
-            for connection in manualConnections {
-                let fromIsValid = connection.fromNodeId == startNodeID ||
-                    effectChain.contains(where: { $0.id == connection.fromNodeId })
-                let toIsValid = connection.toNodeId == endNodeID ||
-                    effectChain.contains(where: { $0.id == connection.toNodeId })
-                guard fromIsValid, toIsValid else { continue }
-                nextMap[connection.fromNodeId] = connection.toNodeId
-            }
-
-        case .manual:
-            // Only use manual connections, no automatic fallback
+        // Manual connections override automatic ones (automatic mode only).
+        if wiringMode == .automatic {
             for connection in manualConnections {
                 let fromIsValid = connection.fromNodeId == startNodeID ||
                     effectChain.contains(where: { $0.id == connection.fromNodeId })
@@ -736,34 +772,49 @@ struct BeginnerView: View {
         return ordered
     }
 
-    private func manualPathFromStart() -> [BeginnerNode] {
-        guard wiringMode == .manual else { return chainPath() }
-
-        var nextMap: [UUID: UUID] = [:]
+    private func reachableNodeIDsFromStart() -> Set<UUID> {
+        guard wiringMode == .manual else { return [] }
+        var outEdges: [UUID: [UUID]] = [:]
         for connection in manualConnections {
-            let fromIsValid = connection.fromNodeId == startNodeID ||
-                effectChain.contains(where: { $0.id == connection.fromNodeId })
-            let toIsValid = connection.toNodeId == endNodeID ||
-                effectChain.contains(where: { $0.id == connection.toNodeId })
-            guard fromIsValid, toIsValid else { continue }
-            nextMap[connection.fromNodeId] = connection.toNodeId
+            outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
         }
 
-        guard let first = nextMap[startNodeID] else { return [] }
+        var visited: Set<UUID> = [startNodeID]
+        var queue: [UUID] = [startNodeID]
 
-        var ordered: [BeginnerNode] = []
-        var visited = Set<UUID>([startNodeID])
-        var current = first
-
-        while current != endNodeID {
-            if visited.contains(current) { break }
-            visited.insert(current)
-            guard let node = effectChain.first(where: { $0.id == current }) else { break }
-            ordered.append(node)
-            guard let next = nextMap[current] else { break }
-            current = next
+        while let current = queue.first {
+            queue.removeFirst()
+            for next in outEdges[current] ?? [] {
+                if !visited.contains(next) {
+                    visited.insert(next)
+                    queue.append(next)
+                }
+            }
         }
-        return ordered
+
+        visited.remove(startNodeID)
+        visited.remove(endNodeID)
+        return visited
+    }
+
+    private func implicitEndNodes() -> [UUID] {
+        guard wiringMode == .manual else { return [] }
+        let reachable = reachableNodeIDsFromStart()
+        var outEdges: [UUID: [UUID]] = [:]
+        for connection in manualConnections {
+            outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
+        }
+
+        var sinks: [UUID] = []
+        for nodeID in reachable {
+            let outs = outEdges[nodeID] ?? []
+            if outs.isEmpty || !outs.contains(where: { $0 != endNodeID }) {
+                if !outs.contains(endNodeID) {
+                    sinks.append(nodeID)
+                }
+            }
+        }
+        return sinks
     }
 
     private func orderedNodesByPosition() -> [BeginnerNode] {
@@ -1048,30 +1099,38 @@ struct FlowLine: View {
     let isActive: Bool
     let level: Float
     @State private var phase: CGFloat = 0
+    @State private var bounce: CGFloat = 0
 
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
-        let baseOpacity = 0.15 + 0.6 * intensity
-        let glowColor = Color.blue.opacity(0.2 + 0.7 * intensity)
-        let thickness: CGFloat = 2 + 3 * intensity
-
+        let baseOpacity = 0.25 + 0.6 * intensity
+        let glowColor = Color.blue.opacity(0.35 + 0.55 * intensity)
+        let thickness: CGFloat = 2 + 5 * intensity + 2 * bounce
         ZStack {
             Path { path in
                 path.move(to: from)
                 path.addLine(to: to)
             }
-            .stroke(Color.secondary.opacity(baseOpacity), lineWidth: thickness)
+            .stroke(Color.blue.opacity(baseOpacity), lineWidth: thickness)
             .contentShape(Path { path in
                 path.move(to: from)
                 path.addLine(to: to)
             }.strokedPath(.init(lineWidth: thickness + 10)))
 
             if isActive {
+                Path { path in
+                    path.move(to: from)
+                    path.addLine(to: to)
+                }
+                .stroke(glowColor, lineWidth: thickness + 4)
+                .blur(radius: 6 + 6 * intensity)
+
                 Circle()
                     .fill(glowColor)
-                    .frame(width: 6 + 6 * intensity, height: 6 + 6 * intensity)
+                    .frame(width: 6 + 8 * intensity, height: 6 + 8 * intensity)
                     .position(pointAlongLine(from: from, to: to, t: phase))
-                    .shadow(color: glowColor.opacity(0.6), radius: 6)
+                    .scaleEffect(1 + 0.35 * bounce + 0.4 * intensity)
+                    .shadow(color: glowColor.opacity(0.8), radius: 10)
             }
         }
         .onAppear {
@@ -1079,6 +1138,9 @@ struct FlowLine: View {
                 withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
                     phase = 1
                 }
+            }
+            withAnimation(.interpolatingSpring(stiffness: 120, damping: 8).repeatForever(autoreverses: true)) {
+                bounce = 1
             }
         }
         .onChange(of: isActive) { active in
