@@ -168,6 +168,15 @@ class AudioEngine: ObservableObject {
     private var manualGraphStartID: UUID?
     private var manualGraphEndID: UUID?
     private var useManualGraph = false
+    private var splitLeftNodes: [BeginnerNode] = []
+    private var splitLeftConnections: [BeginnerConnection] = []
+    private var splitLeftStartID: UUID?
+    private var splitLeftEndID: UUID?
+    private var splitRightNodes: [BeginnerNode] = []
+    private var splitRightConnections: [BeginnerConnection] = []
+    private var splitRightStartID: UUID?
+    private var splitRightEndID: UUID?
+    private var useSplitGraph = false
     private var levelUpdateCounter = 0
     private let effectStateLock = NSLock()
     private var isReconfiguring = false
@@ -219,6 +228,20 @@ class AudioEngine: ObservableObject {
 
     // Tremolo state (LFO phase)
     private var tremoloPhase: Double = 0
+
+    // Split mode right-channel state
+    private var splitRightBassBoostState: [BiquadState] = []
+    private var splitRightClarityState: [BiquadState] = []
+    private var splitRightDeMudState: [BiquadState] = []
+    private var splitRightEqBassState: [BiquadState] = []
+    private var splitRightEqMidsState: [BiquadState] = []
+    private var splitRightEqTrebleState: [BiquadState] = []
+    private var splitRightCompressorEnvelope: [Float] = []
+    private var splitRightReverbBuffer: [[Float]] = []
+    private var splitRightReverbWriteIndex = 0
+    private var splitRightDelayBuffer: [[Float]] = []
+    private var splitRightDelayWriteIndex = 0
+    private var splitRightTremoloPhase: Double = 0
 
     // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
     private let audioFormat = AVAudioFormat(
@@ -450,6 +473,49 @@ class AudioEngine: ObservableObject {
     }
 
     private func logActiveChain() {
+        if useSplitGraph {
+            var leftConnections: [BeginnerConnection] = []
+            var rightConnections: [BeginnerConnection] = []
+            var leftNodes: [BeginnerNode] = []
+            var rightNodes: [BeginnerNode] = []
+            let leftStartID = splitLeftStartID
+            let leftEndID = splitLeftEndID
+            let rightStartID = splitRightStartID
+            let rightEndID = splitRightEndID
+            withEffectStateLock {
+                leftConnections = splitLeftConnections
+                rightConnections = splitRightConnections
+                leftNodes = splitLeftNodes
+                rightNodes = splitRightNodes
+            }
+
+            let leftEdges = edgesDescription(
+                connections: leftConnections,
+                nodes: leftNodes,
+                startID: leftStartID,
+                endID: leftEndID,
+                startLabel: "Start L",
+                endLabel: "End L"
+            )
+            let rightEdges = edgesDescription(
+                connections: rightConnections,
+                nodes: rightNodes,
+                startID: rightStartID,
+                endID: rightEndID,
+                startLabel: "Start R",
+                endLabel: "End R"
+            )
+
+            if leftEdges.isEmpty && rightEdges.isEmpty {
+                print("🔁 Active graph: (empty)")
+                return
+            }
+            let leftText = leftEdges.isEmpty ? "Left: (empty)" : "Left: \(leftEdges.joined(separator: " | "))"
+            let rightText = rightEdges.isEmpty ? "Right: (empty)" : "Right: \(rightEdges.joined(separator: " | "))"
+            print("🔁 Active graph: \(leftText)  •  \(rightText)")
+            return
+        }
+
         if useManualGraph {
             var connections: [BeginnerConnection] = []
             var nodes: [BeginnerNode] = []
@@ -465,24 +531,14 @@ class AudioEngine: ObservableObject {
                 return
             }
 
-            let edges = connections.map { connection -> String in
-                let fromName: String
-                if connection.fromNodeId == startID {
-                    fromName = "Start"
-                } else {
-                    fromName = nodes.first(where: { $0.id == connection.fromNodeId })?.type.rawValue ?? "?"
-                }
-
-                let toName: String
-                if connection.toNodeId == endID {
-                    toName = "End"
-                } else {
-                    toName = nodes.first(where: { $0.id == connection.toNodeId })?.type.rawValue ?? "?"
-                }
-
-                return "\(fromName)→\(toName)"
-            }
-
+            let edges = edgesDescription(
+                connections: connections,
+                nodes: nodes,
+                startID: startID,
+                endID: endID,
+                startLabel: "Start",
+                endLabel: "End"
+            )
             print("🔁 Active graph: \(edges.joined(separator: " | "))")
             return
         }
@@ -501,19 +557,66 @@ class AudioEngine: ObservableObject {
         print("🔁 Active chain: \(names)")
     }
 
+    private func edgesDescription(
+        connections: [BeginnerConnection],
+        nodes: [BeginnerNode],
+        startID: UUID?,
+        endID: UUID?,
+        startLabel: String,
+        endLabel: String
+    ) -> [String] {
+        guard let startID, let endID else { return [] }
+        return connections.map { connection -> String in
+            let fromName: String
+            if connection.fromNodeId == startID {
+                fromName = startLabel
+            } else {
+                fromName = nodes.first(where: { $0.id == connection.fromNodeId })?.type.rawValue ?? "?"
+            }
+
+            let toName: String
+            if connection.toNodeId == endID {
+                toName = endLabel
+            } else {
+                toName = nodes.first(where: { $0.id == connection.toNodeId })?.type.rawValue ?? "?"
+            }
+
+            return "\(fromName)→\(toName)"
+        }
+    }
+
     private func processManualGraph(
         channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
         frameLength: Int,
         channelCount: Int,
         sampleRate: Double
     ) -> [Float] {
-        guard let startID = manualGraphStartID, let endID = manualGraphEndID else {
-            return interleaveInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
-        }
-
         let inputBuffer = deinterleavedInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
-        let nodes = manualGraphNodes
-        let connections = manualGraphConnections
+        let (processed, levelSnapshot) = processGraph(
+            inputBuffer: inputBuffer,
+            channelCount: channelCount,
+            sampleRate: sampleRate,
+            nodes: manualGraphNodes,
+            connections: manualGraphConnections,
+            startID: manualGraphStartID,
+            endID: manualGraphEndID
+        )
+        updateEffectLevelsIfNeeded(levelSnapshot)
+        return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
+    }
+
+    private func processGraph(
+        inputBuffer: [[Float]],
+        channelCount: Int,
+        sampleRate: Double,
+        nodes: [BeginnerNode],
+        connections: [BeginnerConnection],
+        startID: UUID?,
+        endID: UUID?
+    ) -> ([[Float]], [UUID: Float]) {
+        guard let startID, let endID else {
+            return (inputBuffer, [:])
+        }
 
         var outEdges: [UUID: [UUID]] = [:]
         var inEdges: [UUID: [(UUID, Double)]] = [:]
@@ -540,12 +643,10 @@ class AudioEngine: ObservableObject {
         }
 
         var indegree: [UUID: Int] = [:]
-        for node in nodes {
-            if reachable.contains(node.id) {
+        for node in nodes where reachable.contains(node.id) {
             let incoming = inEdges[node.id] ?? []
             let count = incoming.filter { $0.0 != startID }.count
             indegree[node.id] = count
-        }
         }
 
         var queue: [UUID] = nodes.compactMap { node in
@@ -566,7 +667,7 @@ class AudioEngine: ObservableObject {
                 startID: startID,
                 inputBuffer: inputBuffer,
                 outputBuffers: outputBuffers,
-                frameLength: frameLength,
+                frameLength: inputBuffer.first?.count ?? 0,
                 channelCount: channelCount
             )
 
@@ -576,7 +677,7 @@ class AudioEngine: ObservableObject {
                 to: &processed,
                 sampleRate: sampleRate,
                 channelCount: channelCount,
-                frameLength: frameLength,
+                frameLength: inputBuffer.first?.count ?? 0,
                 nodeId: node.id,
                 levelSnapshot: &levelSnapshot
             )
@@ -591,28 +692,29 @@ class AudioEngine: ObservableObject {
             }
         }
 
-        if !levelSnapshot.isEmpty {
-            levelUpdateCounter += 1
-            if levelUpdateCounter % 8 == 0 {
-                let snapshot = levelSnapshot
-                DispatchQueue.main.async {
-                    self.effectLevels = snapshot
-                }
-            }
-        }
-
         let endInputs = inEdges[endID] ?? []
         let mixed = mergeInputs(
             inputs: endInputs,
             startID: startID,
             inputBuffer: inputBuffer,
             outputBuffers: outputBuffers,
-            frameLength: frameLength,
+            frameLength: inputBuffer.first?.count ?? 0,
             channelCount: channelCount
         )
         let limited = clampBuffer(mixed)
 
-        return interleaveBuffer(limited, frameLength: frameLength, channelCount: channelCount)
+        return (limited, levelSnapshot)
+    }
+
+    private func updateEffectLevelsIfNeeded(_ levelSnapshot: [UUID: Float]) {
+        guard !levelSnapshot.isEmpty else { return }
+        levelUpdateCounter += 1
+        if levelUpdateCounter % 8 == 0 {
+            let snapshot = levelSnapshot
+            DispatchQueue.main.async {
+                self.effectLevels = snapshot
+            }
+        }
     }
 
     private func reachableNodes(from startID: UUID, outEdges: [UUID: [UUID]]) -> Set<UUID> {
@@ -769,6 +871,69 @@ class AudioEngine: ObservableObject {
 
         // Initialize effect states
         initializeEffectStates(channelCount: channelCount)
+
+        if useSplitGraph {
+            let inputBuffer = deinterleavedInput(
+                channelData: channelData,
+                frameLength: frameLength,
+                channelCount: channelCount
+            )
+
+            if channelCount < 2 {
+                let (processed, snapshot) = processGraph(
+                    inputBuffer: inputBuffer,
+                    channelCount: channelCount,
+                    sampleRate: sampleRate,
+                    nodes: splitLeftNodes,
+                    connections: splitLeftConnections,
+                    startID: splitLeftStartID,
+                    endID: splitLeftEndID
+                )
+                updateEffectLevelsIfNeeded(snapshot)
+                return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
+            }
+
+            let leftInput = [inputBuffer[0]]
+            let rightInput = [inputBuffer[1]]
+
+            let (leftProcessed, leftSnapshot) = processGraph(
+                inputBuffer: leftInput,
+                channelCount: 1,
+                sampleRate: sampleRate,
+                nodes: splitLeftNodes,
+                connections: splitLeftConnections,
+                startID: splitLeftStartID,
+                endID: splitLeftEndID
+            )
+            initializeSplitRightStates(channelCount: 1)
+            let (rightProcessed, rightSnapshot) = withSplitRightState {
+                processGraph(
+                    inputBuffer: rightInput,
+                    channelCount: 1,
+                    sampleRate: sampleRate,
+                    nodes: splitRightNodes,
+                    connections: splitRightConnections,
+                    startID: splitRightStartID,
+                    endID: splitRightEndID
+                )
+            }
+
+            var combined = inputBuffer
+            if let leftChannel = leftProcessed.first {
+                combined[0] = leftChannel
+            }
+            if combined.count > 1, let rightChannel = rightProcessed.first {
+                combined[1] = rightChannel
+            }
+
+            var mergedSnapshot = leftSnapshot
+            for (key, value) in rightSnapshot {
+                mergedSnapshot[key] = value
+            }
+            updateEffectLevelsIfNeeded(mergedSnapshot)
+
+            return interleaveBuffer(combined, frameLength: frameLength, channelCount: channelCount)
+        }
 
         if useManualGraph {
             return processManualGraph(
@@ -1204,6 +1369,59 @@ class AudioEngine: ObservableObject {
         }
     }
 
+    private func initializeSplitRightStates(channelCount: Int) {
+        if splitRightBassBoostState.count != channelCount {
+            splitRightBassBoostState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if splitRightClarityState.count != channelCount {
+            splitRightClarityState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if splitRightDeMudState.count != channelCount {
+            splitRightDeMudState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if splitRightEqBassState.count != channelCount {
+            splitRightEqBassState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if splitRightEqMidsState.count != channelCount {
+            splitRightEqMidsState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if splitRightEqTrebleState.count != channelCount {
+            splitRightEqTrebleState = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if splitRightCompressorEnvelope.count != channelCount {
+            splitRightCompressorEnvelope = [Float](repeating: 0, count: channelCount)
+        }
+    }
+
+    private func withSplitRightState<T>(_ work: () -> T) -> T {
+        Swift.swap(&bassBoostState, &splitRightBassBoostState)
+        Swift.swap(&clarityState, &splitRightClarityState)
+        Swift.swap(&deMudState, &splitRightDeMudState)
+        Swift.swap(&eqBassState, &splitRightEqBassState)
+        Swift.swap(&eqMidsState, &splitRightEqMidsState)
+        Swift.swap(&eqTrebleState, &splitRightEqTrebleState)
+        Swift.swap(&compressorEnvelope, &splitRightCompressorEnvelope)
+        Swift.swap(&reverbBuffer, &splitRightReverbBuffer)
+        Swift.swap(&reverbWriteIndex, &splitRightReverbWriteIndex)
+        Swift.swap(&delayBuffer, &splitRightDelayBuffer)
+        Swift.swap(&delayWriteIndex, &splitRightDelayWriteIndex)
+        Swift.swap(&tremoloPhase, &splitRightTremoloPhase)
+        let result = work()
+        Swift.swap(&bassBoostState, &splitRightBassBoostState)
+        Swift.swap(&clarityState, &splitRightClarityState)
+        Swift.swap(&deMudState, &splitRightDeMudState)
+        Swift.swap(&eqBassState, &splitRightEqBassState)
+        Swift.swap(&eqMidsState, &splitRightEqMidsState)
+        Swift.swap(&eqTrebleState, &splitRightEqTrebleState)
+        Swift.swap(&compressorEnvelope, &splitRightCompressorEnvelope)
+        Swift.swap(&reverbBuffer, &splitRightReverbBuffer)
+        Swift.swap(&reverbWriteIndex, &splitRightReverbWriteIndex)
+        Swift.swap(&delayBuffer, &splitRightDelayBuffer)
+        Swift.swap(&delayWriteIndex, &splitRightDelayWriteIndex)
+        Swift.swap(&tremoloPhase, &splitRightTremoloPhase)
+        return result
+    }
+
     private func updateBassBoostCoefficients(sampleRate: Double) {
         if sampleRate != bassBoostLastSampleRate || bassBoostAmount != bassBoostLastAmount {
             bassBoostLastSampleRate = sampleRate
@@ -1429,6 +1647,18 @@ class AudioEngine: ObservableObject {
             tremoloPhase = 0
             resetReverbStateUnlocked()
             resetDelayStateUnlocked()
+            splitRightBassBoostState = splitRightBassBoostState.map { _ in BiquadState() }
+            splitRightClarityState = splitRightClarityState.map { _ in BiquadState() }
+            splitRightDeMudState = splitRightDeMudState.map { _ in BiquadState() }
+            splitRightEqBassState = splitRightEqBassState.map { _ in BiquadState() }
+            splitRightEqMidsState = splitRightEqMidsState.map { _ in BiquadState() }
+            splitRightEqTrebleState = splitRightEqTrebleState.map { _ in BiquadState() }
+            splitRightCompressorEnvelope = splitRightCompressorEnvelope.map { _ in 0 }
+            splitRightTremoloPhase = 0
+            splitRightReverbBuffer.removeAll()
+            splitRightReverbWriteIndex = 0
+            splitRightDelayBuffer.removeAll()
+            splitRightDelayWriteIndex = 0
         }
         DispatchQueue.main.async {
             self.effectLevels = [:]
@@ -1875,6 +2105,7 @@ class AudioEngine: ObservableObject {
         withEffectStateLock {
             effectChainOrder = chain
             useManualGraph = false
+            useSplitGraph = false
         }
 
         let activeTypes = Set(chain.map { $0.type })
@@ -1912,9 +2143,48 @@ class AudioEngine: ObservableObject {
             manualGraphStartID = startID
             manualGraphEndID = endID
             useManualGraph = true
+            useSplitGraph = false
         }
 
         let activeTypes = Set(nodes.map { $0.type })
+        bassBoostEnabled = activeTypes.contains(.bassBoost)
+        nightcoreEnabled = activeTypes.contains(.pitchShift)
+        clarityEnabled = activeTypes.contains(.clarity)
+        deMudEnabled = activeTypes.contains(.deMud)
+        simpleEQEnabled = activeTypes.contains(.simpleEQ)
+        tenBandEQEnabled = activeTypes.contains(.tenBandEQ)
+        compressorEnabled = activeTypes.contains(.compressor)
+        reverbEnabled = activeTypes.contains(.reverb)
+        stereoWidthEnabled = activeTypes.contains(.stereoWidth)
+        delayEnabled = activeTypes.contains(.delay)
+        distortionEnabled = activeTypes.contains(.distortion)
+        tremoloEnabled = activeTypes.contains(.tremolo)
+    }
+
+    func updateEffectGraphSplit(
+        leftNodes: [BeginnerNode],
+        leftConnections: [BeginnerConnection],
+        leftStartID: UUID,
+        leftEndID: UUID,
+        rightNodes: [BeginnerNode],
+        rightConnections: [BeginnerConnection],
+        rightStartID: UUID,
+        rightEndID: UUID
+    ) {
+        withEffectStateLock {
+            splitLeftNodes = leftNodes
+            splitLeftConnections = leftConnections
+            splitLeftStartID = leftStartID
+            splitLeftEndID = leftEndID
+            splitRightNodes = rightNodes
+            splitRightConnections = rightConnections
+            splitRightStartID = rightStartID
+            splitRightEndID = rightEndID
+            useSplitGraph = true
+            useManualGraph = false
+        }
+
+        let activeTypes = Set((leftNodes + rightNodes).map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)

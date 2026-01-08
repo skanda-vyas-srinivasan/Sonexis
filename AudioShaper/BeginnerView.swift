@@ -23,6 +23,11 @@ struct BeginnerView: View {
 
     @State private var startNodeID = UUID()
     @State private var endNodeID = UUID()
+    @State private var leftStartNodeID = UUID()
+    @State private var leftEndNodeID = UUID()
+    @State private var rightStartNodeID = UUID()
+    @State private var rightEndNodeID = UUID()
+    @State private var graphMode: GraphMode = .single
     private let connectionSnapRadius: CGFloat = 120
 
     enum WiringMode {
@@ -31,8 +36,11 @@ struct BeginnerView: View {
     }
 
     var body: some View {
-        let autoPath = chainPath()
-        let pathIDs = wiringMode == .automatic ? Set(autoPath.map { $0.id }) : reachableNodeIDsFromStart()
+        let leftAutoPath = graphMode == .split ? chainPath(for: .left) : chainPath(for: nil)
+        let rightAutoPath = graphMode == .split ? chainPath(for: .right) : []
+        let pathIDs = wiringMode == .automatic
+            ? Set((leftAutoPath + rightAutoPath).map { $0.id })
+            : reachableNodeIDsFromStart()
 
         VStack(spacing: 0) {
             // Effect palette at top
@@ -49,6 +57,19 @@ struct BeginnerView: View {
                 Spacer()
 
                 HStack(spacing: 12) {
+                    Picker("Graph Mode", selection: $graphMode) {
+                        Text("Stereo").tag(GraphMode.single)
+                        Text("Split L/R").tag(GraphMode.split)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 180)
+                    .onChange(of: graphMode) { _ in
+                        if graphMode == .split {
+                            syncLanesForSplit()
+                        }
+                        applyChainToEngine()
+                    }
+
                     // Mode toggle
                     Picker("Wiring Mode", selection: $wiringMode) {
                         Text("Automatic").tag(WiringMode.automatic)
@@ -147,8 +168,11 @@ struct BeginnerView: View {
 
                     // Draw connections based on mode
                     if wiringMode == .automatic {
-                        // In automatic mode, show position-based flow
-                        ForEach(connectionsForCanvas(path: autoPath), id: \.id) { connection in
+                        let autoConnections = graphMode == .split
+                            ? (connectionsForCanvas(path: leftAutoPath, lane: .left) +
+                               connectionsForCanvas(path: rightAutoPath, lane: .right))
+                            : connectionsForCanvas(path: leftAutoPath, lane: nil)
+                        ForEach(autoConnections, id: \.id) { connection in
                             FlowLine(
                                 from: connection.from,
                                 to: connection.to,
@@ -157,8 +181,11 @@ struct BeginnerView: View {
                             )
                         }
                     } else {
-                        // In manual mode, show explicit wires (always visible)
-                        ForEach(visualManualConnections(in: geometry.size), id: \.id) { connection in
+                        let manualConnections = graphMode == .split
+                            ? (visualManualConnections(in: geometry.size, lane: .left) +
+                               visualManualConnections(in: geometry.size, lane: .right))
+                            : visualManualConnections(in: geometry.size, lane: nil)
+                        ForEach(manualConnections, id: \.id) { connection in
                             FlowLine(
                                 from: connection.from,
                                 to: connection.to,
@@ -234,52 +261,149 @@ struct BeginnerView: View {
                             .background(Color.blue.opacity(0.08))
                     }
 
-                    StartNodeView()
-                        .position(startNodePosition(in: geometry.size))
-                        .contextMenu {
-                            if wiringMode == .manual {
-                                Button("Delete Node Wires") {
-                                    removeWires(for: startNodeID)
-                                }
-                            }
-                        }
-                        .simultaneousGesture(
-                            DragGesture()
-                                .onChanged { value in
-                                    if NSEvent.modifierFlags.contains(.option) {
-                                        print("🖱️ START drag with Option held")
-                                        let start = startNodePosition(in: geometry.size)
-                                        activeConnectionFromID = startNodeID
-                                        activeConnectionPoint = CGPoint(
-                                            x: start.x + value.translation.width,
-                                            y: start.y + value.translation.height
-                                        )
+                    if graphMode == .split {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.18))
+                            .frame(width: 1)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+                        StartNodeView()
+                            .position(startNodePosition(in: geometry.size, lane: .left))
+                            .contextMenu {
+                                if wiringMode == .manual {
+                                    Button("Delete Node Wires") {
+                                        removeWires(for: leftStartNodeID)
                                     }
                                 }
-                                .onEnded { value in
-                                    if NSEvent.modifierFlags.contains(.option) {
-                                        print("🖱️ START drag ended with Option")
-                                        let start = startNodePosition(in: geometry.size)
-                                        let dropPoint = CGPoint(
-                                            x: start.x + value.translation.width,
-                                            y: start.y + value.translation.height
-                                        )
-                                        finalizeConnection(from: startNodeID, dropPoint: dropPoint)
-                                    } else {
-                                        activeConnectionFromID = nil
-                                        activeConnectionPoint = .zero
+                            }
+                            .simultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        if NSEvent.modifierFlags.contains(.option) {
+                                            let start = startNodePosition(in: geometry.size, lane: .left)
+                                            activeConnectionFromID = leftStartNodeID
+                                            activeConnectionPoint = CGPoint(
+                                                x: start.x + value.translation.width,
+                                                y: start.y + value.translation.height
+                                            )
+                                        }
+                                    }
+                                    .onEnded { value in
+                                        if NSEvent.modifierFlags.contains(.option) {
+                                            let start = startNodePosition(in: geometry.size, lane: .left)
+                                            let dropPoint = CGPoint(
+                                                x: start.x + value.translation.width,
+                                                y: start.y + value.translation.height
+                                            )
+                                            finalizeConnection(from: leftStartNodeID, dropPoint: dropPoint)
+                                        } else {
+                                            activeConnectionFromID = nil
+                                            activeConnectionPoint = .zero
+                                        }
+                                    }
+                            )
+
+                        EndNodeView()
+                            .position(endNodePosition(in: geometry.size, lane: .left))
+                            .contextMenu {
+                                if wiringMode == .manual {
+                                    Button("Delete Node Wires") {
+                                        removeWires(for: leftEndNodeID)
                                     }
                                 }
-                        )
-                    EndNodeView()
-                        .position(endNodePosition(in: geometry.size))
-                        .contextMenu {
-                            if wiringMode == .manual {
-                                Button("Delete Node Wires") {
-                                    removeWires(for: endNodeID)
+                            }
+
+                        StartNodeView()
+                            .position(startNodePosition(in: geometry.size, lane: .right))
+                            .contextMenu {
+                                if wiringMode == .manual {
+                                    Button("Delete Node Wires") {
+                                        removeWires(for: rightStartNodeID)
+                                    }
                                 }
                             }
-                        }
+                            .simultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        if NSEvent.modifierFlags.contains(.option) {
+                                            let start = startNodePosition(in: geometry.size, lane: .right)
+                                            activeConnectionFromID = rightStartNodeID
+                                            activeConnectionPoint = CGPoint(
+                                                x: start.x + value.translation.width,
+                                                y: start.y + value.translation.height
+                                            )
+                                        }
+                                    }
+                                    .onEnded { value in
+                                        if NSEvent.modifierFlags.contains(.option) {
+                                            let start = startNodePosition(in: geometry.size, lane: .right)
+                                            let dropPoint = CGPoint(
+                                                x: start.x + value.translation.width,
+                                                y: start.y + value.translation.height
+                                            )
+                                            finalizeConnection(from: rightStartNodeID, dropPoint: dropPoint)
+                                        } else {
+                                            activeConnectionFromID = nil
+                                            activeConnectionPoint = .zero
+                                        }
+                                    }
+                            )
+
+                        EndNodeView()
+                            .position(endNodePosition(in: geometry.size, lane: .right))
+                            .contextMenu {
+                                if wiringMode == .manual {
+                                    Button("Delete Node Wires") {
+                                        removeWires(for: rightEndNodeID)
+                                    }
+                                }
+                            }
+                    } else {
+                        StartNodeView()
+                            .position(startNodePosition(in: geometry.size, lane: nil))
+                            .contextMenu {
+                                if wiringMode == .manual {
+                                    Button("Delete Node Wires") {
+                                        removeWires(for: startNodeID)
+                                    }
+                                }
+                            }
+                            .simultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        if NSEvent.modifierFlags.contains(.option) {
+                                            let start = startNodePosition(in: geometry.size, lane: nil)
+                                            activeConnectionFromID = startNodeID
+                                            activeConnectionPoint = CGPoint(
+                                                x: start.x + value.translation.width,
+                                                y: start.y + value.translation.height
+                                            )
+                                        }
+                                    }
+                                    .onEnded { value in
+                                        if NSEvent.modifierFlags.contains(.option) {
+                                            let start = startNodePosition(in: geometry.size, lane: nil)
+                                            let dropPoint = CGPoint(
+                                                x: start.x + value.translation.width,
+                                                y: start.y + value.translation.height
+                                            )
+                                            finalizeConnection(from: startNodeID, dropPoint: dropPoint)
+                                        } else {
+                                            activeConnectionFromID = nil
+                                            activeConnectionPoint = .zero
+                                        }
+                                    }
+                            )
+                        EndNodeView()
+                            .position(endNodePosition(in: geometry.size, lane: nil))
+                            .contextMenu {
+                                if wiringMode == .manual {
+                                    Button("Delete Node Wires") {
+                                        removeWires(for: endNodeID)
+                                    }
+                                }
+                            }
+                    }
 
                     ForEach(effectChain, id: \.id) { effect in
                         let nodePos = nodePosition(effect, in: geometry.size)
@@ -356,7 +480,14 @@ struct BeginnerView: View {
                                                 x: dragStartPosition.x + value.translation.width,
                                                 y: dragStartPosition.y + value.translation.height
                                             )
-                                            updateNodePosition(effect.id, position: clamp(newPosition, to: geometry.size))
+                                            updateNodePosition(
+                                                effect.id,
+                                                position: clamp(
+                                                    newPosition,
+                                                    to: geometry.size,
+                                                    lane: graphMode == .split ? effect.lane : nil
+                                                )
+                                            )
                                         }
                                     }
                                 }
@@ -382,7 +513,7 @@ struct BeginnerView: View {
                         )
                     }
 
-                    if effectChain.isEmpty {
+                    if effectChain.isEmpty && graphMode != .split {
                         VStack(spacing: 8) {
                             Image(systemName: "waveform.path")
                                 .font(.system(size: 40))
@@ -404,6 +535,10 @@ struct BeginnerView: View {
                     effectChain: $effectChain,
                     draggedEffectType: $draggedEffectType,
                     canvasSize: geometry.size,
+                    graphMode: graphMode,
+                    laneProvider: { point in
+                        laneForPoint(point, in: geometry.size)
+                    },
                     onAdd: { newNode in
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                             effectChain.append(newNode)
@@ -436,7 +571,9 @@ struct BeginnerView: View {
 
     private func addEffectToChain(_ type: EffectType) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            let newEffect = BeginnerNode(type: type, position: defaultNodePosition(in: canvasSize))
+            let lane: GraphLane? = graphMode == .split ? .left : nil
+            let position = defaultNodePosition(in: canvasSize, lane: lane)
+            let newEffect = BeginnerNode(type: type, position: position, lane: lane ?? .left)
             effectChain.append(newEffect)
             applyChainToEngine()
         }
@@ -465,31 +602,53 @@ struct BeginnerView: View {
     }
 
     private func applyChainToEngine() {
-        let path = chainPath()
-        print("📊 Chain path (\(path.count) effects) - Mode: \(wiringMode == .automatic ? "AUTOMATIC" : "MANUAL")")
-        if wiringMode == .automatic {
-            for (index, node) in path.enumerated() {
-                print("   \(index + 1). \(node.type.rawValue)")
-            }
-        } else {
-            let edges = manualGraphEdges()
-            print("   Manual edges (\(edges.count))")
-            for edge in edges {
-                print("   🔗 \(edge)")
-            }
-        }
-        if wiringMode == .manual {
-            audioEngine.updateEffectGraph(
-                nodes: effectChain,
-                connections: manualConnections,
-                startID: startNodeID,
-                endID: endNodeID
+        if graphMode == .split {
+            let leftNodes = effectChain.filter { $0.lane == .left }
+            let rightNodes = effectChain.filter { $0.lane == .right }
+            let leftConnections = wiringMode == .automatic
+                ? autoConnections(for: .left)
+                : manualConnections.filter { laneForConnection($0) == .left }
+            let rightConnections = wiringMode == .automatic
+                ? autoConnections(for: .right)
+                : manualConnections.filter { laneForConnection($0) == .right }
+
+            audioEngine.updateEffectGraphSplit(
+                leftNodes: leftNodes,
+                leftConnections: leftConnections,
+                leftStartID: leftStartNodeID,
+                leftEndID: leftEndNodeID,
+                rightNodes: rightNodes,
+                rightConnections: rightConnections,
+                rightStartID: rightStartNodeID,
+                rightEndID: rightEndNodeID
             )
             updateDebugGraphText()
         } else {
-            audioEngine.updateEffectChain(path)
-            // TEMP DEBUG: surface the DSP chain in the UI for visual verification.
-            updateDebugChainText(path)
+            let path = chainPath(for: nil)
+            print("📊 Chain path (\(path.count) effects) - Mode: \(wiringMode == .automatic ? "AUTOMATIC" : "MANUAL")")
+            if wiringMode == .automatic {
+                for (index, node) in path.enumerated() {
+                    print("   \(index + 1). \(node.type.rawValue)")
+                }
+            } else {
+                let edges = manualGraphEdges(lane: nil)
+                print("   Manual edges (\(edges.count))")
+                for edge in edges {
+                    print("   🔗 \(edge)")
+                }
+            }
+            if wiringMode == .manual {
+                audioEngine.updateEffectGraph(
+                    nodes: effectChain,
+                    connections: manualConnections,
+                    startID: startNodeID,
+                    endID: endNodeID
+                )
+                updateDebugGraphText()
+            } else {
+                audioEngine.updateEffectChain(path)
+                updateDebugChainText(path)
+            }
         }
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
     }
@@ -499,7 +658,15 @@ struct BeginnerView: View {
         manualConnections = snapshot.connections
         startNodeID = snapshot.startNodeID
         endNodeID = snapshot.endNodeID
+        leftStartNodeID = snapshot.leftStartNodeID ?? leftStartNodeID
+        leftEndNodeID = snapshot.leftEndNodeID ?? leftEndNodeID
+        rightStartNodeID = snapshot.rightStartNodeID ?? rightStartNodeID
+        rightEndNodeID = snapshot.rightEndNodeID ?? rightEndNodeID
+        graphMode = snapshot.graphMode
         wiringMode = snapshot.wiringMode == .manual ? .manual : .automatic
+        if graphMode == .split {
+            manualConnections.removeAll { laneForConnection($0) == nil }
+        }
         selectedNodeIDs.removeAll()
         selectedWireID = nil
         applyChainToEngine()
@@ -507,11 +674,16 @@ struct BeginnerView: View {
 
     private func currentGraphSnapshot() -> GraphSnapshot {
         GraphSnapshot(
+            graphMode: graphMode,
             wiringMode: wiringMode == .manual ? .manual : .automatic,
             nodes: effectChain,
             connections: manualConnections,
             startNodeID: startNodeID,
-            endNodeID: endNodeID
+            endNodeID: endNodeID,
+            leftStartNodeID: leftStartNodeID,
+            leftEndNodeID: leftEndNodeID,
+            rightStartNodeID: rightStartNodeID,
+            rightEndNodeID: rightEndNodeID
         )
     }
 
@@ -525,32 +697,95 @@ struct BeginnerView: View {
     }
 
     private func updateDebugGraphText() {
-        let edges = manualGraphEdges()
-        if edges.isEmpty {
-            debugChainText = "DSP graph: (empty)"
-            return
+        if graphMode == .split {
+            let leftEdges = wiringMode == .automatic
+                ? edgeStrings(from: autoConnections(for: .left), lane: .left)
+                : manualGraphEdges(lane: .left)
+            let rightEdges = wiringMode == .automatic
+                ? edgeStrings(from: autoConnections(for: .right), lane: .right)
+                : manualGraphEdges(lane: .right)
+            if leftEdges.isEmpty && rightEdges.isEmpty {
+                debugChainText = "DSP graph: (empty)"
+                return
+            }
+            let leftText = leftEdges.isEmpty ? "Left: (empty)" : "Left: \(leftEdges.joined(separator: " | "))"
+            let rightText = rightEdges.isEmpty ? "Right: (empty)" : "Right: \(rightEdges.joined(separator: " | "))"
+            debugChainText = "DSP graph: \(leftText)  •  \(rightText)"
+        } else {
+            let edges = wiringMode == .automatic
+                ? edgeStrings(from: autoConnections(for: .left), lane: nil)
+                : manualGraphEdges(lane: nil)
+            if edges.isEmpty {
+                debugChainText = "DSP graph: (empty)"
+                return
+            }
+            debugChainText = "DSP graph: \(edges.joined(separator: " | "))"
         }
-        debugChainText = "DSP graph: \(edges.joined(separator: " | "))"
     }
 
-    private func manualGraphEdges() -> [String] {
+    private func manualGraphEdges(lane: GraphLane?) -> [String] {
         var edges: [String] = []
 
         func name(for id: UUID) -> String {
-            if id == startNodeID { return "Start" }
-            if id == endNodeID { return "End" }
+            if graphMode == .split {
+                if id == leftStartNodeID { return "Start L" }
+                if id == leftEndNodeID { return "End L" }
+                if id == rightStartNodeID { return "Start R" }
+                if id == rightEndNodeID { return "End R" }
+            } else {
+                if id == startNodeID { return "Start" }
+                if id == endNodeID { return "End" }
+            }
             return effectChain.first(where: { $0.id == id })?.type.rawValue ?? "?"
         }
 
         for connection in manualConnections {
+            if graphMode == .split, laneForConnection(connection) != lane { continue }
             edges.append("\(name(for: connection.fromNodeId))→\(name(for: connection.toNodeId))")
         }
 
-        for nodeID in implicitEndNodes() {
-            edges.append("\(name(for: nodeID))→End")
+        for nodeID in implicitEndNodes(lane: lane) {
+            let endLabel = graphMode == .split ? (lane == .right ? "End R" : "End L") : "End"
+            edges.append("\(name(for: nodeID))→\(endLabel)")
         }
 
         return edges
+    }
+
+    private func edgeStrings(from connections: [BeginnerConnection], lane: GraphLane?) -> [String] {
+        func name(for id: UUID) -> String {
+            if graphMode == .split {
+                if id == leftStartNodeID { return "Start L" }
+                if id == leftEndNodeID { return "End L" }
+                if id == rightStartNodeID { return "Start R" }
+                if id == rightEndNodeID { return "End R" }
+            } else {
+                if id == startNodeID { return "Start" }
+                if id == endNodeID { return "End" }
+            }
+            return effectChain.first(where: { $0.id == id })?.type.rawValue ?? "?"
+        }
+
+        return connections.map { connection in
+            "\(name(for: connection.fromNodeId))→\(name(for: connection.toNodeId))"
+        }
+    }
+
+    private func autoConnections(for lane: GraphLane) -> [BeginnerConnection] {
+        let ordered = chainPath(for: lane)
+        let startID = startNodeID(for: lane)
+        let endID = endNodeID(for: lane)
+        guard !ordered.isEmpty else {
+            return [BeginnerConnection(fromNodeId: startID, toNodeId: endID)]
+        }
+
+        var connections: [BeginnerConnection] = []
+        connections.append(BeginnerConnection(fromNodeId: startID, toNodeId: ordered[0].id))
+        for index in 0..<(ordered.count - 1) {
+            connections.append(BeginnerConnection(fromNodeId: ordered[index].id, toNodeId: ordered[index + 1].id))
+        }
+        connections.append(BeginnerConnection(fromNodeId: ordered[ordered.count - 1].id, toNodeId: endID))
+        return connections
     }
 
     private func levelForNode(_ id: UUID) -> Float {
@@ -568,7 +803,8 @@ struct BeginnerView: View {
                 x: startPos.x + delta.width,
                 y: startPos.y + delta.height
             )
-            updateNodePosition(id, position: clamp(newPosition, to: size))
+            let lane = effectChain.first(where: { $0.id == id })?.lane
+            updateNodePosition(id, position: clamp(newPosition, to: size, lane: graphMode == .split ? lane : nil))
         }
     }
 
@@ -650,10 +886,11 @@ struct BeginnerView: View {
     private func manualConnection(for wireID: UUID) -> CanvasConnection? {
         guard let connection = manualConnections.first(where: { $0.id == wireID }) else { return nil }
         let size = canvasSize
+        let lane = laneForConnection(connection)
 
         let fromPoint: CGPoint
-        if connection.fromNodeId == startNodeID {
-            fromPoint = startNodePosition(in: size)
+        if connection.fromNodeId == startNodeID || connection.fromNodeId == leftStartNodeID || connection.fromNodeId == rightStartNodeID {
+            fromPoint = startNodePosition(in: size, lane: lane)
         } else if let node = effectChain.first(where: { $0.id == connection.fromNodeId }) {
             fromPoint = nodePosition(node, in: size)
         } else {
@@ -661,8 +898,8 @@ struct BeginnerView: View {
         }
 
         let toPoint: CGPoint
-        if connection.toNodeId == endNodeID {
-            toPoint = endNodePosition(in: size)
+        if connection.toNodeId == endNodeID || connection.toNodeId == leftEndNodeID || connection.toNodeId == rightEndNodeID {
+            toPoint = endNodePosition(in: size, lane: lane)
         } else if let node = effectChain.first(where: { $0.id == connection.toNodeId }) {
             toPoint = nodePosition(node, in: size)
         } else {
@@ -672,13 +909,16 @@ struct BeginnerView: View {
         return CanvasConnection(id: connection.id, from: fromPoint, to: toPoint, toNodeId: connection.toNodeId, isManual: true)
     }
 
-    private func visualManualConnections(in size: CGSize) -> [CanvasConnection] {
+    private func visualManualConnections(in size: CGSize, lane: GraphLane?) -> [CanvasConnection] {
         var connections: [CanvasConnection] = []
 
         for connection in manualConnections {
+            if graphMode == .split {
+                guard laneForConnection(connection) == lane else { continue }
+            }
             let fromPoint: CGPoint
-            if connection.fromNodeId == startNodeID {
-                fromPoint = startNodePosition(in: size)
+            if connection.fromNodeId == startNodeID || connection.fromNodeId == leftStartNodeID || connection.fromNodeId == rightStartNodeID {
+                fromPoint = startNodePosition(in: size, lane: lane)
             } else if let node = effectChain.first(where: { $0.id == connection.fromNodeId }) {
                 fromPoint = nodePosition(node, in: size)
             } else {
@@ -686,8 +926,8 @@ struct BeginnerView: View {
             }
 
             let toPoint: CGPoint
-            if connection.toNodeId == endNodeID {
-                toPoint = endNodePosition(in: size)
+            if connection.toNodeId == endNodeID || connection.toNodeId == leftEndNodeID || connection.toNodeId == rightEndNodeID {
+                toPoint = endNodePosition(in: size, lane: lane)
             } else if let node = effectChain.first(where: { $0.id == connection.toNodeId }) {
                 toPoint = nodePosition(node, in: size)
             } else {
@@ -706,12 +946,12 @@ struct BeginnerView: View {
         }
 
         if wiringMode == .manual {
-            for nodeID in implicitEndNodes() {
+            for nodeID in implicitEndNodes(lane: lane) {
                 guard let node = effectChain.first(where: { $0.id == nodeID }) else { continue }
                 let fromPoint = nodePosition(node, in: size)
-                let toPoint = endNodePosition(in: size)
+                let toPoint = endNodePosition(in: size, lane: lane)
                 connections.append(
-                    CanvasConnection(id: UUID(), from: fromPoint, to: toPoint, toNodeId: endNodeID, isManual: false)
+                    CanvasConnection(id: UUID(), from: fromPoint, to: toPoint, toNodeId: endNodeID(for: lane), isManual: false)
                 )
             }
         }
@@ -719,11 +959,11 @@ struct BeginnerView: View {
         return connections
     }
 
-    private func connectionsForCanvas(path ordered: [BeginnerNode]) -> [CanvasConnection] {
+    private func connectionsForCanvas(path ordered: [BeginnerNode], lane: GraphLane?) -> [CanvasConnection] {
         guard !ordered.isEmpty else { return [] }
 
-        let startPoint = startNodePosition(in: canvasSize)
-        let endPoint = endNodePosition(in: canvasSize)
+        let startPoint = startNodePosition(in: canvasSize, lane: lane)
+        let endPoint = endNodePosition(in: canvasSize, lane: lane)
 
         var connections: [CanvasConnection] = []
         var previousPoint = startPoint
@@ -738,27 +978,55 @@ struct BeginnerView: View {
 
         if let last = ordered.last {
             connections.append(
-                CanvasConnection(id: UUID(), from: previousPoint, to: endPoint, toNodeId: last.id, isManual: false)
+                CanvasConnection(id: UUID(), from: previousPoint, to: endPoint, toNodeId: endNodeID(for: lane), isManual: false)
             )
         }
 
         return connections
     }
 
-    private func defaultNodePosition(in size: CGSize) -> CGPoint {
-        CGPoint(x: max(size.width * 0.5, 100), y: max(size.height * 0.5, 100))
+    private func laneBounds(in size: CGSize, lane: GraphLane) -> CGRect {
+        let midX = size.width * 0.5
+        switch lane {
+        case .left:
+            return CGRect(x: 0, y: 0, width: midX, height: size.height)
+        case .right:
+            return CGRect(x: midX, y: 0, width: size.width - midX, height: size.height)
+        }
     }
 
-    private func startNodePosition(in size: CGSize) -> CGPoint {
-        CGPoint(x: 80, y: size.height * 0.5)
+    private func defaultNodePosition(in size: CGSize, lane: GraphLane?) -> CGPoint {
+        if graphMode == .split, let lane {
+            let bounds = laneBounds(in: size, lane: lane)
+            return CGPoint(x: max(bounds.midX, 100), y: max(bounds.midY, 100))
+        }
+        return CGPoint(x: max(size.width * 0.5, 100), y: max(size.height * 0.5, 100))
     }
 
-    private func endNodePosition(in size: CGSize) -> CGPoint {
-        CGPoint(x: max(size.width - 80, 100), y: size.height * 0.5)
+    private func startNodePosition(in size: CGSize, lane: GraphLane?) -> CGPoint {
+        if graphMode == .split, let lane {
+            let bounds = laneBounds(in: size, lane: lane)
+            return CGPoint(x: bounds.minX + 80, y: bounds.midY)
+        }
+        return CGPoint(x: 80, y: size.height * 0.5)
     }
 
-    private func clamp(_ point: CGPoint, to size: CGSize) -> CGPoint {
+    private func endNodePosition(in size: CGSize, lane: GraphLane?) -> CGPoint {
+        if graphMode == .split, let lane {
+            let bounds = laneBounds(in: size, lane: lane)
+            return CGPoint(x: max(bounds.maxX - 80, bounds.minX + 80), y: bounds.midY)
+        }
+        return CGPoint(x: max(size.width - 80, 100), y: size.height * 0.5)
+    }
+
+    private func clamp(_ point: CGPoint, to size: CGSize, lane: GraphLane?) -> CGPoint {
         let padding: CGFloat = 80
+        if graphMode == .split, let lane {
+            let bounds = laneBounds(in: size, lane: lane)
+            let x = min(max(point.x, bounds.minX + padding), max(bounds.maxX - padding, bounds.minX + padding))
+            let y = min(max(point.y, padding), max(size.height - padding, padding))
+            return CGPoint(x: x, y: y)
+        }
         let x = min(max(point.x, padding), max(size.width - padding, padding))
         let y = min(max(point.y, padding), max(size.height - padding, padding))
         return CGPoint(x: x, y: y)
@@ -767,7 +1035,13 @@ struct BeginnerView: View {
     private func connectionPreviewStartPoint(in size: CGSize) -> CGPoint? {
         guard let fromID = activeConnectionFromID else { return nil }
         if fromID == startNodeID {
-            return startNodePosition(in: size)
+            return startNodePosition(in: size, lane: nil)
+        }
+        if fromID == leftStartNodeID {
+            return startNodePosition(in: size, lane: .left)
+        }
+        if fromID == rightStartNodeID {
+            return startNodePosition(in: size, lane: .right)
         }
         if let fromNode = effectChain.first(where: { $0.id == fromID }) {
             return nodePosition(fromNode, in: size)
@@ -789,6 +1063,15 @@ struct BeginnerView: View {
         else {
             print("   ❌ No valid target found or same node")
             return
+        }
+
+        if graphMode == .split {
+            let fromLane = laneForNodeID(fromID)
+            let toLane = laneForNodeID(targetID)
+            guard fromLane == toLane, fromLane != nil else {
+                print("   ❌ Cross-lane connection blocked")
+                return
+            }
         }
 
         print("   ✅ Found target: \(targetID == endNodeID ? "END" : "effect node")")
@@ -814,8 +1097,12 @@ struct BeginnerView: View {
 
     private func nearestConnectionTarget(from fromID: UUID, at point: CGPoint) -> UUID? {
         var closest: (id: UUID, distance: CGFloat)?
+        let fromLane = laneForNodeID(fromID)
 
         for node in effectChain {
+            if graphMode == .split, let fromLane, node.lane != fromLane {
+                continue
+            }
             let nodePoint = nodePosition(node, in: canvasSize)
             let dx = nodePoint.x - point.x
             let dy = nodePoint.y - point.y
@@ -827,14 +1114,15 @@ struct BeginnerView: View {
             }
         }
 
-        if fromID != endNodeID {
-            let endPoint = endNodePosition(in: canvasSize)
+        let endID = graphMode == .split ? endNodeID(for: fromLane) : endNodeID
+        if fromID != endID {
+            let endPoint = endNodePosition(in: canvasSize, lane: fromLane)
             let dx = endPoint.x - point.x
             let dy = endPoint.y - point.y
             let distance = sqrt(dx * dx + dy * dy)
             if distance <= connectionSnapRadius {
                 if closest == nil || distance < closest!.distance {
-                    closest = (endNodeID, distance)
+                    closest = (endID, distance)
                 }
             }
         }
@@ -863,25 +1151,26 @@ struct BeginnerView: View {
         return false
     }
 
-    private func buildNextMap() -> [UUID: UUID] {
+    private func buildNextMap(for lane: GraphLane?) -> [UUID: UUID] {
         var nextMap: [UUID: UUID] = [:]
 
-        // Build automatic position-based connections
-        let ordered = orderedNodesByPosition()
+        let ordered = orderedNodesByPosition(lane: lane)
         guard !ordered.isEmpty else { return nextMap }
 
-        nextMap[startNodeID] = ordered[0].id
+        let startID = startNodeID(for: lane)
+        let endID = endNodeID(for: lane)
+        nextMap[startID] = ordered[0].id
         for index in 0..<(ordered.count - 1) {
             nextMap[ordered[index].id] = ordered[index + 1].id
         }
-        nextMap[ordered[ordered.count - 1].id] = endNodeID
+        nextMap[ordered[ordered.count - 1].id] = endID
 
-        // Manual connections override automatic ones (automatic mode only).
         if wiringMode == .automatic {
             for connection in manualConnections {
-                let fromIsValid = connection.fromNodeId == startNodeID ||
+                if graphMode == .split, laneForConnection(connection) != lane { continue }
+                let fromIsValid = connection.fromNodeId == startID ||
                     effectChain.contains(where: { $0.id == connection.fromNodeId })
-                let toIsValid = connection.toNodeId == endNodeID ||
+                let toIsValid = connection.toNodeId == endID ||
                     effectChain.contains(where: { $0.id == connection.toNodeId })
                 guard fromIsValid, toIsValid else { continue }
                 nextMap[connection.fromNodeId] = connection.toNodeId
@@ -891,15 +1180,17 @@ struct BeginnerView: View {
         return nextMap
     }
 
-    private func chainPath() -> [BeginnerNode] {
-        let nextMap = buildNextMap()
-        guard let first = nextMap[startNodeID] else { return [] }
+    private func chainPath(for lane: GraphLane?) -> [BeginnerNode] {
+        let nextMap = buildNextMap(for: lane)
+        let startID = startNodeID(for: lane)
+        let endID = endNodeID(for: lane)
+        guard let first = nextMap[startID] else { return [] }
 
         var ordered: [BeginnerNode] = []
-        var visited = Set<UUID>([startNodeID])
+        var visited = Set<UUID>([startID])
         var current = first
 
-        while current != endNodeID {
+        while current != endID {
             if visited.contains(current) { break }
             visited.insert(current)
             guard let node = effectChain.first(where: { $0.id == current }) else { break }
@@ -912,13 +1203,25 @@ struct BeginnerView: View {
 
     private func reachableNodeIDsFromStart() -> Set<UUID> {
         guard wiringMode == .manual else { return [] }
+        if graphMode == .split {
+            let left = reachableNodeIDs(from: .left)
+            let right = reachableNodeIDs(from: .right)
+            return left.union(right)
+        }
+        return reachableNodeIDs(from: nil)
+    }
+
+    private func reachableNodeIDs(from lane: GraphLane?) -> Set<UUID> {
         var outEdges: [UUID: [UUID]] = [:]
         for connection in manualConnections {
+            if graphMode == .split, laneForConnection(connection) != lane { continue }
             outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
         }
 
-        var visited: Set<UUID> = [startNodeID]
-        var queue: [UUID] = [startNodeID]
+        let startID = startNodeID(for: lane)
+        let endID = endNodeID(for: lane)
+        var visited: Set<UUID> = [startID]
+        var queue: [UUID] = [startID]
 
         while let current = queue.first {
             queue.removeFirst()
@@ -930,24 +1233,26 @@ struct BeginnerView: View {
             }
         }
 
-        visited.remove(startNodeID)
-        visited.remove(endNodeID)
+        visited.remove(startID)
+        visited.remove(endID)
         return visited
     }
 
-    private func implicitEndNodes() -> [UUID] {
+    private func implicitEndNodes(lane: GraphLane?) -> [UUID] {
         guard wiringMode == .manual else { return [] }
-        let reachable = reachableNodeIDsFromStart()
+        let reachable = reachableNodeIDs(from: lane)
         var outEdges: [UUID: [UUID]] = [:]
         for connection in manualConnections {
+            if graphMode == .split, laneForConnection(connection) != lane { continue }
             outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
         }
 
+        let endID = endNodeID(for: lane)
         var sinks: [UUID] = []
         for nodeID in reachable {
             let outs = outEdges[nodeID] ?? []
-            if outs.isEmpty || !outs.contains(where: { $0 != endNodeID }) {
-                if !outs.contains(endNodeID) {
+            if outs.isEmpty || !outs.contains(where: { $0 != endID }) {
+                if !outs.contains(endID) {
                     sinks.append(nodeID)
                 }
             }
@@ -955,8 +1260,14 @@ struct BeginnerView: View {
         return sinks
     }
 
-    private func orderedNodesByPosition() -> [BeginnerNode] {
-        effectChain.sorted { lhs, rhs in
+    private func orderedNodesByPosition(lane: GraphLane?) -> [BeginnerNode] {
+        let nodes: [BeginnerNode]
+        if graphMode == .split, let lane = lane {
+            nodes = effectChain.filter { $0.lane == lane }
+        } else {
+            nodes = effectChain
+        }
+        return nodes.sorted { lhs, rhs in
             let lhsPoint = nodePosition(lhs, in: canvasSize)
             let rhsPoint = nodePosition(rhs, in: canvasSize)
             if lhsPoint.x == rhsPoint.x {
@@ -966,8 +1277,52 @@ struct BeginnerView: View {
         }
     }
 
+    private func laneForPoint(_ point: CGPoint, in size: CGSize) -> GraphLane {
+        point.x < size.width * 0.5 ? .left : .right
+    }
+
+    private func startNodeID(for lane: GraphLane?) -> UUID {
+        if graphMode == .split {
+            return lane == .right ? rightStartNodeID : leftStartNodeID
+        }
+        return startNodeID
+    }
+
+    private func endNodeID(for lane: GraphLane?) -> UUID {
+        if graphMode == .split {
+            return lane == .right ? rightEndNodeID : leftEndNodeID
+        }
+        return endNodeID
+    }
+
+    private func laneForNodeID(_ id: UUID) -> GraphLane? {
+        if graphMode == .split {
+            if id == leftStartNodeID || id == leftEndNodeID { return .left }
+            if id == rightStartNodeID || id == rightEndNodeID { return .right }
+            return effectChain.first(where: { $0.id == id })?.lane
+        }
+        return nil
+    }
+
+    private func laneForConnection(_ connection: BeginnerConnection) -> GraphLane? {
+        guard graphMode == .split else { return nil }
+        let fromLane = laneForNodeID(connection.fromNodeId)
+        let toLane = laneForNodeID(connection.toNodeId)
+        guard fromLane == toLane else { return nil }
+        return fromLane
+    }
+
+    private func syncLanesForSplit() {
+        let midX = canvasSize.width * 0.5
+        for index in effectChain.indices {
+            let position = nodePosition(effectChain[index], in: canvasSize)
+            effectChain[index].lane = position.x < midX ? .left : .right
+        }
+        manualConnections.removeAll { laneForConnection($0) == nil }
+    }
+
     private func nodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
-        node.position == .zero ? defaultNodePosition(in: size) : node.position
+        node.position == .zero ? defaultNodePosition(in: size, lane: graphMode == .split ? node.lane : nil) : node.position
     }
 }
 
@@ -978,6 +1333,8 @@ struct CanvasDropDelegate: DropDelegate {
     @Binding var effectChain: [BeginnerNode]
     @Binding var draggedEffectType: EffectType?
     let canvasSize: CGSize
+    let graphMode: GraphMode
+    let laneProvider: (CGPoint) -> GraphLane
     let onAdd: (BeginnerNode) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -986,15 +1343,24 @@ struct CanvasDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let effectType = draggedEffectType else { return false }
-        let location = clamp(info.location, to: canvasSize)
-        onAdd(BeginnerNode(type: effectType, position: location))
+        let lane = graphMode == .split ? laneProvider(info.location) : .left
+        let location = clamp(info.location, to: canvasSize, lane: graphMode == .split ? lane : nil)
+        onAdd(BeginnerNode(type: effectType, position: location, lane: lane))
         draggedEffectType = nil
         return true
     }
 
-    private func clamp(_ point: CGPoint, to size: CGSize) -> CGPoint {
+    private func clamp(_ point: CGPoint, to size: CGSize, lane: GraphLane?) -> CGPoint {
         let padding: CGFloat = 80
-        let x = min(max(point.x, padding), max(size.width - padding, padding))
+        let x: CGFloat
+        if let lane {
+            let midX = size.width * 0.5
+            let minX = lane == .left ? 0 : midX
+            let maxX = lane == .left ? midX : size.width
+            x = min(max(point.x, minX + padding), max(maxX - padding, minX + padding))
+        } else {
+            x = min(max(point.x, padding), max(size.width - padding, padding))
+        }
         let y = min(max(point.y, padding), max(size.height - padding, padding))
         return CGPoint(x: x, y: y)
     }

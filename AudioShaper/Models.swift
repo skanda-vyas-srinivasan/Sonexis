@@ -150,15 +150,37 @@ struct EffectChain: Identifiable, Codable {
 
 // MARK: - Beginner Mode Graph
 
+enum GraphLane: String, Codable {
+    case left
+    case right
+}
+
 struct BeginnerNode: Identifiable, Codable {
     let id: UUID
     let type: EffectType
     var position: CGPoint
+    var lane: GraphLane
 
-    init(type: EffectType, position: CGPoint = .zero) {
+    init(type: EffectType, position: CGPoint = .zero, lane: GraphLane = .left) {
         self.id = UUID()
         self.type = type
         self.position = position
+        self.lane = lane
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case position
+        case lane
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.type = try container.decode(EffectType.self, forKey: .type)
+        self.position = try container.decodeIfPresent(CGPoint.self, forKey: .position) ?? .zero
+        self.lane = try container.decodeIfPresent(GraphLane.self, forKey: .lane) ?? .left
     }
 }
 
@@ -196,12 +218,73 @@ enum GraphWiringMode: String, Codable {
     case manual
 }
 
+enum GraphMode: String, Codable {
+    case single
+    case split
+}
+
 struct GraphSnapshot: Codable {
+    var graphMode: GraphMode
     var wiringMode: GraphWiringMode
     var nodes: [BeginnerNode]
     var connections: [BeginnerConnection]
     var startNodeID: UUID
     var endNodeID: UUID
+    var leftStartNodeID: UUID?
+    var leftEndNodeID: UUID?
+    var rightStartNodeID: UUID?
+    var rightEndNodeID: UUID?
+
+    init(
+        graphMode: GraphMode,
+        wiringMode: GraphWiringMode,
+        nodes: [BeginnerNode],
+        connections: [BeginnerConnection],
+        startNodeID: UUID,
+        endNodeID: UUID,
+        leftStartNodeID: UUID? = nil,
+        leftEndNodeID: UUID? = nil,
+        rightStartNodeID: UUID? = nil,
+        rightEndNodeID: UUID? = nil
+    ) {
+        self.graphMode = graphMode
+        self.wiringMode = wiringMode
+        self.nodes = nodes
+        self.connections = connections
+        self.startNodeID = startNodeID
+        self.endNodeID = endNodeID
+        self.leftStartNodeID = leftStartNodeID
+        self.leftEndNodeID = leftEndNodeID
+        self.rightStartNodeID = rightStartNodeID
+        self.rightEndNodeID = rightEndNodeID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case graphMode
+        case wiringMode
+        case nodes
+        case connections
+        case startNodeID
+        case endNodeID
+        case leftStartNodeID
+        case leftEndNodeID
+        case rightStartNodeID
+        case rightEndNodeID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.graphMode = try container.decodeIfPresent(GraphMode.self, forKey: .graphMode) ?? .single
+        self.wiringMode = try container.decodeIfPresent(GraphWiringMode.self, forKey: .wiringMode) ?? .automatic
+        self.nodes = try container.decodeIfPresent([BeginnerNode].self, forKey: .nodes) ?? []
+        self.connections = try container.decodeIfPresent([BeginnerConnection].self, forKey: .connections) ?? []
+        self.startNodeID = try container.decodeIfPresent(UUID.self, forKey: .startNodeID) ?? UUID()
+        self.endNodeID = try container.decodeIfPresent(UUID.self, forKey: .endNodeID) ?? UUID()
+        self.leftStartNodeID = try container.decodeIfPresent(UUID.self, forKey: .leftStartNodeID)
+        self.leftEndNodeID = try container.decodeIfPresent(UUID.self, forKey: .leftEndNodeID)
+        self.rightStartNodeID = try container.decodeIfPresent(UUID.self, forKey: .rightStartNodeID)
+        self.rightEndNodeID = try container.decodeIfPresent(UUID.self, forKey: .rightEndNodeID)
+    }
 }
 
 // MARK: - Preset
