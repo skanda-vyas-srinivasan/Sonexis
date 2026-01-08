@@ -129,17 +129,20 @@ class AudioEngine: ObservableObject {
     @Published var selectedOutputDeviceID: AudioDeviceID? {
         didSet {
             if isRunning {
-                stop()
-                start()
+                reconfigureAudio()
             }
         }
     }
 
     private var outputQueue: AudioQueueRef?
     private var outputDeviceID: AudioDeviceID?
+    private var outputQueueStarted = false
+    private let outputQueueStartLock = NSLock()
     private var nightcoreRestartWorkItem: DispatchWorkItem?
     private var effectChainOrder: [BeginnerNode] = []
     private var levelUpdateCounter = 0
+    private let effectStateLock = NSLock()
+    private var isReconfiguring = false
 
     // Bass boost state
     private var bassBoostState: [BiquadState] = []
@@ -244,6 +247,7 @@ class AudioEngine: ObservableObject {
 
     private func startAudioEngine() {
         do {
+            isReconfiguring = true
             // Configure audio devices FIRST
             refreshOutputDevices()
             try configureAudioDevices()
@@ -285,6 +289,9 @@ class AudioEngine: ObservableObject {
             }
 
             self.outputQueue = outputQueue
+            outputQueueStartLock.lock()
+            outputQueueStarted = false
+            outputQueueStartLock.unlock()
 
             // Set the output device to speakers explicitly using device UID
             if let deviceUID = getDeviceUID(deviceID: speakerDeviceID) {
@@ -345,12 +352,8 @@ class AudioEngine: ObservableObject {
 
                 // Write to AudioQueue buffer
                 self.enqueueAudioData(interleavedData, queue: queue)
-            }
 
-            // Start the AudioQueue
-            let startStatus = AudioQueueStart(outputQueue, nil)
-            if startStatus != noErr {
-                print("⚠️ AudioQueue start failed: \(startStatus)")
+                self.ensureOutputQueueStarted(queue)
             }
 
             // Start the AVAudioEngine (for input only)
@@ -362,10 +365,35 @@ class AudioEngine: ObservableObject {
             print("✅ Audio engine started successfully")
             print("   Input: AVAudioEngine (\(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch)")
             print("   Output: AudioQueue → Speakers")
+            isReconfiguring = false
         } catch {
             errorMessage = "Failed to start: \(error.localizedDescription)"
             isRunning = false
+            isReconfiguring = false
             print("❌ Audio engine failed to start: \(error)")
+        }
+    }
+
+    private func ensureOutputQueueStarted(_ queue: AudioQueueRef) {
+        outputQueueStartLock.lock()
+        let shouldStart = !outputQueueStarted
+        if shouldStart {
+            outputQueueStarted = true
+        }
+        outputQueueStartLock.unlock()
+
+        guard shouldStart else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            let startStatus = AudioQueueStart(queue, nil)
+            if startStatus != noErr {
+                self?.outputQueueStartLock.lock()
+                self?.outputQueueStarted = false
+                self?.outputQueueStartLock.unlock()
+                print("⚠️ AudioQueue start failed: \(startStatus)")
+            } else {
+                print("▶️ AudioQueue started after tap")
+            }
         }
     }
 
@@ -398,9 +426,22 @@ class AudioEngine: ObservableObject {
     private func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
         guard let channelData = buffer.floatChannelData else { return [] }
 
+        effectStateLock.lock()
+        defer { effectStateLock.unlock() }
+
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
         let sampleRate = buffer.format.sampleRate
+
+        if isReconfiguring {
+            var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    interleaved[frame * channelCount + channel] = channelData[channel][frame]
+                }
+            }
+            return interleaved
+        }
 
         if !processingEnabled {
             var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
@@ -877,7 +918,19 @@ class AudioEngine: ObservableObject {
         )
     }
 
+    private func withEffectStateLock(_ work: () -> Void) {
+        effectStateLock.lock()
+        defer { effectStateLock.unlock() }
+        work()
+    }
+
     private func resetBassBoostState() {
+        withEffectStateLock {
+            resetBassBoostStateUnlocked()
+        }
+    }
+
+    private func resetBassBoostStateUnlocked() {
         if !bassBoostState.isEmpty {
             for index in bassBoostState.indices {
                 bassBoostState[index] = BiquadState()
@@ -886,42 +939,80 @@ class AudioEngine: ObservableObject {
     }
 
     private func resetClarityState() {
+        withEffectStateLock {
+            resetClarityStateUnlocked()
+        }
+    }
+
+    private func resetClarityStateUnlocked() {
         clarityState = clarityState.map { _ in BiquadState() }
     }
 
     private func resetDeMudState() {
+        withEffectStateLock {
+            resetDeMudStateUnlocked()
+        }
+    }
+
+    private func resetDeMudStateUnlocked() {
         deMudState = deMudState.map { _ in BiquadState() }
     }
 
     private func resetEQState() {
+        withEffectStateLock {
+            resetEQStateUnlocked()
+        }
+    }
+
+    private func resetEQStateUnlocked() {
         eqBassState = eqBassState.map { _ in BiquadState() }
         eqMidsState = eqMidsState.map { _ in BiquadState() }
         eqTrebleState = eqTrebleState.map { _ in BiquadState() }
     }
 
     private func resetCompressorState() {
+        withEffectStateLock {
+            resetCompressorStateUnlocked()
+        }
+    }
+
+    private func resetCompressorStateUnlocked() {
         compressorEnvelope = compressorEnvelope.map { _ in 0 }
     }
 
     private func resetReverbState() {
+        withEffectStateLock {
+            resetReverbStateUnlocked()
+        }
+    }
+
+    private func resetReverbStateUnlocked() {
         reverbBuffer.removeAll()
         reverbWriteIndex = 0
     }
 
     private func resetDelayState() {
+        withEffectStateLock {
+            resetDelayStateUnlocked()
+        }
+    }
+
+    private func resetDelayStateUnlocked() {
         delayBuffer.removeAll()
         delayWriteIndex = 0
     }
 
     private func resetEffectState() {
-        resetBassBoostState()
-        resetClarityState()
-        resetDeMudState()
-        resetEQState()
-        resetCompressorState()
-        tremoloPhase = 0
-        resetReverbState()
-        resetDelayState()
+        withEffectStateLock {
+            resetBassBoostStateUnlocked()
+            resetClarityStateUnlocked()
+            resetDeMudStateUnlocked()
+            resetEQStateUnlocked()
+            resetCompressorStateUnlocked()
+            tremoloPhase = 0
+            resetReverbStateUnlocked()
+            resetDelayStateUnlocked()
+        }
         DispatchQueue.main.async {
             self.effectLevels = [:]
         }
@@ -1098,12 +1189,17 @@ class AudioEngine: ObservableObject {
         nightcoreRestartWorkItem = nil
         resetEffectState()
 
+        isReconfiguring = true
+
         // Stop AudioQueue first
         if let queue = outputQueue {
             AudioQueueStop(queue, true)
             AudioQueueDispose(queue, true)
             outputQueue = nil
         }
+        outputQueueStartLock.lock()
+        outputQueueStarted = false
+        outputQueueStartLock.unlock()
 
         // Clear ring buffer
         ringBufferLock.lock()
@@ -1114,7 +1210,16 @@ class AudioEngine: ObservableObject {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRunning = false
+        isReconfiguring = false
         print("⏸️ Audio engine stopped")
+    }
+
+    private func reconfigureAudio() {
+        isReconfiguring = true
+        stop()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.start()
+        }
     }
 
     // MARK: - Notifications
@@ -1279,7 +1384,9 @@ class AudioEngine: ObservableObject {
     }
 
     func updateEffectChain(_ chain: [BeginnerNode]) {
-        effectChainOrder = chain
+        withEffectStateLock {
+            effectChainOrder = chain
+        }
 
         let activeTypes = Set(chain.map { $0.type })
 

@@ -5,109 +5,34 @@ import SwiftUI
 struct BeginnerView: View {
     @ObservedObject var audioEngine: AudioEngine
     @State private var effectChain: [BeginnerNode] = []
-    @State private var draggedEffect: BeginnerNode?
     @State private var draggedEffectType: EffectType?
-    @State private var hoveredDropIndex: Int?
     @State private var showSignalFlow = false
-    @State private var dropLocation: CGPoint = .zero
+    @State private var canvasSize: CGSize = .zero
+    @State private var draggingNodeID: UUID?
+    @State private var dragStartPosition: CGPoint = .zero
 
     var body: some View {
         VStack(spacing: 0) {
             // Effect palette at top
-            EffectPalette(
-                onEffectSelected: { type in
-                    addEffectToChain(type)
-                },
-                onEffectDragged: { type in
-                    draggedEffectType = type
-                }
-            )
+            HStack {
+                EffectPalette(
+                    onEffectSelected: { type in
+                        addEffectToChain(type)
+                    },
+                    onEffectDragged: { type in
+                        draggedEffectType = type
+                    }
+                )
+
+                Spacer()
+            }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
 
             Divider()
 
-            // Effect chain area - entire ScrollView is drop target
+            // Free-placement canvas
             GeometryReader { geometry in
-                ScrollView(.horizontal, showsIndicators: true) {
-                    ZStack(alignment: .leading) {
-                        HStack(spacing: 16) {
-                            // Start node
-                            StartNodeView()
-                                .padding(.leading, 60)
-
-                            FlowConnection(
-                                isActive: audioEngine.isRunning && showSignalFlow,
-                                level: levelForIndex(0)
-                            )
-
-                            // Effect blocks
-                            ForEach(Array(effectChain.enumerated()), id: \.element.id) { index, effect in
-                                HStack(spacing: 16) {
-                                    EffectBlockHorizontal(
-                                        effect: effect,
-                                        audioEngine: audioEngine,
-                                        onRemove: {
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                removeEffect(at: index)
-                                            }
-                                        }
-                                    )
-                                    .transition(.scale.combined(with: .opacity))
-                                    .onDrag {
-                    draggedEffect = effect
-                    return NSItemProvider(object: effect.id.uuidString as NSString)
-                }
-
-                                    FlowConnection(
-                                        isActive: audioEngine.isRunning && showSignalFlow,
-                                        level: levelForIndex(index)
-                                    )
-                                }
-                            }
-
-                            // Placeholder when empty
-                            if effectChain.isEmpty {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "waveform.path")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(.secondary.opacity(0.3))
-                                    Text("Drag effects here")
-                                        .font(.title3)
-                                        .foregroundColor(.secondary.opacity(0.5))
-                                }
-                                .frame(width: 200, height: 100)
-                            }
-
-                            // End node
-                            EndNodeView()
-                                .padding(.trailing, 60)
-                        }
-                        .padding(.vertical, 40)
-                        .frame(minWidth: max(geometry.size.width, 800))
-
-                        // Insertion indicator
-                        if let insertionIndex = hoveredDropIndex {
-                            InsertionIndicator()
-                                .offset(x: calculateInsertionX(for: insertionIndex))
-                        }
-                    }
-                    .frame(minHeight: geometry.size.height)
-                    .contentShape(Rectangle())  // Make entire area tappable
-                }
-                .onDrop(of: [.text], delegate: ChainDropDelegate(
-                    effectChain: $effectChain,
-                    draggedEffect: $draggedEffect,
-                    draggedEffectType: $draggedEffectType,
-                    hoveredDropIndex: $hoveredDropIndex,
-                    dropLocation: $dropLocation,
-                    onDrop: { index in
-                        handleDrop(at: index)
-                    }
-                ))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
                 ZStack {
                     Color(NSColor.textBackgroundColor)
 
@@ -129,140 +54,202 @@ struct BeginnerView: View {
                             lineWidth: 1
                         )
                     }
+
+                    ForEach(connectionsForCanvas(), id: \.id) { connection in
+                        FlowLine(
+                            from: connection.from,
+                            to: connection.to,
+                            isActive: audioEngine.isRunning && showSignalFlow,
+                            level: levelForNode(connection.toNodeId)
+                        )
+                    }
+
+                    StartNodeView()
+                        .position(startNodePosition(in: geometry.size))
+                    EndNodeView()
+                        .position(endNodePosition(in: geometry.size))
+
+                    ForEach(effectChain, id: \.id) { effect in
+                        EffectBlockHorizontal(
+                            effect: effect,
+                            audioEngine: audioEngine,
+                            onRemove: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    removeEffect(id: effect.id)
+                                }
+                            }
+                        )
+                        .position(nodePosition(effect, in: geometry.size))
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    if draggingNodeID != effect.id {
+                                        draggingNodeID = effect.id
+                                        dragStartPosition = nodePosition(effect, in: geometry.size)
+                                    }
+                                    let newPosition = CGPoint(
+                                        x: dragStartPosition.x + value.translation.width,
+                                        y: dragStartPosition.y + value.translation.height
+                                    )
+                                    updateNodePosition(effect.id, position: clamp(newPosition, to: geometry.size))
+                                }
+                                .onEnded { _ in
+                                    draggingNodeID = nil
+                                    applyChainToEngine()
+                                }
+                        )
+                    }
+
+                    if effectChain.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "waveform.path")
+                                .font(.system(size: 40))
+                                .foregroundColor(.secondary.opacity(0.3))
+                            Text("Drop effects anywhere")
+                                .font(.title3)
+                                .foregroundColor(.secondary.opacity(0.5))
+                        }
+                    }
                 }
-            )
+                .onAppear {
+                    canvasSize = geometry.size
+                }
+                .onChange(of: geometry.size) { newSize in
+                    canvasSize = newSize
+                }
+                .contentShape(Rectangle())
+                .onDrop(of: [.text], delegate: CanvasDropDelegate(
+                    effectChain: $effectChain,
+                    draggedEffectType: $draggedEffectType,
+                    canvasSize: geometry.size,
+                    onAdd: { newNode in
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            effectChain.append(newNode)
+                            applyChainToEngine()
+                        }
+                    }
+                ))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
         }
     }
 
-    private func calculateInsertionX(for index: Int) -> CGFloat {
-        let startNodeWidth: CGFloat = 80
-        let effectBlockWidth: CGFloat = 120
-        let connectionWidth: CGFloat = 100
-        let spacing: CGFloat = 16
-        let leadingPadding: CGFloat = 60
-
-        if index == 0 {
-            return leadingPadding + startNodeWidth + connectionWidth / 2
-        } else {
-            let offset = leadingPadding + startNodeWidth + connectionWidth + spacing
-            return offset + CGFloat(index - 1) * (effectBlockWidth + spacing + connectionWidth)
-                + effectBlockWidth + spacing + connectionWidth / 2
-        }
-    }
-
-    private func handleDrop(at index: Int) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            // Check if we're reordering an existing effect
-            if let draggedEffect = draggedEffect,
-               let sourceIndex = effectChain.firstIndex(where: { $0.id == draggedEffect.id }) {
-                // Reordering
-                let effect = effectChain.remove(at: sourceIndex)
-                let targetIndex = sourceIndex < index ? index - 1 : index
-                effectChain.insert(effect, at: targetIndex)
-            }
-            // Check if we're adding a new effect from palette
-            else if let effectType = draggedEffectType {
-                let newEffect = BeginnerNode(type: effectType)
-                effectChain.insert(newEffect, at: index)
-            }
-
-            applyChainToEngine()
-            draggedEffect = nil
-            draggedEffectType = nil
-            hoveredDropIndex = nil
-        }
-    }
-
     private func addEffectToChain(_ type: EffectType) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            let newEffect = BeginnerNode(type: type)
+            let newEffect = BeginnerNode(type: type, position: defaultNodePosition(in: canvasSize))
             effectChain.append(newEffect)
             applyChainToEngine()
         }
     }
 
-    private func removeEffect(at index: Int) {
-        effectChain.remove(at: index)
+    private func removeEffect(id: UUID) {
+        effectChain.removeAll { $0.id == id }
         applyChainToEngine()
     }
 
     private func applyChainToEngine() {
-        audioEngine.updateEffectChain(effectChain)
+        audioEngine.updateEffectChain(orderedNodesByPosition())
     }
 
-    private func levelForIndex(_ index: Int) -> Float {
-        guard index >= 0, index < effectChain.count else { return 0 }
-        let id = effectChain[index].id
-        return audioEngine.effectLevels[id] ?? 0
+    private func levelForNode(_ id: UUID) -> Float {
+        audioEngine.effectLevels[id] ?? 0
+    }
+
+    private func updateNodePosition(_ id: UUID, position: CGPoint) {
+        guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
+        effectChain[index].position = position
+    }
+
+    private func connectionsForCanvas() -> [CanvasConnection] {
+        let ordered = orderedNodesByPosition()
+        guard !ordered.isEmpty else { return [] }
+
+        let startPoint = startNodePosition(in: canvasSize)
+        let endPoint = endNodePosition(in: canvasSize)
+
+        var connections: [CanvasConnection] = []
+        var previousPoint = startPoint
+
+        for node in ordered {
+            let currentPoint = nodePosition(node, in: canvasSize)
+            connections.append(
+                CanvasConnection(id: UUID(), from: previousPoint, to: currentPoint, toNodeId: node.id)
+            )
+            previousPoint = currentPoint
+        }
+
+        if let last = ordered.last {
+            connections.append(
+                CanvasConnection(id: UUID(), from: previousPoint, to: endPoint, toNodeId: last.id)
+            )
+        }
+
+        return connections
+    }
+
+    private func defaultNodePosition(in size: CGSize) -> CGPoint {
+        CGPoint(x: max(size.width * 0.5, 100), y: max(size.height * 0.5, 100))
+    }
+
+    private func startNodePosition(in size: CGSize) -> CGPoint {
+        CGPoint(x: 80, y: size.height * 0.5)
+    }
+
+    private func endNodePosition(in size: CGSize) -> CGPoint {
+        CGPoint(x: max(size.width - 80, 100), y: size.height * 0.5)
+    }
+
+    private func clamp(_ point: CGPoint, to size: CGSize) -> CGPoint {
+        let padding: CGFloat = 80
+        let x = min(max(point.x, padding), max(size.width - padding, padding))
+        let y = min(max(point.y, padding), max(size.height - padding, padding))
+        return CGPoint(x: x, y: y)
+    }
+
+    private func orderedNodesByPosition() -> [BeginnerNode] {
+        effectChain.sorted { lhs, rhs in
+            let lhsPoint = nodePosition(lhs, in: canvasSize)
+            let rhsPoint = nodePosition(rhs, in: canvasSize)
+            if lhsPoint.x == rhsPoint.x {
+                return lhsPoint.y < rhsPoint.y
+            }
+            return lhsPoint.x < rhsPoint.x
+        }
+    }
+
+    private func nodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
+        node.position == .zero ? defaultNodePosition(in: size) : node.position
     }
 }
 
-// MARK: - Drop Delegate
+// MARK: - Canvas Drop Delegate
 
-struct ChainDropDelegate: DropDelegate {
+struct CanvasDropDelegate: DropDelegate {
     @Binding var effectChain: [BeginnerNode]
-    @Binding var draggedEffect: BeginnerNode?
     @Binding var draggedEffectType: EffectType?
-    @Binding var hoveredDropIndex: Int?
-    @Binding var dropLocation: CGPoint
-    let onDrop: (Int) -> Void
+    let canvasSize: CGSize
+    let onAdd: (BeginnerNode) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
-        return true
-    }
-
-    func dropEntered(info: DropInfo) {
-        dropLocation = info.location
-        updateHoveredIndex(location: info.location)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        dropLocation = info.location
-        updateHoveredIndex(location: info.location)
-        return DropProposal(operation: .move)
-    }
-
-    func dropExited(info: DropInfo) {
-        hoveredDropIndex = nil
+        true
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        if let index = hoveredDropIndex {
-            onDrop(index)
-        }
+        guard let effectType = draggedEffectType else { return false }
+        let location = clamp(info.location, to: canvasSize)
+        onAdd(BeginnerNode(type: effectType, position: location))
+        draggedEffectType = nil
         return true
     }
 
-    private func updateHoveredIndex(location: CGPoint) {
-        let startNodeWidth: CGFloat = 80
-        let effectBlockWidth: CGFloat = 120
-        let connectionWidth: CGFloat = 100
-        let spacing: CGFloat = 16
-        let leadingPadding: CGFloat = 60
-
-        // Calculate which insertion point is closest
-        let xPos = location.x
-
-        // Before first effect
-        if xPos < leadingPadding + startNodeWidth + connectionWidth {
-            hoveredDropIndex = 0
-            return
-        }
-
-        // Between or after effects
-        let chainStartX = leadingPadding + startNodeWidth + connectionWidth + spacing
-        let relativeX = xPos - chainStartX
-
-        if effectChain.isEmpty {
-            hoveredDropIndex = 0
-        } else {
-            let blockAndConnectionWidth = effectBlockWidth + spacing + connectionWidth
-            let index = Int(relativeX / blockAndConnectionWidth) + 1
-            hoveredDropIndex = min(max(0, index), effectChain.count)
-        }
+    private func clamp(_ point: CGPoint, to size: CGSize) -> CGPoint {
+        let padding: CGFloat = 80
+        let x = min(max(point.x, padding), max(size.width - padding, padding))
+        let y = min(max(point.y, padding), max(size.height - padding, padding))
+        return CGPoint(x: x, y: y)
     }
 }
 
@@ -494,6 +481,73 @@ struct FlowConnection: View {
             }
         }
     }
+}
+
+// MARK: - Flow Line
+
+struct FlowLine: View {
+    let from: CGPoint
+    let to: CGPoint
+    let isActive: Bool
+    let level: Float
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
+        let baseOpacity = 0.15 + 0.6 * intensity
+        let glowColor = Color.blue.opacity(0.2 + 0.7 * intensity)
+        let thickness: CGFloat = 2 + 3 * intensity
+
+        ZStack {
+            Path { path in
+                path.move(to: from)
+                path.addLine(to: to)
+            }
+            .stroke(Color.secondary.opacity(baseOpacity), lineWidth: thickness)
+            .contentShape(Path { path in
+                path.move(to: from)
+                path.addLine(to: to)
+            }.strokedPath(.init(lineWidth: thickness + 10)))
+
+            if isActive {
+                Circle()
+                    .fill(glowColor)
+                    .frame(width: 6 + 6 * intensity, height: 6 + 6 * intensity)
+                    .position(pointAlongLine(from: from, to: to, t: phase))
+                    .shadow(color: glowColor.opacity(0.6), radius: 6)
+            }
+        }
+        .onAppear {
+            if isActive {
+                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                    phase = 1
+                }
+            }
+        }
+        .onChange(of: isActive) { active in
+            if active {
+                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                    phase = 1
+                }
+            } else {
+                phase = 0
+            }
+        }
+    }
+
+    private func pointAlongLine(from: CGPoint, to: CGPoint, t: CGFloat) -> CGPoint {
+        CGPoint(
+            x: from.x + (to.x - from.x) * t,
+            y: from.y + (to.y - from.y) * t
+        )
+    }
+}
+
+private struct CanvasConnection: Identifiable {
+    let id: UUID
+    let from: CGPoint
+    let to: CGPoint
+    let toNodeId: UUID
 }
 
 // MARK: - Effect Block
