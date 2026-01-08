@@ -1078,6 +1078,19 @@ class AudioEngine: ObservableObject {
         }
     }
 
+    private func resetTenBandValues() {
+        tenBand31 = 0
+        tenBand62 = 0
+        tenBand125 = 0
+        tenBand250 = 0
+        tenBand500 = 0
+        tenBand1k = 0
+        tenBand2k = 0
+        tenBand4k = 0
+        tenBand8k = 0
+        tenBand16k = 0
+    }
+
     private func resetCompressorState() {
         withEffectStateLock {
             resetCompressorStateUnlocked()
@@ -1476,6 +1489,7 @@ class AudioEngine: ObservableObject {
         compressorEnabled = false
         reverbEnabled = false
         stereoWidthEnabled = false
+        resetTenBandValues()
 
         // Then apply each effect from the chain
         for effect in chain.activeEffects {
@@ -1580,6 +1594,10 @@ class AudioEngine: ObservableObject {
         delayEnabled = activeTypes.contains(.delay)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+
+        if !activeTypes.contains(.tenBandEQ) {
+            resetTenBandValues()
+        }
 
         if chain.isEmpty {
             resetEffectState()
