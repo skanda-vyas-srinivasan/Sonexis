@@ -11,7 +11,13 @@ class AudioEngine: ObservableObject {
     @Published var outputDeviceName: String = "Searching..."
 
     // Pitch Shift effect (Nightcore) - now uses AVAudioUnitTimePitch
-    @Published var nightcoreEnabled = false
+    @Published var nightcoreEnabled = false {
+        didSet {
+            if !nightcoreEnabled && !clarityEnabled {
+                resetClarityState()
+            }
+        }
+    }
     @Published var nightcoreIntensity: Double = 0.6 // 0 to 1, maps to 0 to +12 semitones
 
     @Published var bassBoostEnabled = false {
@@ -25,16 +31,34 @@ class AudioEngine: ObservableObject {
     @Published var bassBoostAmount: Double = 0.6
 
     // Clarity effect
-    @Published var clarityEnabled = false
+    @Published var clarityEnabled = false {
+        didSet {
+            if !clarityEnabled && !nightcoreEnabled {
+                resetClarityState()
+            }
+        }
+    }
     @Published var clarityAmount: Double = 0.5
 
     // Reverb effect
-    @Published var reverbEnabled = false
+    @Published var reverbEnabled = false {
+        didSet {
+            if !reverbEnabled {
+                resetReverbState()
+            }
+        }
+    }
     @Published var reverbMix: Double = 0.3
     @Published var reverbSize: Double = 0.5
 
     // Compressor effect
-    @Published var compressorEnabled = false
+    @Published var compressorEnabled = false {
+        didSet {
+            if !compressorEnabled {
+                resetCompressorState()
+            }
+        }
+    }
     @Published var compressorStrength: Double = 0.4
 
     // Stereo width effect
@@ -42,17 +66,35 @@ class AudioEngine: ObservableObject {
     @Published var stereoWidthAmount: Double = 0.3
 
     // Simple EQ effect
-    @Published var simpleEQEnabled = false
+    @Published var simpleEQEnabled = false {
+        didSet {
+            if !simpleEQEnabled {
+                resetEQState()
+            }
+        }
+    }
     @Published var eqBass: Double = 0 // -1 to 1
     @Published var eqMids: Double = 0 // -1 to 1
     @Published var eqTreble: Double = 0 // -1 to 1
 
     // De-mud effect
-    @Published var deMudEnabled = false
+    @Published var deMudEnabled = false {
+        didSet {
+            if !deMudEnabled {
+                resetDeMudState()
+            }
+        }
+    }
     @Published var deMudStrength: Double = 0.5
 
     // Delay effect
-    @Published var delayEnabled = false
+    @Published var delayEnabled = false {
+        didSet {
+            if !delayEnabled {
+                resetDelayState()
+            }
+        }
+    }
     @Published var delayTime: Double = 0.25 // seconds (0.01 to 2.0)
     @Published var delayFeedback: Double = 0.4 // 0 to 1
     @Published var delayMix: Double = 0.3 // 0 to 1
@@ -63,9 +105,25 @@ class AudioEngine: ObservableObject {
     @Published var distortionMix: Double = 0.5 // 0 to 1
 
     // Tremolo effect
-    @Published var tremoloEnabled = false
+    @Published var tremoloEnabled = false {
+        didSet {
+            if !tremoloEnabled {
+                tremoloPhase = 0
+            }
+        }
+    }
     @Published var tremoloRate: Double = 5.0 // Hz (0.1 to 20)
     @Published var tremoloDepth: Double = 0.5 // 0 to 1
+
+    @Published var processingEnabled = true {
+        didSet {
+            if !processingEnabled {
+                resetEffectState()
+            }
+        }
+    }
+
+    @Published var effectLevels: [UUID: Float] = [:]
 
     @Published var outputDevices: [AudioDevice] = []
     @Published var selectedOutputDeviceID: AudioDeviceID? {
@@ -80,7 +138,8 @@ class AudioEngine: ObservableObject {
     private var outputQueue: AudioQueueRef?
     private var outputDeviceID: AudioDeviceID?
     private var nightcoreRestartWorkItem: DispatchWorkItem?
-    private var effectChainOrder: [EffectType] = []
+    private var effectChainOrder: [BeginnerNode] = []
+    private var levelUpdateCounter = 0
 
     // Bass boost state
     private var bassBoostState: [BiquadState] = []
@@ -343,6 +402,16 @@ class AudioEngine: ObservableObject {
         let channelCount = Int(buffer.format.channelCount)
         let sampleRate = buffer.format.sampleRate
 
+        if !processingEnabled {
+            var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    interleaved[frame * channelCount + channel] = channelData[channel][frame]
+                }
+            }
+            return interleaved
+        }
+
         // Initialize effect states
         initializeEffectStates(channelCount: channelCount)
 
@@ -356,15 +425,34 @@ class AudioEngine: ObservableObject {
             }
         }
 
-        let orderedEffects = effectChainOrder.isEmpty ? defaultEffectOrder : effectChainOrder
-        for effect in orderedEffects {
+        let orderedNodes: [EffectNode]
+        if effectChainOrder.isEmpty {
+            orderedNodes = defaultEffectOrder.map { EffectNode(id: nil, type: $0) }
+        } else {
+            orderedNodes = effectChainOrder.map { EffectNode(id: $0.id, type: $0.type) }
+        }
+
+        var levelSnapshot: [UUID: Float] = [:]
+        for node in orderedNodes {
             applyEffect(
-                effect,
+                node.type,
                 to: &processedAudio,
                 sampleRate: sampleRate,
                 channelCount: channelCount,
-                frameLength: frameLength
+                frameLength: frameLength,
+                nodeId: node.id,
+                levelSnapshot: &levelSnapshot
             )
+        }
+
+        if !levelSnapshot.isEmpty {
+            levelUpdateCounter += 1
+            if levelUpdateCounter % 8 == 0 {
+                let snapshot = levelSnapshot
+                DispatchQueue.main.async {
+                    self.effectLevels = snapshot
+                }
+            }
         }
 
         // Convert to interleaved format
@@ -394,16 +482,26 @@ class AudioEngine: ObservableObject {
         ]
     }
 
+    private struct EffectNode {
+        let id: UUID?
+        let type: EffectType
+    }
+
     private func applyEffect(
         _ effect: EffectType,
         to processedAudio: inout [[Float]],
         sampleRate: Double,
         channelCount: Int,
-        frameLength: Int
+        frameLength: Int,
+        nodeId: UUID?,
+        levelSnapshot: inout [UUID: Float]
     ) {
         switch effect {
         case .bassBoost:
-            guard bassBoostEnabled, bassBoostAmount > 0 else { return }
+            guard bassBoostEnabled, bassBoostAmount > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             updateBassBoostCoefficients(sampleRate: sampleRate)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
@@ -414,9 +512,15 @@ class AudioEngine: ObservableObject {
                     bassBoostState[channel] = state
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .pitchShift:
-            guard nightcoreEnabled, nightcoreIntensity > 0 else { return }
+            guard nightcoreEnabled, nightcoreIntensity > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             updateClarityCoefficients(sampleRate: sampleRate, intensity: nightcoreIntensity)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
@@ -427,9 +531,15 @@ class AudioEngine: ObservableObject {
                     clarityState[channel] = state
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .clarity:
-            guard clarityEnabled, clarityAmount > 0 else { return }
+            guard clarityEnabled, clarityAmount > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             updateClarityCoefficients(sampleRate: sampleRate, intensity: clarityAmount)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
@@ -439,9 +549,15 @@ class AudioEngine: ObservableObject {
                     clarityState[channel] = state
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .deMud:
-            guard deMudEnabled, deMudStrength > 0 else { return }
+            guard deMudEnabled, deMudStrength > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             updateDeMudCoefficients(sampleRate: sampleRate)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
@@ -451,9 +567,15 @@ class AudioEngine: ObservableObject {
                     deMudState[channel] = state
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .simpleEQ:
-            guard simpleEQEnabled, (eqBass != 0 || eqMids != 0 || eqTreble != 0) else { return }
+            guard simpleEQEnabled, (eqBass != 0 || eqMids != 0 || eqTreble != 0) else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             updateSimpleEQCoefficients(sampleRate: sampleRate)
 
             if eqBass != 0 {
@@ -488,9 +610,15 @@ class AudioEngine: ObservableObject {
                     }
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .compressor:
-            guard compressorEnabled, compressorStrength > 0 else { return }
+            guard compressorEnabled, compressorStrength > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     let input = processedAudio[channel][frame]
@@ -510,9 +638,15 @@ class AudioEngine: ObservableObject {
                     processedAudio[channel][frame] = output * (1.0 + Float(compressorStrength) * 0.3)
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .reverb:
-            guard reverbEnabled, reverbMix > 0 else { return }
+            guard reverbEnabled, reverbMix > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             let delayTime = 0.03 * reverbSize
             let delayFrames = Int(sampleRate * delayTime)
             if reverbBuffer.count != channelCount || reverbBuffer.first?.count != delayFrames {
@@ -520,19 +654,25 @@ class AudioEngine: ObservableObject {
                 reverbWriteIndex = 0
             }
 
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
                     let dry = processedAudio[channel][frame]
                     let wet = reverbBuffer[channel][reverbWriteIndex]
                     let mix = Float(reverbMix)
                     processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
                     reverbBuffer[channel][reverbWriteIndex] = dry + wet * 0.5
-                    reverbWriteIndex = (reverbWriteIndex + 1) % delayFrames
                 }
+                reverbWriteIndex = (reverbWriteIndex + 1) % delayFrames
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
         case .delay:
-            guard delayEnabled, delayMix > 0 else { return }
+            guard delayEnabled, delayMix > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             let delayFrames = Int(sampleRate * delayTime)
             if delayBuffer.count != channelCount || delayBuffer.first?.count != delayFrames {
                 delayBuffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
@@ -550,9 +690,15 @@ class AudioEngine: ObservableObject {
                     delayWriteIndex = (delayWriteIndex + 1) % delayFrames
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .distortion:
-            guard distortionEnabled, distortionDrive > 0 else { return }
+            guard distortionEnabled, distortionDrive > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             let drive = Float(distortionDrive) * 10.0
             let mix = Float(distortionMix)
 
@@ -564,9 +710,15 @@ class AudioEngine: ObservableObject {
                     processedAudio[channel][frame] = dry * (1.0 - mix) + wet * mix
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .tremolo:
-            guard tremoloEnabled, tremoloDepth > 0 else { return }
+            guard tremoloEnabled, tremoloDepth > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             let rate = Float(tremoloRate)
             let depth = Float(tremoloDepth)
 
@@ -582,9 +734,15 @@ class AudioEngine: ObservableObject {
                     tremoloPhase -= 2.0 * .pi
                 }
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
 
         case .stereoWidth:
-            guard stereoWidthEnabled, stereoWidthAmount > 0, channelCount == 2 else { return }
+            guard stereoWidthEnabled, stereoWidthAmount > 0, channelCount == 2 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             for frame in 0..<frameLength {
                 let left = processedAudio[0][frame]
                 let right = processedAudio[1][frame]
@@ -595,7 +753,23 @@ class AudioEngine: ObservableObject {
                 processedAudio[0][frame] = mid + wideSide
                 processedAudio[1][frame] = mid - wideSide
             }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
         }
+    }
+
+    private func computeRMS(_ processedAudio: [[Float]], frameLength: Int, channelCount: Int) -> Float {
+        guard frameLength > 0, channelCount > 0 else { return 0 }
+        var sumSquares: Float = 0
+        for channel in 0..<channelCount {
+            for frame in 0..<frameLength {
+                let sample = processedAudio[channel][frame]
+                sumSquares += sample * sample
+            }
+        }
+        let mean = sumSquares / Float(frameLength * channelCount)
+        return sqrt(mean)
     }
 
     private func initializeEffectStates(channelCount: Int) {
@@ -708,6 +882,48 @@ class AudioEngine: ObservableObject {
             for index in bassBoostState.indices {
                 bassBoostState[index] = BiquadState()
             }
+        }
+    }
+
+    private func resetClarityState() {
+        clarityState = clarityState.map { _ in BiquadState() }
+    }
+
+    private func resetDeMudState() {
+        deMudState = deMudState.map { _ in BiquadState() }
+    }
+
+    private func resetEQState() {
+        eqBassState = eqBassState.map { _ in BiquadState() }
+        eqMidsState = eqMidsState.map { _ in BiquadState() }
+        eqTrebleState = eqTrebleState.map { _ in BiquadState() }
+    }
+
+    private func resetCompressorState() {
+        compressorEnvelope = compressorEnvelope.map { _ in 0 }
+    }
+
+    private func resetReverbState() {
+        reverbBuffer.removeAll()
+        reverbWriteIndex = 0
+    }
+
+    private func resetDelayState() {
+        delayBuffer.removeAll()
+        delayWriteIndex = 0
+    }
+
+    private func resetEffectState() {
+        resetBassBoostState()
+        resetClarityState()
+        resetDeMudState()
+        resetEQState()
+        resetCompressorState()
+        tremoloPhase = 0
+        resetReverbState()
+        resetDelayState()
+        DispatchQueue.main.async {
+            self.effectLevels = [:]
         }
     }
 
@@ -880,6 +1096,7 @@ class AudioEngine: ObservableObject {
     func stop() {
         nightcoreRestartWorkItem?.cancel()
         nightcoreRestartWorkItem = nil
+        resetEffectState()
 
         // Stop AudioQueue first
         if let queue = outputQueue {
@@ -1061,8 +1278,29 @@ class AudioEngine: ObservableObject {
         print("✅ Applied preset with \(chain.activeEffects.count) effects")
     }
 
-    func updateEffectChain(_ chain: [ChainedEffect]) {
-        effectChainOrder = chain.map { $0.type }
+    func updateEffectChain(_ chain: [BeginnerNode]) {
+        effectChainOrder = chain
+
+        let activeTypes = Set(chain.map { $0.type })
+
+        bassBoostEnabled = activeTypes.contains(.bassBoost)
+        nightcoreEnabled = activeTypes.contains(.pitchShift)
+        clarityEnabled = activeTypes.contains(.clarity)
+        deMudEnabled = activeTypes.contains(.deMud)
+        simpleEQEnabled = activeTypes.contains(.simpleEQ)
+        compressorEnabled = activeTypes.contains(.compressor)
+        reverbEnabled = activeTypes.contains(.reverb)
+        stereoWidthEnabled = activeTypes.contains(.stereoWidth)
+        delayEnabled = activeTypes.contains(.delay)
+        distortionEnabled = activeTypes.contains(.distortion)
+        tremoloEnabled = activeTypes.contains(.tremolo)
+
+        if chain.isEmpty {
+            resetEffectState()
+            DispatchQueue.main.async {
+                self.effectLevels = [:]
+            }
+        }
         print("📝 Effect chain updated with \(chain.count) effects")
     }
 }

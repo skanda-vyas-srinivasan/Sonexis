@@ -138,6 +138,32 @@ struct EffectChain: Identifiable, Codable {
     }
 }
 
+// MARK: - Beginner Mode Graph
+
+struct BeginnerNode: Identifiable, Codable {
+    let id: UUID
+    let type: EffectType
+    var position: CGPoint
+
+    init(type: EffectType, position: CGPoint = .zero) {
+        self.id = UUID()
+        self.type = type
+        self.position = position
+    }
+}
+
+struct BeginnerConnection: Identifiable, Codable {
+    let id: UUID
+    let fromNodeId: UUID
+    let toNodeId: UUID
+
+    init(fromNodeId: UUID, toNodeId: UUID) {
+        self.id = UUID()
+        self.fromNodeId = fromNodeId
+        self.toNodeId = toNodeId
+    }
+}
+
 // MARK: - Preset
 
 struct Preset: Identifiable, Codable {

@@ -4,8 +4,8 @@ import SwiftUI
 
 struct BeginnerView: View {
     @ObservedObject var audioEngine: AudioEngine
-    @State private var effectChain: [ChainedEffect] = []
-    @State private var draggedEffect: ChainedEffect?
+    @State private var effectChain: [BeginnerNode] = []
+    @State private var draggedEffect: BeginnerNode?
     @State private var draggedEffectType: EffectType?
     @State private var hoveredDropIndex: Int?
     @State private var showSignalFlow = false
@@ -36,7 +36,10 @@ struct BeginnerView: View {
                             StartNodeView()
                                 .padding(.leading, 60)
 
-                            FlowConnection(isActive: audioEngine.isRunning && showSignalFlow)
+                            FlowConnection(
+                                isActive: audioEngine.isRunning && showSignalFlow,
+                                level: levelForIndex(0)
+                            )
 
                             // Effect blocks
                             ForEach(Array(effectChain.enumerated()), id: \.element.id) { index, effect in
@@ -52,11 +55,14 @@ struct BeginnerView: View {
                                     )
                                     .transition(.scale.combined(with: .opacity))
                                     .onDrag {
-                                        draggedEffect = effect
-                                        return NSItemProvider(object: effect.id.uuidString as NSString)
-                                    }
+                    draggedEffect = effect
+                    return NSItemProvider(object: effect.id.uuidString as NSString)
+                }
 
-                                    FlowConnection(isActive: audioEngine.isRunning && showSignalFlow)
+                                    FlowConnection(
+                                        isActive: audioEngine.isRunning && showSignalFlow,
+                                        level: levelForIndex(index)
+                                    )
                                 }
                             }
 
@@ -159,7 +165,7 @@ struct BeginnerView: View {
             }
             // Check if we're adding a new effect from palette
             else if let effectType = draggedEffectType {
-                let newEffect = ChainedEffect(type: effectType)
+                let newEffect = BeginnerNode(type: effectType)
                 effectChain.insert(newEffect, at: index)
             }
 
@@ -172,7 +178,7 @@ struct BeginnerView: View {
 
     private func addEffectToChain(_ type: EffectType) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            let newEffect = ChainedEffect(type: type)
+            let newEffect = BeginnerNode(type: type)
             effectChain.append(newEffect)
             applyChainToEngine()
         }
@@ -186,13 +192,19 @@ struct BeginnerView: View {
     private func applyChainToEngine() {
         audioEngine.updateEffectChain(effectChain)
     }
+
+    private func levelForIndex(_ index: Int) -> Float {
+        guard index >= 0, index < effectChain.count else { return 0 }
+        let id = effectChain[index].id
+        return audioEngine.effectLevels[id] ?? 0
+    }
 }
 
 // MARK: - Drop Delegate
 
 struct ChainDropDelegate: DropDelegate {
-    @Binding var effectChain: [ChainedEffect]
-    @Binding var draggedEffect: ChainedEffect?
+    @Binding var effectChain: [BeginnerNode]
+    @Binding var draggedEffect: BeginnerNode?
     @Binding var draggedEffectType: EffectType?
     @Binding var hoveredDropIndex: Int?
     @Binding var dropLocation: CGPoint
@@ -446,27 +458,34 @@ struct EndNodeView: View {
 
 struct FlowConnection: View {
     let isActive: Bool
+    let level: Float
     @State private var animationProgress: CGFloat = 0
 
     var body: some View {
+        let intensity = min(max(Double(level) * 3.0, 0.0), 1.0)
+        let glow = Color.blue.opacity(0.2 + 0.8 * intensity)
+        let baseOpacity = 0.2 + 0.6 * intensity
+        let thickness: CGFloat = 2 + CGFloat(intensity) * 3
+
         ZStack {
             // Base line
             Rectangle()
-                .fill(Color.secondary.opacity(0.3))
-                .frame(width: 100, height: 2)
+                .fill(Color.secondary.opacity(baseOpacity))
+                .frame(width: 100, height: thickness)
 
             // Animated flow
             if isActive {
                 Rectangle()
                     .fill(
                         LinearGradient(
-                            colors: [.clear, .blue, .blue, .clear],
+                            colors: [.clear, glow, glow, .clear],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: 30, height: 3)
+                    .frame(width: 30, height: thickness + 1)
                     .offset(x: animationProgress * 70 - 35)
+                    .shadow(color: glow.opacity(0.6), radius: 6, y: 0)
                     .onAppear {
                         withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
                             animationProgress = 1.0
@@ -480,7 +499,7 @@ struct FlowConnection: View {
 // MARK: - Effect Block
 
 struct EffectBlockHorizontal: View {
-    let effect: ChainedEffect
+    let effect: BeginnerNode
     @ObservedObject var audioEngine: AudioEngine
     let onRemove: () -> Void
     @State private var isHovered = false
@@ -716,11 +735,6 @@ struct CompactSlider: View {
 }
 
 // MARK: - Supporting Types
-
-struct ChainedEffect: Identifiable {
-    let id = UUID()
-    let type: EffectType
-}
 
 #Preview {
     BeginnerView(audioEngine: AudioEngine())

@@ -139,6 +139,20 @@ struct HeaderView: View {
             Divider()
                 .frame(height: 30)
 
+            // FX bypass
+            Button(action: {
+                audioEngine.processingEnabled.toggle()
+            }) {
+                Image(systemName: audioEngine.processingEnabled ? "slider.horizontal.3" : "slider.horizontal.3")
+                    .font(.system(size: 18))
+                    .foregroundColor(audioEngine.processingEnabled ? .blue : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
+
+            Divider()
+                .frame(height: 30)
+
             // Input device (read-only, shows BlackHole)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Input")
