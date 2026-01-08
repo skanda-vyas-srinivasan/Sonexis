@@ -77,6 +77,25 @@ class AudioEngine: ObservableObject {
     @Published var eqMids: Double = 0 // -1 to 1
     @Published var eqTreble: Double = 0 // -1 to 1
 
+    // 10-Band EQ
+    @Published var tenBandEQEnabled = false {
+        didSet {
+            if !tenBandEQEnabled {
+                resetTenBandEQState()
+            }
+        }
+    }
+    @Published var tenBand31: Double = 0
+    @Published var tenBand62: Double = 0
+    @Published var tenBand125: Double = 0
+    @Published var tenBand250: Double = 0
+    @Published var tenBand500: Double = 0
+    @Published var tenBand1k: Double = 0
+    @Published var tenBand2k: Double = 0
+    @Published var tenBand4k: Double = 0
+    @Published var tenBand8k: Double = 0
+    @Published var tenBand16k: Double = 0
+
     // De-mud effect
     @Published var deMudEnabled = false {
         didSet {
@@ -170,6 +189,13 @@ class AudioEngine: ObservableObject {
     private var eqTrebleState: [BiquadState] = []
     private var eqTrebleCoefficients = BiquadCoefficients()
     private var eqLastSampleRate: Double = 0
+
+    // 10-band EQ state (peaking filters)
+    private let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+    private var tenBandStates: [[BiquadState]] = []
+    private var tenBandCoefficients: [BiquadCoefficients] = []
+    private var tenBandLastSampleRate: Double = 0
+    private var tenBandLastGains: [Double] = []
 
     // Compressor state (simple dynamic range compression)
     private var compressorEnvelope: [Float] = []
@@ -516,6 +542,7 @@ class AudioEngine: ObservableObject {
             .clarity,
             .deMud,
             .simpleEQ,
+            .tenBandEQ,
             .compressor,
             .reverb,
             .delay,
@@ -528,6 +555,21 @@ class AudioEngine: ObservableObject {
     private struct EffectNode {
         let id: UUID?
         let type: EffectType
+    }
+
+    private var tenBandGains: [Double] {
+        [
+            tenBand31,
+            tenBand62,
+            tenBand125,
+            tenBand250,
+            tenBand500,
+            tenBand1k,
+            tenBand2k,
+            tenBand4k,
+            tenBand8k,
+            tenBand16k
+        ]
     }
 
     private func applyEffect(
@@ -651,6 +693,29 @@ class AudioEngine: ObservableObject {
                         processedAudio[channel][frame] = y
                         eqTrebleState[channel] = state
                     }
+                }
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .tenBandEQ:
+            let gains = tenBandGains
+            guard tenBandEQEnabled, gains.contains(where: { $0 != 0 }) else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            updateTenBandCoefficients(sampleRate: sampleRate)
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    var sample = processedAudio[channel][frame]
+                    for band in 0..<tenBandFrequencies.count {
+                        var state = tenBandStates[band][channel]
+                        sample = tenBandCoefficients[band].process(x: sample, state: &state)
+                        tenBandStates[band][channel] = state
+                    }
+                    processedAudio[channel][frame] = sample
                 }
             }
             if let id = nodeId {
@@ -834,6 +899,11 @@ class AudioEngine: ObservableObject {
         if eqTrebleState.count != channelCount {
             eqTrebleState = [BiquadState](repeating: BiquadState(), count: channelCount)
         }
+        if tenBandStates.count != tenBandFrequencies.count || tenBandStates.first?.count != channelCount {
+            tenBandStates = tenBandFrequencies.map { _ in
+                [BiquadState](repeating: BiquadState(), count: channelCount)
+            }
+        }
         if compressorEnvelope.count != channelCount {
             compressorEnvelope = [Float](repeating: 0, count: channelCount)
         }
@@ -920,6 +990,30 @@ class AudioEngine: ObservableObject {
         )
     }
 
+    private func updateTenBandCoefficients(sampleRate: Double) {
+        let gains = tenBandGains.map { min(max($0, -12), 12) }
+
+        if tenBandCoefficients.count != tenBandFrequencies.count {
+            tenBandCoefficients = [BiquadCoefficients](repeating: BiquadCoefficients(), count: tenBandFrequencies.count)
+        }
+        if tenBandLastGains.count != gains.count {
+            tenBandLastGains = [Double](repeating: Double.nan, count: gains.count)
+        }
+
+        guard sampleRate != tenBandLastSampleRate || gains != tenBandLastGains else { return }
+        tenBandLastSampleRate = sampleRate
+        tenBandLastGains = gains
+
+        for index in 0..<tenBandFrequencies.count {
+            tenBandCoefficients[index] = BiquadCoefficients.peakingEQ(
+                sampleRate: sampleRate,
+                frequency: tenBandFrequencies[index],
+                gainDb: gains[index],
+                q: 1.0
+            )
+        }
+    }
+
     private func withEffectStateLock(_ work: () -> Void) {
         effectStateLock.lock()
         defer { effectStateLock.unlock() }
@@ -972,6 +1066,18 @@ class AudioEngine: ObservableObject {
         eqTrebleState = eqTrebleState.map { _ in BiquadState() }
     }
 
+    private func resetTenBandEQState() {
+        withEffectStateLock {
+            resetTenBandEQStateUnlocked()
+        }
+    }
+
+    private func resetTenBandEQStateUnlocked() {
+        tenBandStates = tenBandStates.map { bandStates in
+            bandStates.map { _ in BiquadState() }
+        }
+    }
+
     private func resetCompressorState() {
         withEffectStateLock {
             resetCompressorStateUnlocked()
@@ -1010,6 +1116,7 @@ class AudioEngine: ObservableObject {
             resetClarityStateUnlocked()
             resetDeMudStateUnlocked()
             resetEQStateUnlocked()
+            resetTenBandEQStateUnlocked()
             resetCompressorStateUnlocked()
             tremoloPhase = 0
             resetReverbStateUnlocked()
@@ -1331,6 +1438,12 @@ class AudioEngine: ObservableObject {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .simpleEQ, isEnabled: true, parameters: params))
         }
 
+        // 10-Band EQ
+        if tenBandEQEnabled {
+            let params = EffectChainSnapshot.EffectParameters(tenBandGains: tenBandGains)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .tenBandEQ, isEnabled: true, parameters: params))
+        }
+
         // Compressor
         if compressorEnabled {
             let params = EffectChainSnapshot.EffectParameters(compressorStrength: compressorStrength)
@@ -1359,6 +1472,7 @@ class AudioEngine: ObservableObject {
         clarityEnabled = false
         deMudEnabled = false
         simpleEQEnabled = false
+        tenBandEQEnabled = false
         compressorEnabled = false
         reverbEnabled = false
         stereoWidthEnabled = false
@@ -1397,6 +1511,21 @@ class AudioEngine: ObservableObject {
                 if let bass = params.eqBass { eqBass = bass }
                 if let mids = params.eqMids { eqMids = mids }
                 if let treble = params.eqTreble { eqTreble = treble }
+
+            case .tenBandEQ:
+                tenBandEQEnabled = effect.isEnabled
+                if let gains = params.tenBandGains, gains.count == tenBandFrequencies.count {
+                    tenBand31 = gains[0]
+                    tenBand62 = gains[1]
+                    tenBand125 = gains[2]
+                    tenBand250 = gains[3]
+                    tenBand500 = gains[4]
+                    tenBand1k = gains[5]
+                    tenBand2k = gains[6]
+                    tenBand4k = gains[7]
+                    tenBand8k = gains[8]
+                    tenBand16k = gains[9]
+                }
 
             case .compressor:
                 compressorEnabled = effect.isEnabled
@@ -1444,6 +1573,7 @@ class AudioEngine: ObservableObject {
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
         simpleEQEnabled = activeTypes.contains(.simpleEQ)
+        tenBandEQEnabled = activeTypes.contains(.tenBandEQ)
         compressorEnabled = activeTypes.contains(.compressor)
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)

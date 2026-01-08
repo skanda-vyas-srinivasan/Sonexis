@@ -286,7 +286,7 @@ struct EffectPalette: View {
 
     private let effects: [EffectType] = [
         .bassBoost, .pitchShift, .clarity, .deMud,
-        .simpleEQ, .compressor, .reverb, .stereoWidth,
+        .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
         .delay, .distortion, .tremolo
     ]
 
@@ -665,6 +665,7 @@ struct EffectBlockHorizontal: View {
         case .compressor: return audioEngine.compressorEnabled
         case .stereoWidth: return audioEngine.stereoWidthEnabled
         case .simpleEQ: return audioEngine.simpleEQEnabled
+        case .tenBandEQ: return audioEngine.tenBandEQEnabled
         case .deMud: return audioEngine.deMudEnabled
         case .delay: return audioEngine.delayEnabled
         case .distortion: return audioEngine.distortionEnabled
@@ -681,6 +682,7 @@ struct EffectBlockHorizontal: View {
         case .compressor: audioEngine.compressorEnabled = enabled
         case .stereoWidth: audioEngine.stereoWidthEnabled = enabled
         case .simpleEQ: audioEngine.simpleEQEnabled = enabled
+        case .tenBandEQ: audioEngine.tenBandEQEnabled = enabled
         case .deMud: audioEngine.deMudEnabled = enabled
         case .delay: audioEngine.delayEnabled = enabled
         case .distortion: audioEngine.distortionEnabled = enabled
@@ -714,6 +716,21 @@ struct EffectParametersViewCompact: View {
                 CompactSlider(label: "Bass", value: $audioEngine.eqBass, range: -1...1, format: .db)
                 CompactSlider(label: "Mids", value: $audioEngine.eqMids, range: -1...1, format: .db)
                 CompactSlider(label: "Treble", value: $audioEngine.eqTreble, range: -1...1, format: .db)
+
+            case .tenBandEQ:
+                let columns = [GridItem(.flexible()), GridItem(.flexible())]
+                LazyVGrid(columns: columns, spacing: 8) {
+                    CompactSlider(label: "31", value: $audioEngine.tenBand31, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "62", value: $audioEngine.tenBand62, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "125", value: $audioEngine.tenBand125, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "250", value: $audioEngine.tenBand250, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "500", value: $audioEngine.tenBand500, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "1k", value: $audioEngine.tenBand1k, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "2k", value: $audioEngine.tenBand2k, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "4k", value: $audioEngine.tenBand4k, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "8k", value: $audioEngine.tenBand8k, range: -12...12, format: .dbValue)
+                    CompactSlider(label: "16k", value: $audioEngine.tenBand16k, range: -12...12, format: .dbValue)
+                }
 
             case .compressor:
                 CompactSlider(label: "Strength", value: $audioEngine.compressorStrength, range: 0...1, format: .percent)
@@ -751,6 +768,7 @@ struct CompactSlider: View {
     enum ValueFormat {
         case percent
         case db
+        case dbValue
         case ms
         case hz
     }
@@ -780,6 +798,8 @@ struct CompactSlider: View {
         case .db:
             let db = value * 12.0
             return String(format: "%+.1f dB", db)
+        case .dbValue:
+            return String(format: "%+.1f dB", value)
         case .ms:
             return String(format: "%.0f ms", value * 1000)
         case .hz:

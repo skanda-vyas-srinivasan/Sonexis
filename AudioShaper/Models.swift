@@ -11,6 +11,7 @@ enum EffectType: String, Codable, CaseIterable {
     case stereoWidth = "Stereo Widening"
     case pitchShift = "Pitch Effect"
     case simpleEQ = "Simple EQ"
+    case tenBandEQ = "10-Band EQ"
     case deMud = "De-Mud"
     case delay = "Delay"
     case distortion = "Distortion"
@@ -32,6 +33,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "Changes the pitch up or down"
         case .simpleEQ:
             return "Adjust bass, middle, and treble"
+        case .tenBandEQ:
+            return "Fine-tune 10 frequency bands"
         case .deMud:
             return "Removes muddiness and boxiness"
         case .delay:
@@ -59,6 +62,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "hare.fill"
         case .simpleEQ:
             return "slider.horizontal.3"
+        case .tenBandEQ:
+            return "slider.horizontal.2.square"
         case .deMud:
             return "bandage.fill"
         case .delay:
@@ -104,6 +109,11 @@ struct EffectBlock: Identifiable, Codable {
             return ["pitch": 0.0, "preserveTiming": 1.0] // -12 to +12 semitones
         case .simpleEQ:
             return ["bass": 0.0, "mids": 0.0, "treble": 0.0] // -12 to +12 dB
+        case .tenBandEQ:
+            return [
+                "31": 0.0, "62": 0.0, "125": 0.0, "250": 0.0, "500": 0.0,
+                "1k": 0.0, "2k": 0.0, "4k": 0.0, "8k": 0.0, "16k": 0.0
+            ]
         case .deMud:
             return ["strength": 50.0] // 0-100 scale
         case .delay:

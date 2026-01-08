@@ -46,6 +46,9 @@ struct EffectChainSnapshot: Codable {
         var eqMids: Double?
         var eqTreble: Double?
 
+        // 10-Band EQ
+        var tenBandGains: [Double]?
+
         // Compressor
         var compressorStrength: Double?
 
