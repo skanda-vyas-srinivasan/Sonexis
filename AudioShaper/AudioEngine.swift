@@ -1428,6 +1428,10 @@ class AudioEngine: ObservableObject {
             }
             let delayTime = 0.03 * sizeValue
             let delayFrames = Int(sampleRate * delayTime)
+            guard delayFrames > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             let targetId = nodeId
             var buffer = targetId.flatMap { reverbBuffersByNode[$0] } ?? reverbBuffer
             var writeIndex = targetId.flatMap { reverbWriteIndexByNode[$0] } ?? reverbWriteIndex
@@ -1475,6 +1479,10 @@ class AudioEngine: ObservableObject {
                 return
             }
             let delayFrames = Int(sampleRate * timeValue)
+            guard delayFrames > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
             let targetId = nodeId
             var buffer = targetId.flatMap { delayBuffersByNode[$0] } ?? delayBuffer
             var writeIndex = targetId.flatMap { delayWriteIndexByNode[$0] } ?? delayWriteIndex
