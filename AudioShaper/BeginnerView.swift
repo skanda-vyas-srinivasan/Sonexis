@@ -31,6 +31,7 @@ struct BeginnerView: View {
     @State private var graphMode: GraphMode = .single
     @State private var nextAccentIndex = 0
     @State private var isAppActive = true
+    @State private var isTrayCollapsed = false
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
@@ -58,20 +59,18 @@ struct BeginnerView: View {
             : reachableNodeIDsFromStart()
         let isAnimating = audioEngine.isRunning && showSignalFlow && isAppActive
 
-        VStack(spacing: 0) {
-            // Effect palette at top
-            HStack {
-                EffectPalette(
-                    onEffectSelected: { type in
-                        addEffectToChain(type)
-                    },
-                    onEffectDragged: { type in
-                        draggedEffectType = type
-                    }
-                )
+        HStack(spacing: 0) {
+            EffectTray(
+                isCollapsed: $isTrayCollapsed,
+                onSelect: { type in
+                    addEffectToChain(type)
+                },
+                onDrag: { type in
+                    draggedEffectType = type
+                }
+            )
 
-                Spacer()
-
+            VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     Picker("Graph Mode", selection: $graphMode) {
                         Text("Stereo").tag(GraphMode.single)
@@ -79,6 +78,7 @@ struct BeginnerView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 180)
+                    .tint(AppColors.neonCyan)
                     .onChange(of: graphMode) { _ in
                         if graphMode == .split {
                             syncLanesForSplit()
@@ -86,13 +86,13 @@ struct BeginnerView: View {
                         applyChainToEngine()
                     }
 
-                    // Mode toggle
                     Picker("Wiring Mode", selection: $wiringMode) {
                         Text("Automatic").tag(WiringMode.automatic)
                         Text("Manual").tag(WiringMode.manual)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 200)
+                    .tint(AppColors.neonCyan)
                     .help(wiringMode == .automatic ?
                           "Automatic: Effects flow left-to-right by position. Option+drag to override." :
                           "Manual: Pure manual wiring. Option+drag to connect everything.")
@@ -105,17 +105,29 @@ struct BeginnerView: View {
                         applyChainToEngine()
                     }
                     .disabled(manualConnections.isEmpty)
+                    .foregroundColor(AppColors.textSecondary)
+
+                    Spacer()
                 }
-            }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(AppColors.midPurple.opacity(0.9))
 
-            Divider()
+                Divider()
+                    .background(AppColors.gridLines)
 
-            // Free-placement canvas
-            GeometryReader { geometry in
-                ZStack {
-                    Color(NSColor.textBackgroundColor)
+                // Free-placement canvas
+                GeometryReader { geometry in
+                    ZStack {
+                    AppGradients.background
+                        .ignoresSafeArea()
+
+                    AnimatedGrid(intensity: showSignalFlow ? 0.6 : 0.3)
+
+                    ScanlinesOverlay()
+
+                    Rectangle()
+                        .fill(Color.clear)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if wiringMode == .manual {
@@ -161,25 +173,6 @@ struct BeginnerView: View {
                             .clipShape(Capsule())
                             .padding(.top, 12)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    }
-
-                    // Subtle grid pattern
-                    Canvas { context, size in
-                        let spacing: CGFloat = 30
-                        context.stroke(
-                            Path { path in
-                                for x in stride(from: 0, through: size.width, by: spacing) {
-                                    path.move(to: CGPoint(x: x, y: 0))
-                                    path.addLine(to: CGPoint(x: x, y: size.height))
-                                }
-                                for y in stride(from: 0, through: size.height, by: spacing) {
-                                    path.move(to: CGPoint(x: 0, y: y))
-                                    path.addLine(to: CGPoint(x: size.width, y: y))
-                                }
-                            },
-                            with: .color(.secondary.opacity(0.05)),
-                            lineWidth: 1
-                        )
                     }
 
                     // Draw connections based on mode
@@ -575,8 +568,9 @@ struct BeginnerView: View {
                         }
                     }
                 ))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             showSignalFlow = audioEngine.isRunning
@@ -1549,11 +1543,13 @@ struct InsertionIndicator: View {
     }
 }
 
-// MARK: - Effect Palette (Horizontal)
+// MARK: - Effect Tray
 
-struct EffectPalette: View {
-    let onEffectSelected: (EffectType) -> Void
-    let onEffectDragged: (EffectType) -> Void
+struct EffectTray: View {
+    @Binding var isCollapsed: Bool
+    let onSelect: (EffectType) -> Void
+    let onDrag: (EffectType) -> Void
+    @State private var searchText = ""
 
     private let effects: [EffectType] = [
         .bassBoost, .clarity, .deMud,
@@ -1563,28 +1559,84 @@ struct EffectPalette: View {
     ]
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text("Available Effects (Drag or Click to Add)")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        let filteredEffects = effects.filter { effect in
+            searchText.isEmpty || effect.rawValue.lowercased().contains(searchText.lowercased())
+        }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(effects, id: \.self) { effectType in
-                        EffectPaletteButton(
-                            effectType: effectType,
-                            onTap: {
-                                onEffectSelected(effectType)
-                            },
-                            onDragStart: {
-                                onEffectDragged(effectType)
+        ZStack {
+            VStack(spacing: 0) {
+                if !isCollapsed {
+                    HStack(spacing: 8) {
+                        Text("Effects")
+                            .font(AppTypography.technical)
+                            .foregroundColor(AppColors.textMuted)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+
+                    Divider()
+                        .background(AppColors.gridLines)
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(AppColors.neonCyan)
+                        TextField("Search effects...", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .foregroundColor(AppColors.textPrimary)
+                    }
+                    .padding(8)
+                    .background(AppColors.darkPurple)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(AppColors.neonCyan.opacity(0.5), lineWidth: 1)
+                    )
+                    .cornerRadius(8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 12) {
+                            ForEach(filteredEffects, id: \.self) { effectType in
+                                EffectPaletteButton(
+                                    effectType: effectType,
+                                    onTap: {
+                                        onSelect(effectType)
+                                    },
+                                    onDragStart: {
+                                        onDrag(effectType)
+                                    }
+                                )
                             }
-                        )
+                        }
+                        .padding(.vertical, 12)
                     }
                 }
-                .padding(.horizontal, 4)
             }
         }
+        .overlay(alignment: .trailing) {
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isCollapsed.toggle()
+                }
+            }) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(6)
+                    .background(AppColors.midPurple.opacity(0.95))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 6)
+            .frame(maxHeight: .infinity)
+            .zIndex(2)
+        }
+        .frame(width: isCollapsed ? 44 : 200)
+        .background(AppColors.darkPurple.opacity(0.96))
+        .overlay(
+            Divider(),
+            alignment: .trailing
+        )
     }
 }
 
@@ -1594,8 +1646,8 @@ struct EffectPaletteButton: View {
     let onDragStart: () -> Void
     @State private var isHovered = false
     @State private var isDragging = false
-    private let tileBase = Color(red: 0.20, green: 0.17, blue: 0.14)
-    private let textColor = Color(red: 0.95, green: 0.92, blue: 0.88)
+    private let tileBase = AppColors.midPurple
+    private let textColor = AppColors.textPrimary
 
     var body: some View {
         VStack(spacing: 6) {
@@ -1608,14 +1660,13 @@ struct EffectPaletteButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(isHovered ? Color(red: 0.68, green: 0.52, blue: 0.32) : Color.clear, lineWidth: 1)
+                        .stroke(isHovered ? AppColors.neonPink : Color.clear, lineWidth: 1)
                 )
                 .scaleEffect(isHovered ? 1.05 : 1.0)
                 .opacity(isDragging ? 0.5 : 1.0)
 
             Text(effectType.rawValue)
-                .font(.caption2)
-                .fontWeight(.medium)
+                .font(AppTypography.caption)
                 .foregroundColor(textColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
@@ -1647,7 +1698,7 @@ struct StartNodeView: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [.green.opacity(0.8), .green],
+                        colors: [AppColors.success.opacity(0.8), AppColors.success],
                         center: .center,
                         startRadius: 10,
                         endRadius: 40
@@ -1659,13 +1710,12 @@ struct StartNodeView: View {
                         .font(.system(size: 24))
                         .foregroundColor(.white)
                 )
-                .shadow(color: .green.opacity(0.6), radius: pulse ? 20 : 10)
+                .shadow(color: AppColors.success.opacity(0.6), radius: pulse ? 20 : 10)
                 .scaleEffect(pulse ? 1.05 : 1.0)
 
             Text("Start")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
+                .font(AppTypography.caption)
+                .foregroundColor(AppColors.textSecondary)
         }
         .frame(width: 80)
         .onAppear {
@@ -1684,7 +1734,7 @@ struct EndNodeView: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [.purple.opacity(0.8), .purple],
+                        colors: [AppColors.neonPink.opacity(0.8), AppColors.neonPink],
                         center: .center,
                         startRadius: 10,
                         endRadius: 40
@@ -1696,13 +1746,12 @@ struct EndNodeView: View {
                         .font(.system(size: 24))
                         .foregroundColor(.white)
                 )
-                .shadow(color: .purple.opacity(0.6), radius: pulse ? 20 : 10)
+                .shadow(color: AppColors.neonPink.opacity(0.6), radius: pulse ? 20 : 10)
                 .scaleEffect(pulse ? 1.05 : 1.0)
 
             Text("End")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
+                .font(AppTypography.caption)
+                .foregroundColor(AppColors.textSecondary)
         }
         .frame(width: 80)
         .onAppear {
@@ -1722,7 +1771,7 @@ struct FlowConnection: View {
 
     var body: some View {
         let intensity = min(max(Double(level) * 3.0, 0.0), 1.0)
-        let glow = Color.blue.opacity(0.2 + 0.8 * intensity)
+        let glow = AppColors.neonCyan.opacity(0.2 + 0.8 * intensity)
         let baseOpacity = 0.2 + 0.6 * intensity
         let thickness: CGFloat = 2 + CGFloat(intensity) * 3
 
@@ -1767,7 +1816,7 @@ struct FlowLine: View {
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
-        let glowColor = Color.blue.opacity(0.35 + 0.55 * intensity)
+        let glowColor = AppColors.neonCyan.opacity(0.35 + 0.55 * intensity)
         let thickness: CGFloat = 2 + 5 * intensity + 2 * bounce
         let packetCount = 4
         let dotsPerPacket = 8
@@ -1791,7 +1840,7 @@ struct FlowLine: View {
                             path.move(to: from)
                             path.addLine(to: to)
                         }
-                        .stroke(Color.blue.opacity(baseOpacity), lineWidth: thickness)
+                        .stroke(AppColors.wireActive.opacity(baseOpacity), lineWidth: thickness)
                         .contentShape(Path { path in
                             path.move(to: from)
                             path.addLine(to: to)
@@ -1832,7 +1881,7 @@ struct FlowLine: View {
                     path.move(to: from)
                     path.addLine(to: to)
                 }
-                .stroke(Color.blue.opacity(0.22), lineWidth: 2)
+                .stroke(AppColors.wireInactive.opacity(0.8), lineWidth: 2)
             }
         }
         .onAppear {

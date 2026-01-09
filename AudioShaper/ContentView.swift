@@ -6,53 +6,68 @@ struct ContentView: View {
     @State private var activeScreen: AppScreen = .home
     @State private var showingSaveDialog = false
     @State private var presetNameInput = ""
+    @State private var showGlitch = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            if activeScreen == .home {
-                HomeView(
-                    onBuildFromScratch: { activeScreen = .beginner },
-                    onApplyPresets: { activeScreen = .presets }
-                )
-            } else {
-                AppTopBar(
-                    title: activeScreen == .beginner ? "Build" : "Presets",
-                    onBack: { activeScreen = .home }
-                )
+        ZStack {
+            AppGradients.background
+                .ignoresSafeArea()
 
-                HeaderView(
-                    audioEngine: audioEngine,
-                    onSave: {
-                        presetNameInput = ""
-                        showingSaveDialog = true
-                    },
-                    onLoad: {
-                        // TODO: Show load dialog
-                    }
-                )
+            VStack(spacing: 0) {
+                if activeScreen == .home {
+                    HomeView(
+                        onBuildFromScratch: { activeScreen = .beginner },
+                        onApplyPresets: { activeScreen = .presets }
+                    )
+                } else {
+                    AppTopBar(
+                        title: activeScreen == .beginner ? "Build" : "Presets",
+                        onBack: { activeScreen = .home }
+                    )
 
-                Divider()
+                    HeaderView(
+                        audioEngine: audioEngine,
+                        onSave: {
+                            presetNameInput = ""
+                            showingSaveDialog = true
+                        },
+                        onLoad: {
+                            // TODO: Show load dialog
+                        }
+                    )
 
-                Group {
-                    switch activeScreen {
-                    case .presets:
-                        PresetView(
-                            audioEngine: audioEngine,
-                            presetManager: presetManager,
-                            onPresetApplied: {
-                                activeScreen = .beginner
-                            }
-                        )
-                    case .beginner:
-                        BeginnerView(audioEngine: audioEngine)
-                    case .home:
-                        EmptyView()
+                    Divider()
+                        .background(AppColors.gridLines)
+
+                    Group {
+                        switch activeScreen {
+                        case .presets:
+                            PresetView(
+                                audioEngine: audioEngine,
+                                presetManager: presetManager,
+                                onPresetApplied: {
+                                    activeScreen = .beginner
+                                }
+                            )
+                        case .beginner:
+                            BeginnerView(audioEngine: audioEngine)
+                        case .home:
+                            EmptyView()
+                        }
                     }
                 }
             }
+            .frame(minWidth: 800, minHeight: 700)
+
+            if showGlitch {
+                GlitchOverlay {
+                    showGlitch = false
+                }
+            }
         }
-        .frame(minWidth: 800, minHeight: 700)
-        .background(Color(NSColor.windowBackgroundColor))
+        .onChange(of: activeScreen) { _ in
+            showGlitch = true
+        }
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
                 presetName: $presetNameInput,
@@ -93,42 +108,42 @@ struct HomeView: View {
     @AppStorage("homeHasAppeared") private var homeHasAppeared = false
 
     var body: some View {
-        VStack(spacing: 24) {
+        ZStack {
+            ScanlinesOverlay()
+
+            VStack(spacing: 24) {
             Spacer()
 
             VStack(spacing: 8) {
                 Text("HoldOn")
-                    .font(.system(size: 44, weight: .semibold))
+                    .font(AppTypography.title)
+                    .foregroundColor(AppColors.neonPink)
+                    .shadow(color: AppColors.neonPink.opacity(0.6), radius: 12)
                 Text("Shape your system audio in real time")
-                    .font(.system(size: 15))
-                    .foregroundColor(.secondary)
+                    .font(AppTypography.body)
+                    .foregroundColor(AppColors.textSecondary)
             }
 
             HStack(spacing: 16) {
-                Button(action: onBuildFromScratch) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "wand.and.stars")
-                            .font(.system(size: 28))
-                        Text("Build from scratch")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .frame(width: 220, height: 140)
-                }
-                .buttonStyle(.borderedProminent)
+                NeonActionButton(
+                    title: "Build from scratch",
+                    subtitle: "New Project",
+                    icon: "wand.and.stars",
+                    accent: AppColors.neonCyan,
+                    action: onBuildFromScratch
+                )
 
-                Button(action: onApplyPresets) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "tray.full")
-                            .font(.system(size: 28))
-                        Text("Apply saved presets")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .frame(width: 220, height: 140)
-                }
-                .buttonStyle(.bordered)
+                NeonActionButton(
+                    title: "Browse presets",
+                    subtitle: "Saved Chains",
+                    icon: "tray.full",
+                    accent: AppColors.neonPink,
+                    action: onApplyPresets
+                )
             }
 
             Spacer()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .opacity(isVisible ? 1 : 0)
@@ -144,6 +159,46 @@ struct HomeView: View {
     }
 }
 
+struct NeonActionButton: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let accent: Color
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 28))
+                    .foregroundColor(accent)
+                Text(title.uppercased())
+                    .font(AppTypography.heading)
+                    .foregroundColor(AppColors.textPrimary)
+                Text(subtitle)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+            }
+            .frame(width: 240, height: 150)
+            .background(AppColors.midPurple)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isHovered ? accent : AppColors.neonCyan.opacity(0.4), lineWidth: 2)
+            )
+            .cornerRadius(16)
+            .shadow(color: accent.opacity(isHovered ? 0.5 : 0.15), radius: isHovered ? 18 : 8)
+            .scaleEffect(isHovered ? 1.03 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.2)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
 struct AppTopBar: View {
     let title: String
     let onBack: () -> Void
@@ -155,16 +210,18 @@ struct AppTopBar: View {
                 Text("Home")
             }
             .buttonStyle(.plain)
+            .foregroundColor(AppColors.textSecondary)
 
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.secondary)
+                .font(AppTypography.technical)
+                .foregroundColor(AppColors.textMuted)
 
             Spacer()
         }
         .padding(.horizontal)
         .padding(.top, 12)
         .padding(.bottom, 8)
+        .background(AppColors.deepBlack.opacity(0.7))
     }
 }
 
@@ -178,7 +235,8 @@ struct SavePresetDialog: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Save Preset")
-                .font(.headline)
+                .font(AppTypography.heading)
+                .foregroundColor(AppColors.textPrimary)
 
             TextField("Preset Name", text: $presetName)
                 .textFieldStyle(.roundedBorder)
@@ -199,6 +257,8 @@ struct SavePresetDialog: View {
         }
         .padding()
         .frame(width: 350, height: 150)
+        .background(AppColors.midPurple)
+        .cornerRadius(16)
     }
 }
 
@@ -221,13 +281,14 @@ struct HeaderView: View {
             }) {
                 Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
                     .font(.system(size: 24))
-                    .foregroundColor(audioEngine.isRunning ? .green : .secondary)
+                    .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
             }
             .buttonStyle(.plain)
             .help(audioEngine.isRunning ? "Stop Processing" : "Start Processing")
 
             Divider()
                 .frame(height: 30)
+                .background(AppColors.gridLines)
 
             // FX bypass
             Button(action: {
@@ -235,13 +296,14 @@ struct HeaderView: View {
             }) {
                 Image(systemName: audioEngine.processingEnabled ? "slider.horizontal.3" : "slider.horizontal.3")
                     .font(.system(size: 18))
-                    .foregroundColor(audioEngine.processingEnabled ? .blue : .secondary)
+                    .foregroundColor(audioEngine.processingEnabled ? AppColors.neonCyan : AppColors.textMuted)
             }
             .buttonStyle(.plain)
             .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
 
             Divider()
                 .frame(height: 30)
+                .background(AppColors.gridLines)
 
             // Limiter toggle
             Button(action: {
@@ -249,28 +311,30 @@ struct HeaderView: View {
             }) {
                 Image(systemName: audioEngine.limiterEnabled ? "shield.fill" : "shield.slash")
                     .font(.system(size: 18))
-                    .foregroundColor(audioEngine.limiterEnabled ? .orange : .secondary)
+                    .foregroundColor(audioEngine.limiterEnabled ? AppColors.warning : AppColors.textMuted)
             }
             .buttonStyle(.plain)
             .help(audioEngine.limiterEnabled ? "Limiter On" : "Limiter Off")
 
             Divider()
                 .frame(height: 30)
+                .background(AppColors.gridLines)
 
             // Input device (read-only, shows BlackHole)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Input")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
                 Text(audioEngine.inputDeviceName)
-                    .font(.system(size: 11))
+                    .font(AppTypography.technical)
+                    .foregroundColor(AppColors.textSecondary)
             }
 
             // Output device picker
             VStack(alignment: .leading, spacing: 2) {
                 Text("Output")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
                 Picker("", selection: $audioEngine.selectedOutputDeviceID) {
                     ForEach(audioEngine.outputDevices, id: \.id) { device in
                         Text(device.name).tag(Optional(device.id))
@@ -285,8 +349,8 @@ struct HeaderView: View {
             // Error message if any
             if let error = audioEngine.errorMessage {
                 Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.error)
                     .lineLimit(2)
                     .frame(maxWidth: 250)
             }
@@ -296,14 +360,18 @@ struct HeaderView: View {
                 Button("Save Preset") {
                     onSave()
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(AppColors.neonCyan)
 
                 Button("Load Preset") {
                     onLoad()
                 }
+                .buttonStyle(.bordered)
+                .tint(AppColors.neonPink)
             }
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(AppColors.midPurple.opacity(0.9))
     }
 }
 
@@ -313,20 +381,42 @@ struct PresetView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var presetManager: PresetManager
     let onPresetApplied: () -> Void
+    @State private var searchText = ""
 
     var body: some View {
+        let filteredPresets = presetManager.presets.filter { preset in
+            searchText.isEmpty || preset.name.lowercased().contains(searchText.lowercased())
+        }
+
         VStack {
-            if presetManager.presets.isEmpty {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(AppColors.neonCyan)
+                TextField("Search presets...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .foregroundColor(AppColors.textPrimary)
+            }
+            .padding(10)
+            .background(AppColors.midPurple)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(AppColors.neonCyan.opacity(0.6), lineWidth: 1)
+            )
+            .cornerRadius(10)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            if filteredPresets.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 48))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColors.textMuted)
                     Text("No saved presets")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+                        .font(AppTypography.heading)
+                        .foregroundColor(AppColors.textSecondary)
                     Text("Create effect chains in Beginner or Advanced mode, then save them as presets")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                 }
@@ -334,7 +424,7 @@ struct PresetView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        ForEach(presetManager.presets) { preset in
+                        ForEach(filteredPresets) { preset in
                             PresetCard(
                                 preset: preset,
                                 onApply: {
@@ -347,7 +437,8 @@ struct PresetView: View {
                             )
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
                 }
             }
         }
@@ -358,15 +449,17 @@ struct PresetCard: View {
     let preset: SavedPreset
     let onApply: () -> Void
     let onDelete: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(preset.name)
-                        .font(.headline)
+                        .font(AppTypography.heading)
+                        .foregroundColor(AppColors.textPrimary)
                     Text("\(preset.graph.nodes.count) effects")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.neonCyan)
                 }
 
             Spacer()
@@ -374,16 +467,28 @@ struct PresetCard: View {
             Button("Apply") {
                 onApply()
             }
+            .buttonStyle(.borderedProminent)
+            .tint(AppColors.neonCyan)
 
             Button(action: onDelete) {
                 Image(systemName: "trash")
-                    .foregroundColor(.red)
+                    .foregroundColor(AppColors.error)
             }
             .buttonStyle(.plain)
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
+        .background(isHovered ? AppColors.midPurple : AppColors.darkPurple)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isHovered ? AppColors.neonPink : AppColors.gridLines, lineWidth: isHovered ? 2 : 1)
+        )
+        .cornerRadius(12)
+        .shadow(color: AppColors.neonPink.opacity(isHovered ? 0.4 : 0), radius: 12)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.2)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 

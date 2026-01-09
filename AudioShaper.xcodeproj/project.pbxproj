@@ -13,6 +13,7 @@
 		AA0000070000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000080000000000000002 /* Models.swift */; };
 		AA0000090000000000000003 /* PresetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000100000000000000003 /* PresetManager.swift */; };
 		AA0000110000000000000004 /* BeginnerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000120000000000000004 /* BeginnerView.swift */; };
+		AA0000130000000000000005 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000140000000000000005 /* DesignSystem.swift */; };
 		C63C1A55CF461A7F36555808 /* AAFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA149691A4DB6F418DAE1A1F /* AAFilter.cpp */; };
 		33E91E763C33D8F31218F30C /* BPMDetect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6C0D51379D3A56F7AD89238B /* BPMDetect.cpp */; };
 		0D1D4C1D996B66D89EBE87F7 /* FIFOSampleBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FA38020639AF6FF651CEE58 /* FIFOSampleBuffer.cpp */; };
@@ -41,6 +42,7 @@
 		AA0000080000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		AA0000100000000000000003 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
 		AA0000120000000000000004 /* BeginnerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeginnerView.swift; sourceTree = "<group>"; };
+		AA0000140000000000000005 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AudioShaper-Bridging-Header.h"; sourceTree = "<group>"; };
 		D9C93DEA747BFDF98A24E5A1 /* RubberBandWrapper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RubberBandWrapper.h; sourceTree = "<group>"; };
 		5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RubberBandWrapper.mm; sourceTree = "<group>"; };
@@ -88,6 +90,7 @@
 				AA0000020000000000000001 /* AudioShaperApp.swift */,
 				AA0000040000000000000001 /* ContentView.swift */,
 				AA0000120000000000000004 /* BeginnerView.swift */,
+				AA0000140000000000000005 /* DesignSystem.swift */,
 				AA0000060000000000000001 /* AudioEngine.swift */,
 				AA0000080000000000000002 /* Models.swift */,
 				AA0000100000000000000003 /* PresetManager.swift */,
@@ -195,6 +198,7 @@
 				AA0000010000000000000001 /* AudioShaperApp.swift in Sources */,
 				AA0000030000000000000001 /* ContentView.swift in Sources */,
 				AA0000110000000000000004 /* BeginnerView.swift in Sources */,
+				AA0000130000000000000005 /* DesignSystem.swift in Sources */,
 				AA0000050000000000000001 /* AudioEngine.swift in Sources */,
 				AA0000070000000000000002 /* Models.swift in Sources */,
 				AA0000090000000000000003 /* PresetManager.swift in Sources */,
