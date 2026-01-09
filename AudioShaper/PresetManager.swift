@@ -17,6 +17,13 @@ struct SavedPreset: Identifiable, Codable {
         self.createdDate = Date()
     }
 
+    init(id: UUID, name: String, graph: GraphSnapshot, createdDate: Date) {
+        self.id = id
+        self.name = name
+        self.graph = graph
+        self.createdDate = createdDate
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case name
@@ -197,14 +204,23 @@ class PresetManager: ObservableObject {
         loadPresets()
     }
 
-    func savePreset(name: String, graph: GraphSnapshot) {
+    @discardableResult
+    func savePreset(name: String, graph: GraphSnapshot) -> SavedPreset {
         let preset = SavedPreset(name: name, graph: graph)
         presets.append(preset)
         persistPresets()
+        return preset
     }
 
     func deletePreset(_ preset: SavedPreset) {
         presets.removeAll { $0.id == preset.id }
+        persistPresets()
+    }
+
+    func updatePreset(id: UUID, graph: GraphSnapshot) {
+        guard let index = presets.firstIndex(where: { $0.id == id }) else { return }
+        let existing = presets[index]
+        presets[index] = SavedPreset(id: existing.id, name: existing.name, graph: graph, createdDate: existing.createdDate)
         persistPresets()
     }
 

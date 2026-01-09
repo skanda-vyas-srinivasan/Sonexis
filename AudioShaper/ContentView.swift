@@ -7,6 +7,9 @@ struct ContentView: View {
     @State private var showingSaveDialog = false
     @State private var showingLoadDialog = false
     @State private var presetNameInput = ""
+    @State private var currentPresetID: UUID?
+    @State private var saveStatusText: String?
+    @State private var saveStatusClearTask: DispatchWorkItem?
     @State private var showGlitch = false
 
     var body: some View {
@@ -30,12 +33,16 @@ struct ContentView: View {
                         HeaderView(
                             audioEngine: audioEngine,
                             onSave: {
-                                presetNameInput = ""
-                                showingSaveDialog = true
+                                saveCurrentPreset(overwrite: true)
                             },
                             onLoad: {
                                 showingLoadDialog = true
-                            }
+                            },
+                            onSaveAs: {
+                                presetNameInput = ""
+                                showingSaveDialog = true
+                            },
+                            saveStatusText: $saveStatusText
                         )
                     }
 
@@ -48,7 +55,8 @@ struct ContentView: View {
                             PresetView(
                                 audioEngine: audioEngine,
                                 presetManager: presetManager,
-                                onPresetApplied: {
+                                onPresetApplied: { preset in
+                                    currentPresetID = preset.id
                                     activeScreen = .beginner
                                 }
                             )
@@ -75,7 +83,7 @@ struct ContentView: View {
             SavePresetDialog(
                 presetName: $presetNameInput,
                 onSave: {
-                    saveCurrentPreset()
+                    savePresetAs()
                     showingSaveDialog = false
                 },
                 onCancel: {
@@ -88,6 +96,7 @@ struct ContentView: View {
                 presetManager: presetManager,
                 onApply: { preset in
                     audioEngine.requestGraphLoad(preset.graph)
+                    currentPresetID = preset.id
                     showingLoadDialog = false
                 },
                 onCancel: {
@@ -97,16 +106,49 @@ struct ContentView: View {
         }
     }
 
-    private func saveCurrentPreset() {
+    private func savePresetAs() {
         guard !presetNameInput.isEmpty else { return }
 
         guard let graph = audioEngine.currentGraphSnapshot else {
             print("⚠️ No graph snapshot available to save")
             return
         }
-        presetManager.savePreset(name: presetNameInput, graph: graph)
-
+        let preset = presetManager.savePreset(name: presetNameInput, graph: graph)
+        currentPresetID = preset.id
+        showSaveStatus("Saved at \(formattedTime())")
         print("✅ Preset saved: \(presetNameInput)")
+    }
+
+    private func saveCurrentPreset(overwrite: Bool = false) {
+        guard let graph = audioEngine.currentGraphSnapshot else {
+            print("⚠️ No graph snapshot available to save")
+            return
+        }
+
+        if overwrite, let presetID = currentPresetID {
+            presetManager.updatePreset(id: presetID, graph: graph)
+            showSaveStatus("Saved at \(formattedTime())")
+            print("✅ Preset updated")
+        } else {
+            presetNameInput = ""
+            showingSaveDialog = true
+        }
+    }
+
+    private func showSaveStatus(_ message: String) {
+        saveStatusClearTask?.cancel()
+        saveStatusText = message
+        let task = DispatchWorkItem {
+            saveStatusText = nil
+        }
+        saveStatusClearTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: task)
+    }
+
+    private func formattedTime() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: Date())
     }
 }
 
@@ -370,6 +412,8 @@ struct HeaderView: View {
     @ObservedObject var audioEngine: AudioEngine
     let onSave: () -> Void
     let onLoad: () -> Void
+    let onSaveAs: () -> Void
+    @Binding var saveStatusText: String?
 
     var body: some View {
         HStack(spacing: 20) {
@@ -458,18 +502,58 @@ struct HeaderView: View {
             }
 
             // Save/Load buttons
-            HStack(spacing: 8) {
-                Button("Save Preset") {
-                    onSave()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppColors.neonCyan)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    HStack(spacing: 0) {
+                        Button("Save") {
+                            onSave()
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
 
-                Button("Load Preset") {
-                    onLoad()
+                        Divider()
+                            .frame(height: 16)
+                            .background(AppColors.neonCyan.opacity(0.6))
+
+                        Menu {
+                            Button("Save As…") {
+                                onSaveAs()
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(
+                                    Color.clear
+                                        .contentShape(Rectangle())
+                                        .frame(width: 44, height: 28)
+                                )
+                        }
+                        .menuIndicator(.hidden)
+                        .buttonStyle(.plain)
+                    }
+                    .background(AppColors.neonCyan.opacity(0.18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(AppColors.neonCyan, lineWidth: 1)
+                )
+                    .cornerRadius(8)
+
+                    Button("Load Preset") {
+                        onLoad()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppColors.neonPink)
                 }
-                .buttonStyle(.bordered)
-                .tint(AppColors.neonPink)
+
+                if let saveStatusText {
+                    Text(saveStatusText)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textSecondary)
+                        .transition(.opacity)
+                }
             }
         }
         .padding()
@@ -482,7 +566,7 @@ struct HeaderView: View {
 struct PresetView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var presetManager: PresetManager
-    let onPresetApplied: () -> Void
+    let onPresetApplied: (SavedPreset) -> Void
     @State private var searchText = ""
 
     var body: some View {
@@ -531,7 +615,7 @@ struct PresetView: View {
                                 preset: preset,
                                 onApply: {
                                     audioEngine.requestGraphLoad(preset.graph)
-                                    onPresetApplied()
+                                    onPresetApplied(preset)
                                 },
                                 onDelete: {
                                     presetManager.deletePreset(preset)
