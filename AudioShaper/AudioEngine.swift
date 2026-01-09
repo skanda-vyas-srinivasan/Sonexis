@@ -209,6 +209,9 @@ class AudioEngine: ObservableObject {
     @Published var outputDevices: [AudioDevice] = []
     @Published var selectedOutputDeviceID: AudioDeviceID? {
         didSet {
+            if let deviceID = selectedOutputDeviceID {
+                setOutputDeviceVolume(deviceID: deviceID, volume: 1.0)
+            }
             if isRunning {
                 reconfigureAudio()
             }
@@ -432,7 +435,7 @@ class AudioEngine: ObservableObject {
             setOutputDeviceVolume(deviceID: speakerDeviceID, volume: 1.0)
 
             // Create AudioQueue for output to speakers
-            let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+            let inputFormat = engine.inputNode.inputFormat(forBus: 0)
 
             // Use fixed sample rate (no more nightcore rate changes)
             var audioFormat = AudioStreamBasicDescription(

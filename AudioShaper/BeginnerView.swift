@@ -20,6 +20,8 @@ struct BeginnerView: View {
     @State private var lassoCurrent: CGPoint?
     @State private var selectionDragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedWireID: UUID?
+    @State private var selectedAutoWire: AutoWireSelection?
+    @State private var autoGainOverrides: [WireKey: Double] = [:]
 
     @State private var startNodeID = UUID()
     @State private var endNodeID = UUID()
@@ -233,33 +235,6 @@ struct BeginnerView: View {
                                 level: levelForNode(connection.toNodeId),
                                 beatPulse: beatPulse
                             )
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard connection.isManual else { return }
-                                    let midpoint = CGPoint(
-                                        x: (connection.from.x + connection.to.x) * 0.5,
-                                        y: (connection.from.y + connection.to.y) * 0.5
-                                    )
-                                    let menu = CustomContextMenu(
-                                        anchor: midpoint,
-                                        position: midpoint,
-                                        tint: AppColors.neonCyan,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Wire",
-                                                role: .destructive,
-                                                action: { deleteManualConnection(connection.id) }
-                                            ),
-                                            CustomContextMenu.Item(
-                                                title: "Set Gain…",
-                                                role: nil,
-                                                action: { selectedWireID = connection.id }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
                         }
                     }
 
@@ -279,35 +254,23 @@ struct BeginnerView: View {
                             x: (wire.from.x + wire.to.x) * 0.5,
                             y: (wire.from.y + wire.to.y) * 0.5 - 28
                         )
-
-                        VStack(spacing: 6) {
-                            Text("Gain")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.9))
-                            Slider(value: binding, in: 0...1)
-                                .controlSize(.mini)
-                                .frame(width: 140)
-                            Text(String(format: "%.0f%%", binding.wrappedValue * 100))
-                                .font(.caption2)
-                                .monospacedDigit()
-                                .foregroundColor(.white.opacity(0.7))
-                            Button("Done") {
-                                selectedWireID = nil
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
-                            .tint(.white.opacity(0.8))
+                        GainPopoverView(
+                            tint: AppColors.neonCyan,
+                            value: binding
+                        ) {
+                            selectedWireID = nil
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.75))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .shadow(color: Color.black.opacity(0.5), radius: 6, y: 2)
                         .position(midpoint)
+                        .zIndex(5)
+                    } else if let autoWire = selectedAutoWire,
+                              let binding = autoGainBinding(for: autoWire.key) {
+                        GainPopoverView(
+                            tint: autoWire.tint,
+                            value: binding
+                        ) {
+                            selectedAutoWire = nil
+                        }
+                        .position(autoWire.midpoint)
                         .zIndex(5)
                     }
 
@@ -338,25 +301,6 @@ struct BeginnerView: View {
 
                         StartNodeView()
                             .position(startNodePosition(in: geometry.size, lane: .left))
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard wiringMode == .manual else { return }
-                                    let pos = startNodePosition(in: geometry.size, lane: .left)
-                                    let menu = CustomContextMenu(
-                                        anchor: pos,
-                                        position: pos,
-                                        tint: AppColors.success,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Node Wires",
-                                                role: nil,
-                                                action: { removeWires(for: leftStartNodeID) }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -386,47 +330,9 @@ struct BeginnerView: View {
 
                         EndNodeView()
                             .position(endNodePosition(in: geometry.size, lane: .left))
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard wiringMode == .manual else { return }
-                                    let pos = endNodePosition(in: geometry.size, lane: .left)
-                                    let menu = CustomContextMenu(
-                                        anchor: pos,
-                                        position: pos,
-                                        tint: AppColors.error,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Node Wires",
-                                                role: nil,
-                                                action: { removeWires(for: leftEndNodeID) }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
 
                         StartNodeView()
                             .position(startNodePosition(in: geometry.size, lane: .right))
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard wiringMode == .manual else { return }
-                                    let pos = startNodePosition(in: geometry.size, lane: .right)
-                                    let menu = CustomContextMenu(
-                                        anchor: pos,
-                                        position: pos,
-                                        tint: AppColors.success,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Node Wires",
-                                                role: nil,
-                                                action: { removeWires(for: rightStartNodeID) }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -456,47 +362,9 @@ struct BeginnerView: View {
 
                         EndNodeView()
                             .position(endNodePosition(in: geometry.size, lane: .right))
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard wiringMode == .manual else { return }
-                                    let pos = endNodePosition(in: geometry.size, lane: .right)
-                                    let menu = CustomContextMenu(
-                                        anchor: pos,
-                                        position: pos,
-                                        tint: AppColors.error,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Node Wires",
-                                                role: nil,
-                                                action: { removeWires(for: rightEndNodeID) }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
                     } else {
                         StartNodeView()
                             .position(startNodePosition(in: geometry.size, lane: nil))
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard wiringMode == .manual else { return }
-                                    let pos = startNodePosition(in: geometry.size, lane: nil)
-                                    let menu = CustomContextMenu(
-                                        anchor: pos,
-                                        position: pos,
-                                        tint: AppColors.success,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Node Wires",
-                                                role: nil,
-                                                action: { removeWires(for: startNodeID) }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -525,25 +393,6 @@ struct BeginnerView: View {
                             )
                         EndNodeView()
                             .position(endNodePosition(in: geometry.size, lane: nil))
-                            .overlay(
-                                RightClickCapture { _ in
-                                    guard wiringMode == .manual else { return }
-                                    let pos = endNodePosition(in: geometry.size, lane: nil)
-                                    let menu = CustomContextMenu(
-                                        anchor: pos,
-                                        position: pos,
-                                        tint: AppColors.error,
-                                        items: [
-                                            CustomContextMenu.Item(
-                                                title: "Delete Node Wires",
-                                                role: nil,
-                                                action: { removeWires(for: endNodeID) }
-                                            )
-                                        ]
-                                    )
-                                    customContextMenu = menuAdjusted(menu)
-                                }
-                            )
                     }
 
                     ForEach(effectChain, id: \.id) { effect in
@@ -581,45 +430,6 @@ struct BeginnerView: View {
                                         selectedNodeIDs = [effectValue.id]
                                     }
                                 }
-                        )
-                        .overlay(
-                            RightClickCapture { _ in
-                                var items: [CustomContextMenu.Item] = [
-                                    CustomContextMenu.Item(
-                                        title: "Delete Node",
-                                        role: .destructive,
-                                        action: { removeEffect(id: effectValue.id) }
-                                    ),
-                                    CustomContextMenu.Item(
-                                        title: "Duplicate Node",
-                                        role: nil,
-                                        action: { duplicateEffect(id: effectValue.id) }
-                                    ),
-                                    CustomContextMenu.Item(
-                                        title: "Reset Node Params",
-                                        role: nil,
-                                        action: { resetEffectParameters(id: effectValue.id) }
-                                    )
-                                ]
-                                if wiringMode == .manual {
-                                    items.insert(
-                                        CustomContextMenu.Item(
-                                            title: "Delete Node Wires",
-                                            role: nil,
-                                            action: { removeWires(for: effectValue.id) }
-                                        ),
-                                        at: 1
-                                    )
-                                }
-                                let nodeTint = accentPalette[effectValue.accentIndex % accentPalette.count].fill
-                                let menu = CustomContextMenu(
-                                    anchor: nodePos,
-                                    position: nodePos,
-                                    tint: nodeTint,
-                                    items: items
-                                )
-                                customContextMenu = menuAdjusted(menu)
-                            }
                         )
                         .gesture(
                             DragGesture()
@@ -708,6 +518,12 @@ struct BeginnerView: View {
                     canvasSize = newSize
                 }
                 .contentShape(Rectangle())
+                .overlay(
+                    RightClickCapture { location in
+                        handleRightClick(at: location, in: geometry.size)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                )
                 .onDrop(of: [.text], delegate: CanvasDropDelegate(
                     effectChain: $effectChain,
                     draggedEffectType: $draggedEffectType,
@@ -794,6 +610,7 @@ struct BeginnerView: View {
     private func removeEffect(id: UUID) {
         effectChain.removeAll { $0.id == id }
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
+        autoGainOverrides = autoGainOverrides.filter { $0.key.from != id && $0.key.to != id }
         selectedNodeIDs.remove(id)
         normalizeAllOutgoingGains()
         applyChainToEngine()
@@ -824,6 +641,7 @@ struct BeginnerView: View {
     private func removeEffects(ids: Set<UUID>) {
         effectChain.removeAll { ids.contains($0.id) }
         manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
+        autoGainOverrides = autoGainOverrides.filter { !ids.contains($0.key.from) && !ids.contains($0.key.to) }
         selectedNodeIDs.subtract(ids)
         normalizeAllOutgoingGains()
         applyChainToEngine()
@@ -874,7 +692,17 @@ struct BeginnerView: View {
                 )
                 // Debug overlay removed.
             } else {
-                audioEngine.updateEffectChain(path)
+                if autoGainOverrides.isEmpty {
+                    audioEngine.updateEffectChain(path)
+                } else {
+                    let connections = autoConnections(for: .left)
+                    audioEngine.updateEffectGraph(
+                        nodes: effectChain,
+                        connections: connections,
+                        startID: startNodeID,
+                        endID: endNodeID
+                    )
+                }
                 // Debug overlay removed.
             }
         }
@@ -899,6 +727,14 @@ struct BeginnerView: View {
         let filteredNodes = nodes.filter { $0.type != .pitchShift }
         effectChain = filteredNodes
         manualConnections = snapshot.connections.filter { !removedIds.contains($0.fromNodeId) && !removedIds.contains($0.toNodeId) }
+        let filteredAutoGains = snapshot.autoGainOverrides.filter {
+            !removedIds.contains($0.fromNodeId) && !removedIds.contains($0.toNodeId)
+        }
+        autoGainOverrides = Dictionary(
+            uniqueKeysWithValues: filteredAutoGains.map {
+                (WireKey(from: $0.fromNodeId, to: $0.toNodeId), $0.gain)
+            }
+        )
         startNodeID = snapshot.startNodeID
         endNodeID = snapshot.endNodeID
         leftStartNodeID = snapshot.leftStartNodeID ?? leftStartNodeID
@@ -914,6 +750,7 @@ struct BeginnerView: View {
         nextAccentIndex = (maxAccent + 1) % accentPalette.count
         selectedNodeIDs.removeAll()
         selectedWireID = nil
+        selectedAutoWire = nil
         applyChainToEngine()
     }
 
@@ -1000,6 +837,9 @@ struct BeginnerView: View {
             wiringMode: wiringMode == .manual ? .manual : .automatic,
             nodes: effectChain,
             connections: manualConnections,
+            autoGainOverrides: autoGainOverrides.map {
+                BeginnerConnection(fromNodeId: $0.key.from, toNodeId: $0.key.to, gain: $0.value)
+            },
             startNodeID: startNodeID,
             endNodeID: endNodeID,
             leftStartNodeID: leftStartNodeID,
@@ -1063,15 +903,39 @@ struct BeginnerView: View {
         let startID = startNodeID(for: lane)
         let endID = endNodeID(for: lane)
         guard !ordered.isEmpty else {
-            return [BeginnerConnection(fromNodeId: startID, toNodeId: endID)]
+            return [
+                BeginnerConnection(
+                    fromNodeId: startID,
+                    toNodeId: endID,
+                    gain: autoGain(for: startID, toID: endID)
+                )
+            ]
         }
 
         var connections: [BeginnerConnection] = []
-        connections.append(BeginnerConnection(fromNodeId: startID, toNodeId: ordered[0].id))
+        connections.append(
+            BeginnerConnection(
+                fromNodeId: startID,
+                toNodeId: ordered[0].id,
+                gain: autoGain(for: startID, toID: ordered[0].id)
+            )
+        )
         for index in 0..<(ordered.count - 1) {
-            connections.append(BeginnerConnection(fromNodeId: ordered[index].id, toNodeId: ordered[index + 1].id))
+            connections.append(
+                BeginnerConnection(
+                    fromNodeId: ordered[index].id,
+                    toNodeId: ordered[index + 1].id,
+                    gain: autoGain(for: ordered[index].id, toID: ordered[index + 1].id)
+                )
+            )
         }
-        connections.append(BeginnerConnection(fromNodeId: ordered[ordered.count - 1].id, toNodeId: endID))
+        connections.append(
+            BeginnerConnection(
+                fromNodeId: ordered[ordered.count - 1].id,
+                toNodeId: endID,
+                gain: autoGain(for: ordered[ordered.count - 1].id, toID: endID)
+            )
+        )
         return connections
     }
 
@@ -1150,6 +1014,18 @@ struct BeginnerView: View {
         return CustomContextMenu(anchor: menu.anchor, position: CGPoint(x: x, y: y), tint: menu.tint, items: menu.items)
     }
 
+    private func menuAtPoint(_ menu: CustomContextMenu, point: CGPoint) -> CustomContextMenu {
+        let padding: CGFloat = 12
+        let size = menu.size
+        let minX = size.width * 0.5 + padding
+        let maxX = max(canvasSize.width - size.width * 0.5 - padding, minX)
+        let minY = size.height * 0.5 + padding
+        let maxY = max(canvasSize.height - size.height * 0.5 - padding, minY)
+        let x = min(max(point.x, minX), maxX)
+        let y = min(max(point.y, minY), maxY)
+        return CustomContextMenu(anchor: menu.anchor, position: CGPoint(x: x, y: y), tint: menu.tint, items: menu.items)
+    }
+
     private func updateSelection(in rect: CGRect, additive: Bool) {
         let matched = effectChain.filter { node in
             rect.contains(displayNodePosition(node, in: canvasSize))
@@ -1159,6 +1035,161 @@ struct BeginnerView: View {
         } else {
             selectedNodeIDs = Set(matched.map { $0.id })
         }
+    }
+
+    private func handleRightClick(at point: CGPoint, in size: CGSize) {
+        // Wires (manual) - prioritize wire hits over nodes
+        if wiringMode == .manual {
+            let connections = graphMode == .split
+                ? (visualManualConnections(in: size, lane: .left) + visualManualConnections(in: size, lane: .right))
+                : visualManualConnections(in: size, lane: nil)
+            if let hit = connections.first(where: { $0.isManual && distanceToSegment(point, $0.from, $0.to) <= 16 }) {
+                let midpoint = CGPoint(x: (hit.from.x + hit.to.x) * 0.5, y: (hit.from.y + hit.to.y) * 0.5)
+                let menu = CustomContextMenu(
+                    anchor: midpoint,
+                    position: point,
+                    tint: AppColors.neonCyan,
+                    items: [
+                        CustomContextMenu.Item(
+                            title: "Delete Wire",
+                            role: .destructive,
+                            action: { deleteManualConnection(hit.id) }
+                        ),
+                        CustomContextMenu.Item(
+                            title: "Set Gain…",
+                            role: nil,
+                            action: {
+                                selectedAutoWire = nil
+                                selectedWireID = hit.id
+                            }
+                        )
+                    ]
+                )
+                customContextMenu = menuAtPoint(menu, point: point)
+                return
+            }
+        } else {
+            let autoConnections = graphMode == .split
+                ? (connectionsForCanvas(path: chainPath(for: .left), lane: .left) +
+                   connectionsForCanvas(path: chainPath(for: .right), lane: .right))
+                : connectionsForCanvas(path: chainPath(for: nil), lane: nil)
+            if let hit = autoConnections.first(where: { distanceToSegment(point, $0.from, $0.to) <= 16 }) {
+                let midpoint = CGPoint(
+                    x: (hit.from.x + hit.to.x) * 0.5,
+                    y: (hit.from.y + hit.to.y) * 0.5 - 28
+                )
+                let wireKey = WireKey(from: hit.fromNodeId, to: hit.toNodeId)
+                let menu = CustomContextMenu(
+                    anchor: midpoint,
+                    position: point,
+                    tint: AppColors.neonCyan,
+                    items: [
+                        CustomContextMenu.Item(
+                            title: "Set Gain…",
+                            role: nil,
+                            action: {
+                                selectedWireID = nil
+                                selectedAutoWire = AutoWireSelection(
+                                    key: wireKey,
+                                    midpoint: midpoint,
+                                    tint: AppColors.neonCyan
+                                )
+                            }
+                        )
+                    ]
+                )
+                customContextMenu = menuAtPoint(menu, point: point)
+                return
+            }
+        }
+
+        // Check nodes
+        let nodeRadius: CGFloat = 60 * zoomScale
+        if let hitNode = effectChain.first(where: { node in
+            let pos = displayNodePosition(node, in: size)
+            return hypot(point.x - pos.x, point.y - pos.y) <= nodeRadius
+        }) {
+            var items: [CustomContextMenu.Item] = [
+                CustomContextMenu.Item(
+                    title: "Delete Node",
+                    role: .destructive,
+                    action: { removeEffect(id: hitNode.id) }
+                ),
+                CustomContextMenu.Item(
+                    title: "Duplicate Node",
+                    role: nil,
+                    action: { duplicateEffect(id: hitNode.id) }
+                ),
+                CustomContextMenu.Item(
+                    title: "Reset Node Params",
+                    role: nil,
+                    action: { resetEffectParameters(id: hitNode.id) }
+                )
+            ]
+            if wiringMode == .manual {
+                items.insert(
+                    CustomContextMenu.Item(
+                        title: "Delete Node Wires",
+                        role: nil,
+                        action: { removeWires(for: hitNode.id) }
+                    ),
+                    at: 1
+                )
+            }
+            let tint = accentPalette[hitNode.accentIndex % accentPalette.count].fill
+            let menu = CustomContextMenu(anchor: displayNodePosition(hitNode, in: size), position: point, tint: tint, items: items)
+            customContextMenu = menuAdjusted(menu)
+            return
+        }
+
+        // Start/End nodes (manual wiring only)
+        if wiringMode == .manual {
+            let startPos = startNodePosition(in: size, lane: nil)
+            if hypot(point.x - startPos.x, point.y - startPos.y) <= 40 {
+                let menu = CustomContextMenu(
+                    anchor: startPos,
+                    position: point,
+                    tint: AppColors.neonCyan,
+                    items: [
+                        CustomContextMenu.Item(
+                            title: "Delete Node Wires",
+                            role: nil,
+                            action: { removeWires(for: startNodeID) }
+                        )
+                    ]
+                )
+                customContextMenu = menuAdjusted(menu)
+                return
+            }
+
+            let endPos = endNodePosition(in: size, lane: nil)
+            if hypot(point.x - endPos.x, point.y - endPos.y) <= 40 {
+                let menu = CustomContextMenu(
+                    anchor: endPos,
+                    position: point,
+                    tint: AppColors.neonPink,
+                    items: [
+                        CustomContextMenu.Item(
+                            title: "Delete Node Wires",
+                            role: nil,
+                            action: { removeWires(for: endNodeID) }
+                        )
+                    ]
+                )
+                customContextMenu = menuAdjusted(menu)
+                return
+            }
+        }
+
+        customContextMenu = nil
+    }
+
+    private func distanceToSegment(_ p: CGPoint, _ v: CGPoint, _ w: CGPoint) -> CGFloat {
+        let l2 = pow(v.x - w.x, 2) + pow(v.y - w.y, 2)
+        guard l2 > 0 else { return hypot(p.x - v.x, p.y - v.y) }
+        let t = max(0, min(1, ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2))
+        let proj = CGPoint(x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y))
+        return hypot(p.x - proj.x, p.y - proj.y)
     }
 
     private func toggleSelection(_ id: UUID) {
@@ -1216,6 +1247,20 @@ struct BeginnerView: View {
         )
     }
 
+    private func autoGainBinding(for key: WireKey) -> Binding<Double>? {
+        Binding(
+            get: { autoGainOverrides[key] ?? 1.0 },
+            set: { newValue in
+                autoGainOverrides[key] = min(max(newValue, 0), 1)
+                applyChainToEngine()
+            }
+        )
+    }
+
+    private func autoGain(for fromID: UUID, toID: UUID) -> Double {
+        autoGainOverrides[WireKey(from: fromID, to: toID)] ?? 1.0
+    }
+
     private func manualConnection(for wireID: UUID) -> CanvasConnection? {
         guard let connection = manualConnections.first(where: { $0.id == wireID }) else { return nil }
         let size = canvasSize
@@ -1239,7 +1284,14 @@ struct BeginnerView: View {
             return nil
         }
 
-        return CanvasConnection(id: connection.id, from: fromPoint, to: toPoint, toNodeId: connection.toNodeId, isManual: true)
+        return CanvasConnection(
+            id: connection.id,
+            fromNodeId: connection.fromNodeId,
+            from: fromPoint,
+            toNodeId: connection.toNodeId,
+            to: toPoint,
+            isManual: true
+        )
     }
 
     private func visualManualConnections(in size: CGSize, lane: GraphLane?) -> [CanvasConnection] {
@@ -1270,9 +1322,10 @@ struct BeginnerView: View {
             connections.append(
                 CanvasConnection(
                     id: connection.id,
+                    fromNodeId: connection.fromNodeId,
                     from: fromPoint,
-                    to: toPoint,
                     toNodeId: connection.toNodeId,
+                    to: toPoint,
                     isManual: true
                 )
             )
@@ -1284,7 +1337,14 @@ struct BeginnerView: View {
                 let fromPoint = displayNodePosition(node, in: size)
                 let toPoint = endNodePosition(in: size, lane: lane)
                 connections.append(
-                    CanvasConnection(id: UUID(), from: fromPoint, to: toPoint, toNodeId: endNodeID(for: lane), isManual: false)
+                    CanvasConnection(
+                        id: UUID(),
+                        fromNodeId: nodeID,
+                        from: fromPoint,
+                        toNodeId: endNodeID(for: lane),
+                        to: toPoint,
+                        isManual: false
+                    )
                 )
             }
         }
@@ -1300,18 +1360,34 @@ struct BeginnerView: View {
 
         var connections: [CanvasConnection] = []
         var previousPoint = startPoint
+        var previousNodeId: UUID? = nil
 
         for node in ordered {
             let currentPoint = displayNodePosition(node, in: canvasSize)
             connections.append(
-                CanvasConnection(id: UUID(), from: previousPoint, to: currentPoint, toNodeId: node.id, isManual: false)
+                CanvasConnection(
+                    id: UUID(),
+                    fromNodeId: previousNodeId ?? startNodeID(for: lane),
+                    from: previousPoint,
+                    toNodeId: node.id,
+                    to: currentPoint,
+                    isManual: false
+                )
             )
             previousPoint = currentPoint
+            previousNodeId = node.id
         }
 
         if let last = ordered.last {
             connections.append(
-                CanvasConnection(id: UUID(), from: previousPoint, to: endPoint, toNodeId: endNodeID(for: lane), isManual: false)
+                CanvasConnection(
+                    id: UUID(),
+                    fromNodeId: last.id,
+                    from: previousPoint,
+                    toNodeId: endNodeID(for: lane),
+                    to: endPoint,
+                    isManual: false
+                )
             )
         }
 
@@ -1918,19 +1994,24 @@ struct StartNodeView: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [AppColors.success.opacity(0.8), AppColors.success],
+                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.85)],
                         center: .center,
-                        startRadius: 10,
+                        startRadius: 6,
                         endRadius: 40
                     )
                 )
                 .frame(width: 60, height: 60)
                 .overlay(
+                    Circle()
+                        .stroke(AppColors.neonCyan.opacity(0.7), lineWidth: 2)
+                        .shadow(color: AppColors.neonCyan.opacity(0.5), radius: 8)
+                )
+                .overlay(
                     Image(systemName: "waveform")
                         .font(.system(size: 24))
                         .foregroundColor(.white)
                 )
-                .shadow(color: AppColors.success.opacity(0.6), radius: pulse ? 20 : 10)
+                .shadow(color: AppColors.neonCyan.opacity(0.25), radius: pulse ? 18 : 9)
                 .scaleEffect(pulse ? 1.05 : 1.0)
 
             Text("Start")
@@ -1954,19 +2035,24 @@ struct EndNodeView: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [AppColors.neonPink.opacity(0.8), AppColors.neonPink],
+                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.85)],
                         center: .center,
-                        startRadius: 10,
+                        startRadius: 6,
                         endRadius: 40
                     )
                 )
                 .frame(width: 60, height: 60)
                 .overlay(
+                    Circle()
+                        .stroke(AppColors.neonPink.opacity(0.7), lineWidth: 2)
+                        .shadow(color: AppColors.neonPink.opacity(0.5), radius: 8)
+                )
+                .overlay(
                     Image(systemName: "speaker.wave.3.fill")
                         .font(.system(size: 24))
                         .foregroundColor(.white)
                 )
-                .shadow(color: AppColors.neonPink.opacity(0.6), radius: pulse ? 20 : 10)
+                .shadow(color: AppColors.neonPink.opacity(0.25), radius: pulse ? 18 : 9)
                 .scaleEffect(pulse ? 1.05 : 1.0)
 
             Text("End")
@@ -2037,8 +2123,7 @@ struct FlowLine: View {
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
-        let glowColor = AppColors.neonCyan.opacity(0.35 + 0.55 * intensity)
-        let thickness: CGFloat = 3.5 + 6 * intensity
+        let thickness: CGFloat = 3.5
         Group {
             if isActive {
                 TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { context in
@@ -2070,11 +2155,33 @@ struct FlowLine: View {
                     }
                 }
             } else {
-                Path { path in
-                    path.move(to: from)
-                    path.addLine(to: to)
+                let dx = to.x - from.x
+                let dy = to.y - from.y
+                let length = max(sqrt(dx * dx + dy * dy), 1)
+                let pixelsPerSecond: CGFloat = 90
+                let phaseSpeed = pixelsPerSecond / length
+                let time = Date().timeIntervalSinceReferenceDate
+                let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
+
+                let inactiveOpacity = baseOpacity * 0.55
+                ZStack {
+                    Path { path in
+                        path.move(to: from)
+                        path.addLine(to: to)
+                    }
+                    .stroke(AppColors.wireActive.opacity(inactiveOpacity), lineWidth: thickness)
+                    .contentShape(Path { path in
+                        path.move(to: from)
+                        path.addLine(to: to)
+                    }.strokedPath(.init(lineWidth: thickness + 10)))
+
+                    MovingArrowheads(
+                        from: from,
+                        to: to,
+                        color: AppColors.neonCyan.opacity(0.35),
+                        phase: phase
+                    )
                 }
-                .stroke(AppColors.wireInactive.opacity(0.8), lineWidth: 2)
             }
         }
         .onAppear { }
@@ -2088,11 +2195,23 @@ struct FlowLine: View {
     }
 }
 
+private struct WireKey: Hashable {
+    let from: UUID
+    let to: UUID
+}
+
+private struct AutoWireSelection {
+    let key: WireKey
+    let midpoint: CGPoint
+    let tint: Color
+}
+
 private struct CanvasConnection: Identifiable {
     let id: UUID
+    let fromNodeId: UUID
     let from: CGPoint
-    let to: CGPoint
     let toNodeId: UUID
+    let to: CGPoint
     let isManual: Bool
 }
 
@@ -2120,20 +2239,29 @@ fileprivate struct CustomContextMenuView: View {
     let onDismiss: () -> Void
 
     var body: some View {
+        let itemFont = Font.system(size: 12, weight: .medium, design: .rounded)
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(menu.items.enumerated()), id: \.offset) { _, item in
+            ForEach(Array(menu.items.enumerated()), id: \.offset) { index, item in
                 Button(role: item.role) {
                     item.action()
                     onDismiss()
                 } label: {
-                    Text(item.title)
-                        .font(AppTypography.technical)
-                        .foregroundColor(menu.tint)
-                        .padding(.vertical, 3)
-                        .padding(.horizontal, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack {
+                        Text(item.title)
+                            .font(itemFont)
+                            .foregroundColor(menu.tint)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                if index < menu.items.count - 1 {
+                    Divider()
+                        .background(menu.tint.opacity(0.2))
+                }
             }
         }
         .padding(8)
@@ -2146,6 +2274,48 @@ fileprivate struct CustomContextMenuView: View {
         .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
         .fixedSize()
         .position(menu.position)
+    }
+}
+
+fileprivate struct GainPopoverView: View {
+    let tint: Color
+    let value: Binding<Double>
+    let onDone: () -> Void
+
+    var body: some View {
+        let itemFont = Font.system(size: 12, weight: .medium, design: .rounded)
+        VStack(spacing: 6) {
+            Text("Gain")
+                .font(itemFont)
+                .foregroundColor(tint)
+                .frame(maxWidth: .infinity)
+            Slider(value: value, in: 0...1)
+                .tint(tint)
+                .controlSize(.mini)
+                .frame(width: 160)
+            Text(String(format: "%.0f%%", value.wrappedValue * 100))
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundColor(tint.opacity(0.7))
+                .frame(maxWidth: .infinity)
+            Button("Done") {
+                onDone()
+            }
+            .buttonStyle(.plain)
+            .font(itemFont)
+            .foregroundColor(tint)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .padding(8)
+        .background(AppColors.deepBlack.opacity(0.88))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.7), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
+        .fixedSize()
     }
 }
 
@@ -2175,7 +2345,8 @@ fileprivate struct RightClickCapture: NSViewRepresentable {
         var onRightClick: ((CGPoint) -> Void)?
 
         override func hitTest(_ point: NSPoint) -> NSView? {
-            if NSApp.currentEvent?.type == .rightMouseDown {
+            if let type = NSApp.currentEvent?.type,
+               type == .rightMouseDown || type == .rightMouseUp || type == .rightMouseDragged {
                 return self
             }
             return nil
@@ -2183,10 +2354,12 @@ fileprivate struct RightClickCapture: NSViewRepresentable {
 
         override func rightMouseDown(with event: NSEvent) {
             let location = convert(event.locationInWindow, from: nil)
-            onRightClick?(location)
+            let adjusted = CGPoint(x: location.x, y: bounds.height - location.y)
+            onRightClick?(adjusted)
         }
     }
 }
+
 
 fileprivate struct AccentStyle {
     let fill: Color
@@ -2436,25 +2609,26 @@ struct EffectBlockHorizontal: View {
                     EffectParametersViewCompact(
                         effectType: effect.type,
                         parameters: $effect.parameters,
+                        tint: tileStyle.fill,
                         onChange: onUpdate
                     )
 
                     Divider()
-                        .background(cardBorder.opacity(0.4))
+                        .background(tileStyle.fill.opacity(0.2))
 
                     HStack(spacing: 12) {
                         Button(action: {
                             setEffectEnabled(!getEffectEnabled())
                         }) {
                             Label(getEffectEnabled() ? "On" : "Off", systemImage: "power")
-                                .font(AppTypography.technical)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
                         }
                         .buttonStyle(.bordered)
                         .tint(tileStyle.fill)
 
                         Button(role: .destructive, action: onRemove) {
                             Label("Delete", systemImage: "trash")
-                                .font(AppTypography.technical)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
                         }
                         .buttonStyle(.bordered)
                         .tint(tileStyle.fill)
@@ -2472,7 +2646,7 @@ struct EffectBlockHorizontal: View {
                         .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
                 )
                 .foregroundColor(tileStyle.fill)
-                .font(AppTypography.technical)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -2509,96 +2683,97 @@ struct EffectBlockHorizontal: View {
 struct EffectParametersViewCompact: View {
     let effectType: EffectType
     @Binding var parameters: NodeEffectParameters
+    let tint: Color
     let onChange: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
             switch effectType {
             case .bassBoost:
-                CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .pitchShift:
                 EmptyView()
 
             case .rubberBandPitch:
-                CompactSlider(label: "Semitones", value: $parameters.rubberBandPitchSemitones, range: -12...12, format: .semitones, onChange: onChange)
+                CompactSlider(label: "Semitones", value: $parameters.rubberBandPitchSemitones, range: -12...12, format: .semitones, tint: tint, onChange: onChange)
 
             case .clarity:
-                CompactSlider(label: "Amount", value: $parameters.clarityAmount, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Amount", value: $parameters.clarityAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .deMud:
-                CompactSlider(label: "Strength", value: $parameters.deMudStrength, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Strength", value: $parameters.deMudStrength, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .simpleEQ:
-                CompactSlider(label: "Bass", value: $parameters.eqBass, range: -1...1, format: .db, onChange: onChange)
-                CompactSlider(label: "Mids", value: $parameters.eqMids, range: -1...1, format: .db, onChange: onChange)
-                CompactSlider(label: "Treble", value: $parameters.eqTreble, range: -1...1, format: .db, onChange: onChange)
+                CompactSlider(label: "Bass", value: $parameters.eqBass, range: -1...1, format: .db, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mids", value: $parameters.eqMids, range: -1...1, format: .db, tint: tint, onChange: onChange)
+                CompactSlider(label: "Treble", value: $parameters.eqTreble, range: -1...1, format: .db, tint: tint, onChange: onChange)
 
             case .tenBandEQ:
                 let columns = [GridItem(.flexible()), GridItem(.flexible())]
                 LazyVGrid(columns: columns, spacing: 8) {
-                    CompactSlider(label: "31", value: bandBinding(0), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "62", value: bandBinding(1), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "125", value: bandBinding(2), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "250", value: bandBinding(3), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "500", value: bandBinding(4), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "1k", value: bandBinding(5), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "2k", value: bandBinding(6), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "4k", value: bandBinding(7), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "8k", value: bandBinding(8), range: -12...12, format: .dbValue, onChange: onChange)
-                    CompactSlider(label: "16k", value: bandBinding(9), range: -12...12, format: .dbValue, onChange: onChange)
+                    CompactSlider(label: "31", value: bandBinding(0), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "62", value: bandBinding(1), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "125", value: bandBinding(2), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "250", value: bandBinding(3), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "500", value: bandBinding(4), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "1k", value: bandBinding(5), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "2k", value: bandBinding(6), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "4k", value: bandBinding(7), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "8k", value: bandBinding(8), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                    CompactSlider(label: "16k", value: bandBinding(9), range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
                 }
 
             case .compressor:
-                CompactSlider(label: "Strength", value: $parameters.compressorStrength, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Strength", value: $parameters.compressorStrength, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .reverb:
-                CompactSlider(label: "Mix", value: $parameters.reverbMix, range: 0...1, format: .percent, onChange: onChange)
-                CompactSlider(label: "Size", value: $parameters.reverbSize, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.reverbMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Size", value: $parameters.reverbSize, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .stereoWidth:
-                CompactSlider(label: "Width", value: $parameters.stereoWidthAmount, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Width", value: $parameters.stereoWidthAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .delay:
-                CompactSlider(label: "Time", value: $parameters.delayTime, range: 0.01...2.0, format: .ms, onChange: onChange)
-                CompactSlider(label: "Feedback", value: $parameters.delayFeedback, range: 0...1, format: .percent, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.delayMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Time", value: $parameters.delayTime, range: 0.01...2.0, format: .ms, tint: tint, onChange: onChange)
+                CompactSlider(label: "Feedback", value: $parameters.delayFeedback, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.delayMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .distortion:
-                CompactSlider(label: "Drive", value: $parameters.distortionDrive, range: 0...1, format: .percent, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.distortionMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Drive", value: $parameters.distortionDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.distortionMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .tremolo:
-                CompactSlider(label: "Rate", value: $parameters.tremoloRate, range: 0.1...20, format: .hz, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.tremoloDepth, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.tremoloRate, range: 0.1...20, format: .hz, tint: tint, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.tremoloDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .chorus:
-                CompactSlider(label: "Rate", value: $parameters.chorusRate, range: 0.1...5, format: .hz, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.chorusDepth, range: 0...1, format: .percent, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.chorusMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.chorusRate, range: 0.1...5, format: .hz, tint: tint, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.chorusDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.chorusMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .phaser:
-                CompactSlider(label: "Rate", value: $parameters.phaserRate, range: 0.1...5, format: .hz, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.phaserDepth, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.phaserRate, range: 0.1...5, format: .hz, tint: tint, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.phaserDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .flanger:
-                CompactSlider(label: "Rate", value: $parameters.flangerRate, range: 0.1...5, format: .hz, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.flangerDepth, range: 0...1, format: .percent, onChange: onChange)
-                CompactSlider(label: "Feedback", value: $parameters.flangerFeedback, range: 0...0.95, format: .percent, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.flangerMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.flangerRate, range: 0.1...5, format: .hz, tint: tint, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.flangerDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Feedback", value: $parameters.flangerFeedback, range: 0...0.95, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.flangerMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .bitcrusher:
-                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, range: 4...16, format: .integer, onChange: onChange)
-                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, range: 1...20, format: .integer, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.bitcrusherMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, range: 4...16, format: .integer, tint: tint, onChange: onChange)
+                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, range: 1...20, format: .integer, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.bitcrusherMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .tapeSaturation:
-                CompactSlider(label: "Drive", value: $parameters.tapeSaturationDrive, range: 0...1, format: .percent, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.tapeSaturationMix, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Drive", value: $parameters.tapeSaturationDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.tapeSaturationMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .resampling:
-                CompactSlider(label: "Rate", value: $parameters.resampleRate, range: 0.5...2.0, format: .ratio, onChange: onChange)
-                CompactSlider(label: "Smooth", value: $parameters.resampleCrossfade, range: 0.05...0.6, format: .percent, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.resampleRate, range: 0.5...2.0, format: .ratio, tint: tint, onChange: onChange)
+                CompactSlider(label: "Smooth", value: $parameters.resampleCrossfade, range: 0.05...0.6, format: .percent, tint: tint, onChange: onChange)
             }
         }
     }
@@ -2626,6 +2801,7 @@ struct CompactSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let format: ValueFormat
+    let tint: Color
     let onChange: (() -> Void)?
 
     init(
@@ -2633,12 +2809,14 @@ struct CompactSlider: View {
         value: Binding<Double>,
         range: ClosedRange<Double>,
         format: ValueFormat,
+        tint: Color,
         onChange: (() -> Void)? = nil
     ) {
         self.label = label
         self._value = value
         self.range = range
         self.format = format
+        self.tint = tint
         self.onChange = onChange
     }
 
@@ -2658,15 +2836,16 @@ struct CompactSlider: View {
             HStack {
                 Text(label)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(tint.opacity(0.75))
                 Spacer()
                 Text(formattedValue)
                     .font(.caption)
-                    .foregroundColor(.primary)
+                    .foregroundColor(tint)
                     .monospacedDigit()
             }
 
             Slider(value: $value, in: range)
+                .tint(tint)
                 .controlSize(.small)
                 .onChange(of: value) { _ in
                     onChange?()

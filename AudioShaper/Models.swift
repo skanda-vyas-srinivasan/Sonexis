@@ -532,6 +532,7 @@ struct GraphSnapshot: Codable {
     var wiringMode: GraphWiringMode
     var nodes: [BeginnerNode]
     var connections: [BeginnerConnection]
+    var autoGainOverrides: [BeginnerConnection]
     var startNodeID: UUID
     var endNodeID: UUID
     var leftStartNodeID: UUID?
@@ -545,6 +546,7 @@ struct GraphSnapshot: Codable {
         wiringMode: GraphWiringMode,
         nodes: [BeginnerNode],
         connections: [BeginnerConnection],
+        autoGainOverrides: [BeginnerConnection] = [],
         startNodeID: UUID,
         endNodeID: UUID,
         leftStartNodeID: UUID? = nil,
@@ -557,6 +559,7 @@ struct GraphSnapshot: Codable {
         self.wiringMode = wiringMode
         self.nodes = nodes
         self.connections = connections
+        self.autoGainOverrides = autoGainOverrides
         self.startNodeID = startNodeID
         self.endNodeID = endNodeID
         self.leftStartNodeID = leftStartNodeID
@@ -571,6 +574,7 @@ struct GraphSnapshot: Codable {
         case wiringMode
         case nodes
         case connections
+        case autoGainOverrides
         case startNodeID
         case endNodeID
         case leftStartNodeID
@@ -586,6 +590,7 @@ struct GraphSnapshot: Codable {
         self.wiringMode = try container.decodeIfPresent(GraphWiringMode.self, forKey: .wiringMode) ?? .automatic
         self.nodes = try container.decodeIfPresent([BeginnerNode].self, forKey: .nodes) ?? []
         self.connections = try container.decodeIfPresent([BeginnerConnection].self, forKey: .connections) ?? []
+        self.autoGainOverrides = try container.decodeIfPresent([BeginnerConnection].self, forKey: .autoGainOverrides) ?? []
         self.startNodeID = try container.decodeIfPresent(UUID.self, forKey: .startNodeID) ?? UUID()
         self.endNodeID = try container.decodeIfPresent(UUID.self, forKey: .endNodeID) ?? UUID()
         self.leftStartNodeID = try container.decodeIfPresent(UUID.self, forKey: .leftStartNodeID)
