@@ -89,19 +89,36 @@ struct AnimatedGrid: View {
     }
 }
 
+final class GridPathCache: ObservableObject {
+    private var cachedSize: CGSize = .zero
+    private var cachedPath = Path()
+
+    func path(for size: CGSize) -> Path {
+        guard size != cachedSize else { return cachedPath }
+        cachedSize = size
+
+        let spacing: CGFloat = 30
+        var path = Path()
+        for x in stride(from: 0, through: size.width, by: spacing) {
+            path.move(to: CGPoint(x: x, y: 0))
+            path.addLine(to: CGPoint(x: x, y: size.height))
+        }
+        for y in stride(from: 0, through: size.height, by: spacing) {
+            path.move(to: CGPoint(x: 0, y: y))
+            path.addLine(to: CGPoint(x: size.width, y: y))
+        }
+
+        cachedPath = path
+        return path
+    }
+}
+
 struct StaticGrid: View {
+    @StateObject private var cache = GridPathCache()
+
     var body: some View {
         Canvas { context, size in
-            let spacing: CGFloat = 30
-            var path = Path()
-            for x in stride(from: 0, through: size.width, by: spacing) {
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-            }
-            for y in stride(from: 0, through: size.height, by: spacing) {
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
-            }
+            let path = cache.path(for: size)
             context.stroke(path, with: .color(AppColors.gridLines.opacity(0.5)), lineWidth: 1)
         }
     }
