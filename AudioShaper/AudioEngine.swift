@@ -329,9 +329,17 @@ class AudioEngine: ObservableObject {
     private var resampleBuffer: [[Float]] = []
     private var resampleWriteIndex = 0
     private var resampleReadPhase: Double = 0
+    private var resampleCrossfadeRemaining = 0
+    private var resampleCrossfadeTotal = 0
+    private var resampleCrossfadeStartPhase: Double = 0
+    private var resampleCrossfadeTargetPhase: Double = 0
     private var resampleBuffersByNode: [UUID: [[Float]]] = [:]
     private var resampleWriteIndexByNode: [UUID: Int] = [:]
     private var resampleReadPhaseByNode: [UUID: Double] = [:]
+    private var resampleCrossfadeRemainingByNode: [UUID: Int] = [:]
+    private var resampleCrossfadeTotalByNode: [UUID: Int] = [:]
+    private var resampleCrossfadeStartPhaseByNode: [UUID: Double] = [:]
+    private var resampleCrossfadeTargetPhaseByNode: [UUID: Double] = [:]
 
     // Bitcrusher state
     private var bitcrusherHoldCounters: [Int] = []
@@ -1969,6 +1977,7 @@ class AudioEngine: ObservableObject {
                 return
             }
             let rateValue = nodeParams(for: nodeId)?.resampleRate ?? resampleRate
+            let crossfadeValue = nodeParams(for: nodeId)?.resampleCrossfade ?? 0.3
             guard rateValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -1977,9 +1986,15 @@ class AudioEngine: ObservableObject {
             var buffer = targetId.flatMap { resampleBuffersByNode[$0] } ?? resampleBuffer
             var writeIndex = targetId.flatMap { resampleWriteIndexByNode[$0] } ?? resampleWriteIndex
             var readPhase = targetId.flatMap { resampleReadPhaseByNode[$0] } ?? resampleReadPhase
+            var crossfadeRemaining = targetId.flatMap { resampleCrossfadeRemainingByNode[$0] } ?? resampleCrossfadeRemaining
+            var crossfadeTotal = targetId.flatMap { resampleCrossfadeTotalByNode[$0] } ?? resampleCrossfadeTotal
+            var crossfadeStartPhase = targetId.flatMap { resampleCrossfadeStartPhaseByNode[$0] } ?? resampleCrossfadeStartPhase
+            var crossfadeTargetPhase = targetId.flatMap { resampleCrossfadeTargetPhaseByNode[$0] } ?? resampleCrossfadeTargetPhase
             var bufferReset = false
             let bufferSize = max(frameLength * 4, 4096)
             let safetyOffset = min(max(frameLength * 2, 1024), bufferSize - 1)
+            let crossfadeMax = min(bufferSize / 2, 1024)
+            let crossfadeSamples = max(32, min(Int(Double(frameLength) * min(max(crossfadeValue, 0.05), 0.6)), crossfadeMax))
 
             if buffer.count != channelCount || buffer.first?.count != bufferSize {
                 buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferSize), count: channelCount)
@@ -1998,12 +2013,16 @@ class AudioEngine: ObservableObject {
 
             if bufferReset {
                 readPhase = Double((writeIndex - safetyOffset + bufferSize) % bufferSize)
+                crossfadeRemaining = 0
             }
 
             let readIndex = Int(readPhase) % bufferSize
             let distance = (writeIndex - readIndex + bufferSize) % bufferSize
-            if distance < safetyOffset {
-                readPhase = Double((writeIndex - safetyOffset + bufferSize) % bufferSize)
+            if distance < safetyOffset && crossfadeRemaining == 0 {
+                crossfadeTotal = crossfadeSamples
+                crossfadeRemaining = crossfadeTotal
+                crossfadeStartPhase = readPhase
+                crossfadeTargetPhase = Double((writeIndex - safetyOffset + bufferSize) % bufferSize)
             }
 
             // Read resampled output using shared phase
@@ -2012,11 +2031,40 @@ class AudioEngine: ObservableObject {
                 let index0 = Int(phaseIndex) % bufferSize
                 let index1 = (index0 + 1) % bufferSize
                 let frac = Float(phaseIndex - Double(index0))
-                for channel in 0..<channelCount {
-                    let s0 = buffer[channel][index0]
-                    let s1 = buffer[channel][index1]
-                    processedAudio[channel][frame] = s0 + (s1 - s0) * frac
+
+                if crossfadeRemaining > 0 {
+                    let t = 1.0 - Double(crossfadeRemaining) / Double(max(crossfadeTotal, 1))
+                    let startPhase = crossfadeStartPhase + (rateValue * Double(frame))
+                    let targetPhase = crossfadeTargetPhase + (rateValue * Double(frame))
+                    let startIdx0 = Int(startPhase) % bufferSize
+                    let startIdx1 = (startIdx0 + 1) % bufferSize
+                    let startFrac = Float(startPhase - Double(startIdx0))
+                    let targetIdx0 = Int(targetPhase) % bufferSize
+                    let targetIdx1 = (targetIdx0 + 1) % bufferSize
+                    let targetFrac = Float(targetPhase - Double(targetIdx0))
+
+                    for channel in 0..<channelCount {
+                        let s0 = buffer[channel][startIdx0]
+                        let s1 = buffer[channel][startIdx1]
+                        let startSample = s0 + (s1 - s0) * startFrac
+                        let t0 = buffer[channel][targetIdx0]
+                        let t1 = buffer[channel][targetIdx1]
+                        let targetSample = t0 + (t1 - t0) * targetFrac
+                        processedAudio[channel][frame] = startSample * Float(1 - t) + targetSample * Float(t)
+                    }
+
+                    crossfadeRemaining -= 1
+                    if crossfadeRemaining == 0 {
+                        readPhase = crossfadeTargetPhase
+                    }
+                } else {
+                    for channel in 0..<channelCount {
+                        let s0 = buffer[channel][index0]
+                        let s1 = buffer[channel][index1]
+                        processedAudio[channel][frame] = s0 + (s1 - s0) * frac
+                    }
                 }
+
                 readPhase += rateValue
                 if readPhase >= Double(bufferSize) {
                     readPhase -= Double(bufferSize)
@@ -2027,10 +2075,18 @@ class AudioEngine: ObservableObject {
                 resampleBuffersByNode[id] = buffer
                 resampleWriteIndexByNode[id] = writeIndex
                 resampleReadPhaseByNode[id] = readPhase
+                resampleCrossfadeRemainingByNode[id] = crossfadeRemaining
+                resampleCrossfadeTotalByNode[id] = crossfadeTotal
+                resampleCrossfadeStartPhaseByNode[id] = crossfadeStartPhase
+                resampleCrossfadeTargetPhaseByNode[id] = crossfadeTargetPhase
             } else {
                 resampleBuffer = buffer
                 resampleWriteIndex = writeIndex
                 resampleReadPhase = readPhase
+                resampleCrossfadeRemaining = crossfadeRemaining
+                resampleCrossfadeTotal = crossfadeTotal
+                resampleCrossfadeStartPhase = crossfadeStartPhase
+                resampleCrossfadeTargetPhase = crossfadeTargetPhase
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -2373,6 +2429,10 @@ class AudioEngine: ObservableObject {
             resampleBuffer.removeAll()
             resampleWriteIndex = 0
             resampleReadPhase = 0
+            resampleCrossfadeRemaining = 0
+            resampleCrossfadeTotal = 0
+            resampleCrossfadeStartPhase = 0
+            resampleCrossfadeTargetPhase = 0
             bassBoostStatesByNode.removeAll()
             clarityStatesByNode.removeAll()
             nightcoreStatesByNode.removeAll()
@@ -3024,6 +3084,10 @@ class AudioEngine: ObservableObject {
         resampleBuffersByNode = resampleBuffersByNode.filter { ids.contains($0.key) }
         resampleWriteIndexByNode = resampleWriteIndexByNode.filter { ids.contains($0.key) }
         resampleReadPhaseByNode = resampleReadPhaseByNode.filter { ids.contains($0.key) }
+        resampleCrossfadeRemainingByNode = resampleCrossfadeRemainingByNode.filter { ids.contains($0.key) }
+        resampleCrossfadeTotalByNode = resampleCrossfadeTotalByNode.filter { ids.contains($0.key) }
+        resampleCrossfadeStartPhaseByNode = resampleCrossfadeStartPhaseByNode.filter { ids.contains($0.key) }
+        resampleCrossfadeTargetPhaseByNode = resampleCrossfadeTargetPhaseByNode.filter { ids.contains($0.key) }
     }
 
 }

@@ -232,6 +232,7 @@ struct NodeEffectParameters: Codable, Equatable {
     var tapeSaturationDrive: Double
     var tapeSaturationMix: Double
     var resampleRate: Double
+    var resampleCrossfade: Double
 
     init(
         bassBoostAmount: Double,
@@ -267,7 +268,8 @@ struct NodeEffectParameters: Codable, Equatable {
         bitcrusherMix: Double,
         tapeSaturationDrive: Double,
         tapeSaturationMix: Double,
-        resampleRate: Double
+        resampleRate: Double,
+        resampleCrossfade: Double
     ) {
         self.bassBoostAmount = bassBoostAmount
         self.nightcoreIntensity = nightcoreIntensity
@@ -303,6 +305,7 @@ struct NodeEffectParameters: Codable, Equatable {
         self.tapeSaturationDrive = tapeSaturationDrive
         self.tapeSaturationMix = tapeSaturationMix
         self.resampleRate = resampleRate
+        self.resampleCrossfade = resampleCrossfade
     }
 
     static func defaults() -> NodeEffectParameters {
@@ -340,7 +343,8 @@ struct NodeEffectParameters: Codable, Equatable {
             bitcrusherMix: 0.6,
             tapeSaturationDrive: 0.35,
             tapeSaturationMix: 0.5,
-            resampleRate: 1.0
+            resampleRate: 1.0,
+            resampleCrossfade: 0.3
         )
     }
 
@@ -379,6 +383,7 @@ struct NodeEffectParameters: Codable, Equatable {
         case tapeSaturationDrive
         case tapeSaturationMix
         case resampleRate
+        case resampleCrossfade
     }
 
     init(from decoder: Decoder) throws {
@@ -418,6 +423,7 @@ struct NodeEffectParameters: Codable, Equatable {
         tapeSaturationDrive = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationDrive) ?? defaults.tapeSaturationDrive
         tapeSaturationMix = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationMix) ?? defaults.tapeSaturationMix
         resampleRate = try container.decodeIfPresent(Double.self, forKey: .resampleRate) ?? defaults.resampleRate
+        resampleCrossfade = try container.decodeIfPresent(Double.self, forKey: .resampleCrossfade) ?? defaults.resampleCrossfade
     }
 }
 
