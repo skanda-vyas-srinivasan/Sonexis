@@ -15,7 +15,6 @@ struct BeginnerView: View {
     @State private var activeConnectionFromID: UUID?
     @State private var activeConnectionPoint: CGPoint = .zero
     @State private var wiringMode: WiringMode = .automatic
-    @State private var debugChainText: String? = nil
     @State private var selectedNodeIDs: Set<UUID> = []
     @State private var lassoStart: CGPoint?
     @State private var lassoCurrent: CGPoint?
@@ -36,6 +35,7 @@ struct BeginnerView: View {
     @State private var beatPulse: CGFloat = 0
     @State private var zoomScale: CGFloat = 1.0
     @State private var zoomStartScale: CGFloat = 1.0
+    @State private var customContextMenu: CustomContextMenu?
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
@@ -205,19 +205,6 @@ struct BeginnerView: View {
                                 }
                         )
 
-                    // TEMP DEBUG: show DSP chain overlay (remove when wiring UX is finalized).
-                    if let chainText = debugChainText {
-                        Text(chainText)
-                            .font(.caption)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.6))
-                            .clipShape(Capsule())
-                            .padding(.top, 12)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    }
-
                     // Draw connections based on mode
                     if wiringMode == .automatic {
                         let autoConnections = graphMode == .split
@@ -246,16 +233,33 @@ struct BeginnerView: View {
                                 level: levelForNode(connection.toNodeId),
                                 beatPulse: beatPulse
                             )
-                            .contextMenu {
-                                if connection.isManual {
-                                    Button("Delete Wire") {
-                                        deleteManualConnection(connection.id)
-                                    }
-                                    Button("Set Gain…") {
-                                        selectedWireID = connection.id
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard connection.isManual else { return }
+                                    let midpoint = CGPoint(
+                                        x: (connection.from.x + connection.to.x) * 0.5,
+                                        y: (connection.from.y + connection.to.y) * 0.5
+                                    )
+                                    let menu = CustomContextMenu(
+                                        anchor: midpoint,
+                                        position: midpoint,
+                                        tint: AppColors.neonCyan,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Wire",
+                                                role: .destructive,
+                                                action: { deleteManualConnection(connection.id) }
+                                            ),
+                                            CustomContextMenu.Item(
+                                                title: "Set Gain…",
+                                                role: nil,
+                                                action: { selectedWireID = connection.id }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
                         }
                     }
 
@@ -307,6 +311,17 @@ struct BeginnerView: View {
                         .zIndex(5)
                     }
 
+                    if let menu = customContextMenu {
+                        Color.black.opacity(0.001)
+                            .ignoresSafeArea()
+                            .onTapGesture { customContextMenu = nil }
+
+                        CustomContextMenuView(menu: menu) {
+                            customContextMenu = nil
+                        }
+                        .zIndex(10)
+                    }
+
                     if let start = lassoStart, let current = lassoCurrent {
                         let rect = selectionRect(from: start, to: current)
                         Rectangle()
@@ -323,13 +338,25 @@ struct BeginnerView: View {
 
                         StartNodeView()
                             .position(startNodePosition(in: geometry.size, lane: .left))
-                            .contextMenu {
-                                if wiringMode == .manual {
-                                    Button("Delete Node Wires") {
-                                        removeWires(for: leftStartNodeID)
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard wiringMode == .manual else { return }
+                                    let pos = startNodePosition(in: geometry.size, lane: .left)
+                                    let menu = CustomContextMenu(
+                                        anchor: pos,
+                                        position: pos,
+                                        tint: AppColors.success,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Node Wires",
+                                                role: nil,
+                                                action: { removeWires(for: leftStartNodeID) }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -359,23 +386,47 @@ struct BeginnerView: View {
 
                         EndNodeView()
                             .position(endNodePosition(in: geometry.size, lane: .left))
-                            .contextMenu {
-                                if wiringMode == .manual {
-                                    Button("Delete Node Wires") {
-                                        removeWires(for: leftEndNodeID)
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard wiringMode == .manual else { return }
+                                    let pos = endNodePosition(in: geometry.size, lane: .left)
+                                    let menu = CustomContextMenu(
+                                        anchor: pos,
+                                        position: pos,
+                                        tint: AppColors.error,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Node Wires",
+                                                role: nil,
+                                                action: { removeWires(for: leftEndNodeID) }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
 
                         StartNodeView()
                             .position(startNodePosition(in: geometry.size, lane: .right))
-                            .contextMenu {
-                                if wiringMode == .manual {
-                                    Button("Delete Node Wires") {
-                                        removeWires(for: rightStartNodeID)
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard wiringMode == .manual else { return }
+                                    let pos = startNodePosition(in: geometry.size, lane: .right)
+                                    let menu = CustomContextMenu(
+                                        anchor: pos,
+                                        position: pos,
+                                        tint: AppColors.success,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Node Wires",
+                                                role: nil,
+                                                action: { removeWires(for: rightStartNodeID) }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -405,23 +456,47 @@ struct BeginnerView: View {
 
                         EndNodeView()
                             .position(endNodePosition(in: geometry.size, lane: .right))
-                            .contextMenu {
-                                if wiringMode == .manual {
-                                    Button("Delete Node Wires") {
-                                        removeWires(for: rightEndNodeID)
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard wiringMode == .manual else { return }
+                                    let pos = endNodePosition(in: geometry.size, lane: .right)
+                                    let menu = CustomContextMenu(
+                                        anchor: pos,
+                                        position: pos,
+                                        tint: AppColors.error,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Node Wires",
+                                                role: nil,
+                                                action: { removeWires(for: rightEndNodeID) }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
                     } else {
                         StartNodeView()
                             .position(startNodePosition(in: geometry.size, lane: nil))
-                            .contextMenu {
-                                if wiringMode == .manual {
-                                    Button("Delete Node Wires") {
-                                        removeWires(for: startNodeID)
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard wiringMode == .manual else { return }
+                                    let pos = startNodePosition(in: geometry.size, lane: nil)
+                                    let menu = CustomContextMenu(
+                                        anchor: pos,
+                                        position: pos,
+                                        tint: AppColors.success,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Node Wires",
+                                                role: nil,
+                                                action: { removeWires(for: startNodeID) }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -450,13 +525,25 @@ struct BeginnerView: View {
                             )
                         EndNodeView()
                             .position(endNodePosition(in: geometry.size, lane: nil))
-                            .contextMenu {
-                                if wiringMode == .manual {
-                                    Button("Delete Node Wires") {
-                                        removeWires(for: endNodeID)
-                                    }
+                            .overlay(
+                                RightClickCapture { _ in
+                                    guard wiringMode == .manual else { return }
+                                    let pos = endNodePosition(in: geometry.size, lane: nil)
+                                    let menu = CustomContextMenu(
+                                        anchor: pos,
+                                        position: pos,
+                                        tint: AppColors.error,
+                                        items: [
+                                            CustomContextMenu.Item(
+                                                title: "Delete Node Wires",
+                                                role: nil,
+                                                action: { removeWires(for: endNodeID) }
+                                            )
+                                        ]
+                                    )
+                                    customContextMenu = menuAdjusted(menu)
                                 }
-                            }
+                            )
                     }
 
                     ForEach(effectChain, id: \.id) { effect in
@@ -495,29 +582,51 @@ struct BeginnerView: View {
                                     }
                                 }
                         )
-                        .contextMenu {
-                            Button("Delete Node") {
-                                removeEffect(id: effectValue.id)
-                            }
-                            if wiringMode == .manual {
-                                Button("Delete Node Wires") {
-                                    removeWires(for: effectValue.id)
+                        .overlay(
+                            RightClickCapture { _ in
+                                var items: [CustomContextMenu.Item] = [
+                                    CustomContextMenu.Item(
+                                        title: "Delete Node",
+                                        role: .destructive,
+                                        action: { removeEffect(id: effectValue.id) }
+                                    ),
+                                    CustomContextMenu.Item(
+                                        title: "Duplicate Node",
+                                        role: nil,
+                                        action: { duplicateEffect(id: effectValue.id) }
+                                    ),
+                                    CustomContextMenu.Item(
+                                        title: "Reset Node Params",
+                                        role: nil,
+                                        action: { resetEffectParameters(id: effectValue.id) }
+                                    )
+                                ]
+                                if wiringMode == .manual {
+                                    items.insert(
+                                        CustomContextMenu.Item(
+                                            title: "Delete Node Wires",
+                                            role: nil,
+                                            action: { removeWires(for: effectValue.id) }
+                                        ),
+                                        at: 1
+                                    )
                                 }
+                                let nodeTint = accentPalette[effectValue.accentIndex % accentPalette.count].fill
+                                let menu = CustomContextMenu(
+                                    anchor: nodePos,
+                                    position: nodePos,
+                                    tint: nodeTint,
+                                    items: items
+                                )
+                                customContextMenu = menuAdjusted(menu)
                             }
-                            Button("Duplicate Node") {
-                                duplicateEffect(id: effectValue.id)
-                            }
-                            Button("Reset Node Params") {
-                                resetEffectParameters(id: effectValue.id)
-                            }
-                        }
+                        )
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
                                     let hasOption = NSEvent.modifierFlags.contains(.option)
                                     if hasOption {
                                         // Wiring mode
-                                        print("🖱️ EFFECT drag with Option held")
                                         activeConnectionFromID = effectValue.id
                                         activeConnectionPoint = CGPoint(
                                             x: nodePos.x + value.translation.width,
@@ -564,7 +673,6 @@ struct BeginnerView: View {
                                     let hasOption = NSEvent.modifierFlags.contains(.option)
                                     if hasOption {
                                         // Finalize wiring
-                                        print("🖱️ EFFECT drag ended with Option")
                                         let dropPoint = CGPoint(
                                             x: nodePos.x + value.translation.width,
                                             y: nodePos.y + value.translation.height
@@ -655,16 +763,6 @@ struct BeginnerView: View {
         }
         .onChange(of: scenePhase) { phase in
             isAppActive = phase == .active
-        }
-        .contextMenu {
-            if wiringMode == .manual && !selectedNodeIDs.isEmpty {
-                Button("Delete Selected Nodes") {
-                    removeEffects(ids: selectedNodeIDs)
-                }
-                Button("Delete Wires for Selected") {
-                    deleteWiresForSelected()
-                }
-            }
         }
     }
 
@@ -758,20 +856,14 @@ struct BeginnerView: View {
                 rightStartID: rightStartNodeID,
                 rightEndID: rightEndNodeID
             )
-            updateDebugGraphText()
+            // Debug overlay removed.
         } else {
             let path = chainPath(for: nil)
-            print("📊 Chain path (\(path.count) effects) - Mode: \(wiringMode == .automatic ? "AUTOMATIC" : "MANUAL")")
             if wiringMode == .automatic {
-                for (index, node) in path.enumerated() {
-                    print("   \(index + 1). \(node.type.rawValue)")
-                }
+                // Debug output removed.
             } else {
                 let edges = manualGraphEdges(lane: nil)
-                print("   Manual edges (\(edges.count))")
-                for edge in edges {
-                    print("   🔗 \(edge)")
-                }
+                // Debug output removed.
             }
             if wiringMode == .manual {
                 audioEngine.updateEffectGraph(
@@ -780,10 +872,10 @@ struct BeginnerView: View {
                     startID: startNodeID,
                     endID: endNodeID
                 )
-                updateDebugGraphText()
+                // Debug overlay removed.
             } else {
                 audioEngine.updateEffectChain(path)
-                updateDebugChainText(path)
+                // Debug overlay removed.
             }
         }
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
@@ -918,42 +1010,6 @@ struct BeginnerView: View {
         )
     }
 
-    private func updateDebugChainText(_ path: [BeginnerNode]) {
-        if path.isEmpty {
-            debugChainText = "DSP chain: (empty)"
-            return
-        }
-        let names = path.map { $0.type.rawValue }.joined(separator: " → ")
-        debugChainText = "DSP chain: \(names)"
-    }
-
-    private func updateDebugGraphText() {
-        if graphMode == .split {
-            let leftEdges = wiringMode == .automatic
-                ? edgeStrings(from: autoConnections(for: .left), lane: .left)
-                : manualGraphEdges(lane: .left)
-            let rightEdges = wiringMode == .automatic
-                ? edgeStrings(from: autoConnections(for: .right), lane: .right)
-                : manualGraphEdges(lane: .right)
-            if leftEdges.isEmpty && rightEdges.isEmpty {
-                debugChainText = "DSP graph: (empty)"
-                return
-            }
-            let leftText = leftEdges.isEmpty ? "Left: (empty)" : "Left: \(leftEdges.joined(separator: " | "))"
-            let rightText = rightEdges.isEmpty ? "Right: (empty)" : "Right: \(rightEdges.joined(separator: " | "))"
-            debugChainText = "DSP graph: \(leftText)  •  \(rightText)"
-        } else {
-            let edges = wiringMode == .automatic
-                ? edgeStrings(from: autoConnections(for: .left), lane: nil)
-                : manualGraphEdges(lane: nil)
-            if edges.isEmpty {
-                debugChainText = "DSP graph: (empty)"
-                return
-            }
-            debugChainText = "DSP graph: \(edges.joined(separator: " | "))"
-        }
-    }
-
     private func manualGraphEdges(lane: GraphLane?) -> [String] {
         var edges: [String] = []
 
@@ -1079,6 +1135,19 @@ struct BeginnerView: View {
             width: abs(end.x - start.x),
             height: abs(end.y - start.y)
         )
+    }
+
+    private func menuAdjusted(_ menu: CustomContextMenu) -> CustomContextMenu {
+        let padding: CGFloat = 12
+        let size = menu.size
+        var x = menu.anchor.x + size.width * 0.5 + 12
+        if x + size.width * 0.5 > canvasSize.width - padding {
+            x = menu.anchor.x - size.width * 0.5 - 12
+        }
+        let minY = size.height * 0.5 + padding
+        let maxY = max(canvasSize.height - size.height * 0.5 - padding, minY)
+        let y = min(max(menu.anchor.y, minY), maxY)
+        return CustomContextMenu(anchor: menu.anchor, position: CGPoint(x: x, y: y), tint: menu.tint, items: menu.items)
     }
 
     private func updateSelection(in rect: CGRect, additive: Bool) {
@@ -2027,6 +2096,98 @@ private struct CanvasConnection: Identifiable {
     let isManual: Bool
 }
 
+fileprivate struct CustomContextMenu {
+    struct Item {
+        let title: String
+        let role: ButtonRole?
+        let action: () -> Void
+    }
+
+    let anchor: CGPoint
+    let position: CGPoint
+    let tint: Color
+    let items: [Item]
+
+    var size: CGSize {
+        let rowHeight: CGFloat = 24
+        let height = CGFloat(items.count) * rowHeight + 16
+        return CGSize(width: 180, height: height)
+    }
+}
+
+fileprivate struct CustomContextMenuView: View {
+    let menu: CustomContextMenu
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(menu.items.enumerated()), id: \.offset) { _, item in
+                Button(role: item.role) {
+                    item.action()
+                    onDismiss()
+                } label: {
+                    Text(item.title)
+                        .font(AppTypography.technical)
+                        .foregroundColor(menu.tint)
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(8)
+        .background(AppColors.deepBlack.opacity(0.88))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(menu.tint.opacity(0.7), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
+        .fixedSize()
+        .position(menu.position)
+    }
+}
+
+fileprivate struct RightClickCapture: NSViewRepresentable {
+    let onRightClick: (CGPoint) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onRightClick: onRightClick)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = RightClickView()
+        view.onRightClick = context.coordinator.onRightClick
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class Coordinator: NSObject {
+        let onRightClick: (CGPoint) -> Void
+        init(onRightClick: @escaping (CGPoint) -> Void) {
+            self.onRightClick = onRightClick
+        }
+    }
+
+    final class RightClickView: NSView {
+        var onRightClick: ((CGPoint) -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            if NSApp.currentEvent?.type == .rightMouseDown {
+                return self
+            }
+            return nil
+        }
+
+        override func rightMouseDown(with event: NSEvent) {
+            let location = convert(event.locationInWindow, from: nil)
+            onRightClick?(location)
+        }
+    }
+}
+
 fileprivate struct AccentStyle {
     let fill: Color
     let fillDark: Color
@@ -2286,28 +2447,32 @@ struct EffectBlockHorizontal: View {
                             setEffectEnabled(!getEffectEnabled())
                         }) {
                             Label(getEffectEnabled() ? "On" : "Off", systemImage: "power")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(AppTypography.technical)
                         }
                         .buttonStyle(.bordered)
+                        .tint(tileStyle.fill)
 
                         Button(role: .destructive, action: onRemove) {
                             Label("Delete", systemImage: "trash")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(AppTypography.technical)
                         }
                         .buttonStyle(.bordered)
+                        .tint(tileStyle.fill)
                     }
                 }
                 .padding()
                 .frame(width: 220)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(red: 0.22, green: 0.19, blue: 0.15))
+                        .fill(AppColors.deepBlack.opacity(0.88))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(cardBorder.opacity(0.35), lineWidth: 1)
+                                .stroke(tileStyle.fill.opacity(0.7), lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
                 )
+                .foregroundColor(tileStyle.fill)
+                .font(AppTypography.technical)
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }

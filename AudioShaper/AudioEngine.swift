@@ -22,7 +22,7 @@ class AudioEngine: ObservableObject {
 
     @Published var bassBoostEnabled = false {
         didSet {
-            print("🎛️ Bass Boost enabled: \(bassBoostEnabled)")
+            // Debug output removed.
             if !bassBoostEnabled {
                 resetBassBoostState()
             }
@@ -399,18 +399,18 @@ class AudioEngine: ObservableObject {
 
         switch audioSession {
         case .authorized:
-            print("✅ Microphone permission already granted")
+            // Debug output removed.
             completion(true)
         case .notDetermined:
-            print("🔐 Requesting microphone permission...")
+            // Debug output removed.
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
-                    print(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
+                    // Debug output removed.
                     completion(granted)
                 }
             }
         case .denied, .restricted:
-            print("❌ Microphone permission denied or restricted")
+            // Debug output removed.
             completion(false)
         @unknown default:
             completion(false)
@@ -479,12 +479,12 @@ class AudioEngine: ObservableObject {
                 )
 
                 if setDeviceStatus == noErr {
-                    print("🔊 AudioQueue output set to: \(deviceUID)")
+                    // Debug output removed.
                 } else {
-                    print("⚠️ Warning: Could not set AudioQueue output device (error: \(setDeviceStatus))")
+                    // Debug output removed.
                 }
             } else {
-                print("⚠️ Warning: Could not get device UID for speakers")
+                // Debug output removed.
             }
 
             // Ensure output volume is audible
@@ -497,7 +497,7 @@ class AudioEngine: ObservableObject {
                 var bufferRef: AudioQueueBufferRef?
                 let allocStatus = AudioQueueAllocateBuffer(outputQueue, bufferSize, &bufferRef)
                 if allocStatus != noErr {
-                    print("⚠️ AudioQueue buffer alloc failed \(i): \(allocStatus)")
+                    // Debug output removed.
                 }
                 if let buffer = bufferRef {
                     // Prime with silence so the callback starts running.
@@ -505,7 +505,7 @@ class AudioEngine: ObservableObject {
                     buffer.pointee.mAudioDataByteSize = bufferSize
                     let enqueueStatus = AudioQueueEnqueueBuffer(outputQueue, buffer, 0, nil)
                     if enqueueStatus != noErr {
-                        print("⚠️ AudioQueue enqueue failed \(i): \(enqueueStatus)")
+                        // Debug output removed.
                     }
                 }
             }
@@ -529,16 +529,14 @@ class AudioEngine: ObservableObject {
 
             isRunning = true
             errorMessage = nil
-            print("✅ Audio engine started successfully")
-            print("   Input: AVAudioEngine (\(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch)")
-            print("   Output: AudioQueue → Speakers")
+            // Debug output removed.
             startChainLogTimer()
             isReconfiguring = false
         } catch {
             errorMessage = "Failed to start: \(error.localizedDescription)"
             isRunning = false
             isReconfiguring = false
-            print("❌ Audio engine failed to start: \(error)")
+            // Debug output removed.
         }
     }
 
@@ -558,9 +556,9 @@ class AudioEngine: ObservableObject {
                 self?.outputQueueStartLock.lock()
                 self?.outputQueueStarted = false
                 self?.outputQueueStartLock.unlock()
-                print("⚠️ AudioQueue start failed: \(startStatus)")
+                // Debug output removed.
             } else {
-                print("▶️ AudioQueue started after tap")
+                // Debug output removed.
             }
         }
     }
@@ -617,12 +615,12 @@ class AudioEngine: ObservableObject {
             )
 
             if leftEdges.isEmpty && rightEdges.isEmpty {
-                print("🔁 Active graph: (empty)")
+                // Debug output removed.
                 return
             }
             let leftText = leftEdges.isEmpty ? "Left: (empty)" : "Left: \(leftEdges.joined(separator: " | "))"
             let rightText = rightEdges.isEmpty ? "Right: (empty)" : "Right: \(rightEdges.joined(separator: " | "))"
-            print("🔁 Active graph: \(leftText)  •  \(rightText)")
+            // Debug output removed.
             return
         }
 
@@ -637,7 +635,7 @@ class AudioEngine: ObservableObject {
             }
 
             if connections.isEmpty || startID == nil || endID == nil {
-                print("🔁 Active graph: (empty)")
+                // Debug output removed.
                 return
             }
 
@@ -649,7 +647,7 @@ class AudioEngine: ObservableObject {
                 startLabel: "Start",
                 endLabel: "End"
             )
-            print("🔁 Active graph: \(edges.joined(separator: " | "))")
+            // Debug output removed.
             return
         }
 
@@ -659,12 +657,12 @@ class AudioEngine: ObservableObject {
         }
 
         if chain.isEmpty {
-            print("🔁 Active chain: (empty)")
+            // Debug output removed.
             return
         }
 
         let names = chain.map { $0.type.rawValue }.joined(separator: " → ")
-        print("🔁 Active chain: \(names)")
+        // Debug output removed.
     }
 
     private func edgesDescription(
@@ -2282,7 +2280,7 @@ class AudioEngine: ObservableObject {
                 gainDb: gainDb,
                 q: 0.8
             )
-            print("🎛️ Bass Boost coeffs updated: \(String(format: "%.1f dB", gainDb))")
+            // Debug output removed.
         }
     }
 
@@ -2298,7 +2296,7 @@ class AudioEngine: ObservableObject {
                 gainDb: gainDb,
                 q: 0.7
             )
-            print("🎛️ Clarity coeffs updated: \(String(format: "%.1f dB", gainDb))")
+            // Debug output removed.
         }
     }
 
@@ -2314,7 +2312,7 @@ class AudioEngine: ObservableObject {
                 gainDb: gainDb,
                 q: 1.5
             )
-            print("🎛️ De-Mud coeffs updated: \(String(format: "%.1f dB", gainDb))")
+            // Debug output removed.
         }
     }
 
@@ -2598,18 +2596,18 @@ class AudioEngine: ObservableObject {
     private func configureAudioDevices() throws {
         // Debug: List all available devices
         let allDevices = getAllAudioDevices()
-        print("🔍 Available audio devices:")
+        // Debug output removed.
         for device in allDevices {
-            print("   - \(device.name) (ID: \(device.id)) [Input: \(device.hasInput), Output: \(device.hasOutput)]")
+            // Debug output removed.
         }
 
         // Find BlackHole for input - we'll use system default which should be Multi-Output→BlackHole
         if let blackholeDevice = findDevice(matching: "BlackHole") {
             inputDeviceName = blackholeDevice.name
-            print("📥 Will use BlackHole for input: \(blackholeDevice.name)")
+            // Debug output removed.
             do {
                 try engine.inputNode.auAudioUnit.setDeviceID(blackholeDevice.id)
-                print("🎛️ Input device set to: \(blackholeDevice.name)")
+                // Debug output removed.
             } catch {
                 throw NSError(
                     domain: "AudioEngine",
@@ -2619,9 +2617,9 @@ class AudioEngine: ObservableObject {
             }
         } else {
             let inputDevices = allDevices.filter { $0.hasInput }
-            print("❌ BlackHole not found. Available input devices:")
+            // Debug output removed.
             for device in inputDevices {
-                print("   - \(device.name)")
+                // Debug output removed.
             }
             throw NSError(
                 domain: "AudioEngine",
@@ -2645,7 +2643,7 @@ class AudioEngine: ObservableObject {
 
         outputDeviceName = speakersDevice.name
         outputDeviceID = speakersDevice.id
-        print("📤 Will output to: \(speakersDevice.name) (ID: \(speakersDevice.id))")
+        // Debug output removed.
 
         // DON'T change system defaults - we'll handle device routing in the audio pipeline
     }
@@ -2705,7 +2703,7 @@ class AudioEngine: ObservableObject {
         )
 
         if status == noErr {
-            print("🔊 Output volume set to 100%")
+            // Debug output removed.
             return
         }
 
@@ -2728,9 +2726,9 @@ class AudioEngine: ObservableObject {
         }
 
         if status == noErr {
-            print("🔊 Output volume set to 100% (per-channel)")
+            // Debug output removed.
         } else {
-            print("⚠️ Could not set output volume (error: \(status))")
+            // Debug output removed.
         }
     }
 
@@ -2839,7 +2837,7 @@ class AudioEngine: ObservableObject {
         if !setReconfiguringFlag {
             isReconfiguring = false
         }
-        print("⏸️ Audio engine stopped")
+        // Debug output removed.
     }
 
     private func reconfigureAudio() {
@@ -2868,7 +2866,7 @@ class AudioEngine: ObservableObject {
         }
         restartWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + restartDebounceInterval, execute: workItem)
-        print("🔄 Scheduling audio restart (\(reason))")
+        // Debug output removed.
     }
 
     // MARK: - Notifications
@@ -2883,7 +2881,7 @@ class AudioEngine: ObservableObject {
     }
 
     @objc private func handleConfigurationChange(notification: Notification) {
-        print("⚙️ Audio engine configuration changed")
+        // Debug output removed.
 
         // If engine was running, attempt to restart
         if isRunning {
@@ -3093,7 +3091,7 @@ class AudioEngine: ObservableObject {
             }
         }
 
-        print("✅ Applied preset with \(chain.activeEffects.count) effects")
+        // Debug output removed.
     }
 
     func updateEffectChain(_ chain: [BeginnerNode]) {
@@ -3136,7 +3134,7 @@ class AudioEngine: ObservableObject {
                 self.effectLevels = [:]
             }
         }
-        print("📝 Effect chain updated with \(chain.count) effects")
+        // Debug output removed.
     }
 
     func updateEffectGraph(nodes: [BeginnerNode], connections: [BeginnerConnection], startID: UUID, endID: UUID) {
@@ -3492,7 +3490,7 @@ private func audioQueueOutputCallback(
         inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
         DebugCounter.emptyCount += 1
         if DebugCounter.emptyCount % 50 == 0 {
-            print("🔇 AudioQueue empty buffer x\(DebugCounter.emptyCount)")
+            // Debug output removed.
         }
     }
 

@@ -230,25 +230,25 @@ class PresetManager: ObservableObject {
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(presets)
             try data.write(to: presetsFileURL, options: .atomic)
-            print("✅ Presets saved to: \(presetsFileURL.path)")
+            // Presets persisted.
         } catch {
-            print("❌ Failed to save presets: \(error)")
+            // Failed to persist presets.
         }
     }
 
     private func loadPresets() {
         do {
             guard FileManager.default.fileExists(atPath: presetsFileURL.path) else {
-                print("ℹ️ No presets file found, starting fresh")
+                // No presets file found.
                 return
             }
 
             let data = try Data(contentsOf: presetsFileURL)
             let decoder = JSONDecoder()
             presets = try decoder.decode([SavedPreset].self, from: data)
-            print("✅ Loaded \(presets.count) presets from: \(presetsFileURL.path)")
+            // Presets loaded.
         } catch {
-            print("❌ Failed to load presets: \(error)")
+            // Failed to load presets.
             presets = []
         }
     }

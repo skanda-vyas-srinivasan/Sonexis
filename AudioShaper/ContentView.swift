@@ -110,25 +110,25 @@ struct ContentView: View {
         guard !presetNameInput.isEmpty else { return }
 
         guard let graph = audioEngine.currentGraphSnapshot else {
-            print("⚠️ No graph snapshot available to save")
+            // No-op: missing graph snapshot.
             return
         }
         let preset = presetManager.savePreset(name: presetNameInput, graph: graph)
         currentPresetID = preset.id
         showSaveStatus("Saved at \(formattedTime())")
-        print("✅ Preset saved: \(presetNameInput)")
+        // Save succeeded.
     }
 
     private func saveCurrentPreset(overwrite: Bool = false) {
         guard let graph = audioEngine.currentGraphSnapshot else {
-            print("⚠️ No graph snapshot available to save")
+            // No-op: missing graph snapshot.
             return
         }
 
         if overwrite, let presetID = currentPresetID {
             presetManager.updatePreset(id: presetID, graph: graph)
             showSaveStatus("Saved at \(formattedTime())")
-            print("✅ Preset updated")
+            // Update succeeded.
         } else {
             presetNameInput = ""
             showingSaveDialog = true
