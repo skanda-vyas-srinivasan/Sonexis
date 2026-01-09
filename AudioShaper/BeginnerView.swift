@@ -32,6 +32,9 @@ struct BeginnerView: View {
     @State private var nextAccentIndex = 0
     @State private var isAppActive = true
     @State private var isTrayCollapsed = false
+    @State private var dropAnimatedNodeIDs: Set<UUID> = []
+    @State private var beatPulse: CGFloat = 0
+    @State private var beatTimer: Timer?
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
@@ -62,6 +65,7 @@ struct BeginnerView: View {
         HStack(spacing: 0) {
             EffectTray(
                 isCollapsed: $isTrayCollapsed,
+                previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
                 onSelect: { type in
                     addEffectToChain(type)
                 },
@@ -186,7 +190,8 @@ struct BeginnerView: View {
                                 from: connection.from,
                                 to: connection.to,
                                 isActive: isAnimating,
-                                level: levelForNode(connection.toNodeId)
+                                level: levelForNode(connection.toNodeId),
+                                beatPulse: beatPulse
                             )
                         }
                     } else {
@@ -199,7 +204,8 @@ struct BeginnerView: View {
                                 from: connection.from,
                                 to: connection.to,
                                 isActive: isAnimating,
-                                level: levelForNode(connection.toNodeId)
+                                level: levelForNode(connection.toNodeId),
+                                beatPulse: beatPulse
                             )
                             .contextMenu {
                                 if connection.isManual {
@@ -419,11 +425,13 @@ struct BeginnerView: View {
                         let nodePos = nodePosition(effectValue, in: geometry.size)
                         let isWired = pathIDs.contains(effectValue.id)
                         let isSelected = selectedNodeIDs.contains(effectValue.id)
+                        let isDropAnimating = dropAnimatedNodeIDs.contains(effectValue.id)
 
                         EffectBlockHorizontal(
                             effect: bindingForEffect(effectValue.id),
                             isWired: isWired,
                             isSelected: isSelected,
+                            isDropAnimating: isDropAnimating,
                             tileStyle: accentPalette[effectValue.accentIndex % accentPalette.count],
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -564,6 +572,7 @@ struct BeginnerView: View {
                             node.accentIndex = nextAccentIndex
                             nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
                             effectChain.append(node)
+                            triggerDropAnimation(for: node.id)
                             applyChainToEngine()
                         }
                     }
@@ -574,9 +583,17 @@ struct BeginnerView: View {
         }
         .onAppear {
             showSignalFlow = audioEngine.isRunning
+            if audioEngine.isRunning {
+                startBeatStub()
+            }
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
+            if isRunning {
+                startBeatStub()
+            } else {
+                stopBeatStub()
+            }
         }
         .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
             guard let snapshot else { return }
@@ -585,6 +602,14 @@ struct BeginnerView: View {
         }
         .onChange(of: scenePhase) { phase in
             isAppActive = phase == .active
+            if !isAppActive {
+                stopBeatStub()
+            } else if audioEngine.isRunning {
+                startBeatStub()
+            }
+        }
+        .onDisappear {
+            stopBeatStub()
         }
         .contextMenu {
             if wiringMode == .manual && !selectedNodeIDs.isEmpty {
@@ -610,8 +635,32 @@ struct BeginnerView: View {
             )
             nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
             effectChain.append(newEffect)
+            triggerDropAnimation(for: newEffect.id)
             applyChainToEngine()
         }
+    }
+
+    private func triggerDropAnimation(for id: UUID) {
+        dropAnimatedNodeIDs.insert(id)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            dropAnimatedNodeIDs.remove(id)
+        }
+    }
+
+    private func startBeatStub() {
+        guard beatTimer == nil else { return }
+        beatTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            beatPulse = 1
+            withAnimation(.easeOut(duration: 0.2)) {
+                beatPulse = 0
+            }
+        }
+    }
+
+    private func stopBeatStub() {
+        beatTimer?.invalidate()
+        beatTimer = nil
+        beatPulse = 0
     }
 
     private func removeEffect(id: UUID) {
@@ -1545,8 +1594,9 @@ struct InsertionIndicator: View {
 
 // MARK: - Effect Tray
 
-struct EffectTray: View {
+fileprivate struct EffectTray: View {
     @Binding var isCollapsed: Bool
+    let previewStyle: AccentStyle
     let onSelect: (EffectType) -> Void
     let onDrag: (EffectType) -> Void
     @State private var searchText = ""
@@ -1600,6 +1650,7 @@ struct EffectTray: View {
                             ForEach(filteredEffects, id: \.self) { effectType in
                                 EffectPaletteButton(
                                     effectType: effectType,
+                                    previewStyle: previewStyle,
                                     onTap: {
                                         onSelect(effectType)
                                     },
@@ -1640,8 +1691,9 @@ struct EffectTray: View {
     }
 }
 
-struct EffectPaletteButton: View {
+fileprivate struct EffectPaletteButton: View {
     let effectType: EffectType
+    let previewStyle: AccentStyle
     let onTap: () -> Void
     let onDragStart: () -> Void
     @State private var isHovered = false
@@ -1680,11 +1732,63 @@ struct EffectPaletteButton: View {
         .onTapGesture {
             onTap()
         }
-        .onDrag {
+        .onDrag({
             isDragging = true
             onDragStart()
             return NSItemProvider(object: effectType.rawValue as NSString)
+        }, preview: {
+            EffectDragPreview(effectType: effectType, tileStyle: previewStyle)
+        })
+    }
+}
+
+fileprivate struct EffectDragPreview: View {
+    let effectType: EffectType
+    let tileStyle: AccentStyle
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    LinearGradient(
+                        colors: [tileStyle.fill, tileStyle.fillDark],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .blur(radius: 0.6)
+                        .offset(y: -0.5)
+                        .mask(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.white, .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                        )
+                )
+
+            VStack(spacing: 6) {
+                Image(systemName: effectType.icon)
+                    .font(.system(size: 26, weight: .light))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundColor(tileStyle.text)
+
+                Text(effectType.rawValue.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundColor(tileStyle.text.opacity(0.85))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .padding(.horizontal, 6)
         }
+        .frame(width: 92, height: 92)
     }
 }
 
@@ -1811,17 +1915,18 @@ struct FlowLine: View {
     let to: CGPoint
     let isActive: Bool
     let level: Float
+    let beatPulse: CGFloat
     @State private var bounce: CGFloat = 0
 
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
-        let glowColor = AppColors.neonCyan.opacity(0.35 + 0.55 * intensity)
-        let thickness: CGFloat = 2 + 5 * intensity + 2 * bounce
+        let glowColor = AppColors.neonCyan.opacity(0.35 + 0.55 * intensity + 0.4 * beatPulse)
+        let thickness: CGFloat = 2 + 5 * intensity + 2 * bounce + 6 * beatPulse
         let packetCount = 4
         let dotsPerPacket = 8
         let packetSpan: CGFloat = 0.22
-        let baseDotSize: CGFloat = 2.5 + 3.5 * intensity
+        let baseDotSize: CGFloat = 2.5 + 3.5 * intensity + 2.0 * beatPulse
         let jitterScale: CGFloat = 6 + 8 * intensity
         let dx = to.x - from.x
         let dy = to.y - from.y
@@ -1832,7 +1937,7 @@ struct FlowLine: View {
             if isActive {
                 TimelineView(.animation) { context in
                     let time = context.date.timeIntervalSinceReferenceDate
-                    let speed = 0.35
+                    let speed = 0.35 + Double(0.15 * beatPulse)
                     let phase = CGFloat((time * speed).truncatingRemainder(dividingBy: 1.0))
 
                     ZStack {
@@ -1851,7 +1956,7 @@ struct FlowLine: View {
                             path.addLine(to: to)
                         }
                         .stroke(glowColor, lineWidth: thickness + 4)
-                        .blur(radius: 6 + 6 * intensity)
+                        .blur(radius: 6 + 6 * intensity + 6 * beatPulse)
 
                         ForEach(0..<packetCount, id: \.self) { packetIndex in
                             ForEach(0..<dotsPerPacket, id: \.self) { dotIndex in
@@ -1912,6 +2017,12 @@ fileprivate struct AccentStyle {
     let fill: Color
     let fillDark: Color
     let text: Color
+
+    static let defaultPreview = AccentStyle(
+        fill: Color(red: 0.93, green: 0.88, blue: 0.78),
+        fillDark: Color(red: 0.86, green: 0.80, blue: 0.67),
+        text: Color(red: 0.24, green: 0.20, blue: 0.15)
+    )
 }
 
 
@@ -1921,17 +2032,23 @@ struct EffectBlockHorizontal: View {
     @Binding var effect: BeginnerNode
     let isWired: Bool
     let isSelected: Bool
+    let isDropAnimating: Bool
     fileprivate let tileStyle: AccentStyle
     let onRemove: () -> Void
     let onUpdate: () -> Void
     @State private var isHovered = false
     @State private var isExpanded = false
+    @State private var dropScale: CGFloat = 1.0
+    @State private var dropRotation: Double = 0.0
     private let cardBackground = Color(red: 0.18, green: 0.16, blue: 0.13)
     private let cardBorder = Color(red: 0.68, green: 0.52, blue: 0.32)
     private let tileDisabled = Color(red: 0.32, green: 0.30, blue: 0.26)
     private let disabledText = Color(red: 0.78, green: 0.74, blue: 0.68)
 
     var body: some View {
+        let hoverScale: CGFloat = isHovered ? 1.03 : 1.0
+        let hoverOffset: CGFloat = isHovered ? -4 : 0
+        let combinedScale = hoverScale * dropScale
         VStack(spacing: 0) {
             VStack(spacing: 8) {
                 // Icon and name
@@ -1988,12 +2105,15 @@ struct EffectBlockHorizontal: View {
 
             }
             .padding(10)
-            .scaleEffect(isHovered ? 1.03 : 1.0)
+            .scaleEffect(combinedScale)
+            .rotationEffect(.degrees(dropRotation))
+            .offset(y: hoverOffset)
             .opacity(isWired ? 1.0 : 0.45)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(isSelected ? cardBorder : Color.clear, lineWidth: 2)
             )
+            .shadow(color: Color.black.opacity(isHovered ? 0.35 : 0.15), radius: isHovered ? 12 : 6, y: isHovered ? 6 : 3)
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isHovered = hovering
@@ -2047,6 +2167,21 @@ struct EffectBlockHorizontal: View {
                 )
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .onChange(of: isDropAnimating) { triggered in
+            guard triggered else { return }
+            dropScale = 0.88
+            dropRotation = -2
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.5)) {
+                dropScale = 1.08
+                dropRotation = 1.5
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+                    dropScale = 1.0
+                    dropRotation = 0.0
+                }
             }
         }
     }
