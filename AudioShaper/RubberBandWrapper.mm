@@ -21,6 +21,7 @@
     std::vector<float> _inputFifo;
     std::vector<float> _outputFifo;
     int _minProcessFrames;
+    bool _isPrimed;
 }
 
 - (instancetype)initWithSampleRate:(double)sampleRate channels:(int)channels {
@@ -30,7 +31,8 @@
         _channels = channels;
         _sampleRate = sampleRate;
         _pitchScale = 1.0;
-        _minProcessFrames = 2048;
+        _minProcessFrames = 8192;
+        _isPrimed = false;
         [self configureWithSampleRate:sampleRate channels:channels];
     }
     return self;
@@ -77,6 +79,7 @@
     rubberband_set_max_process_size(_state, 8192);
     _inputFifo.clear();
     _outputFifo.clear();
+    _isPrimed = false;
 }
 
 - (void)setPitchSemitones:(double)semitones {
@@ -85,6 +88,15 @@
     if (_state) {
         rubberband_set_pitch_scale(_state, scale);
     }
+}
+
+- (void)setMinimumProcessFrames:(int)frames {
+    const int clamped = std::max(256, frames);
+    if (_minProcessFrames == clamped) {
+        return;
+    }
+    _minProcessFrames = clamped;
+    _isPrimed = false;
 }
 
 - (int)processInput:(const float *)input
@@ -156,6 +168,17 @@
     }
 
     const int availableOutFrames = (int)(_outputFifo.size() / channels);
+    const int prebufferFrames = _minProcessFrames * 2;
+    if (!_isPrimed) {
+        if (availableOutFrames >= prebufferFrames) {
+            _isPrimed = true;
+        } else {
+            const size_t totalOutSamples = (size_t)outputCapacity * channels;
+            std::fill(output, output + totalOutSamples, 0.0f);
+            return outputCapacity;
+        }
+    }
+
     const int toCopyFrames = std::min(outputCapacity, availableOutFrames);
 
     for (int frame = 0; frame < outputCapacity; frame++) {
@@ -164,7 +187,7 @@
             if (frame < toCopyFrames) {
                 value = _outputFifo[frame * channels + ch];
             } else {
-                value = input[frame * channels + ch];
+                value = 0.0f;
             }
             output[frame * channels + ch] = value;
         }
@@ -184,6 +207,7 @@
     }
     _inputFifo.clear();
     _outputFifo.clear();
+    _isPrimed = false;
 }
 
 @end
