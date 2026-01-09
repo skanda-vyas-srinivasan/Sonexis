@@ -3,51 +3,51 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
-    @State private var selectedTab = 1 // Start on Beginner mode
+    @State private var activeScreen: AppScreen = .home
     @State private var showingSaveDialog = false
     @State private var presetNameInput = ""
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HeaderView(
-                audioEngine: audioEngine,
-                onSave: {
-                    presetNameInput = ""
-                    showingSaveDialog = true
-                },
-                onLoad: {
-                    // TODO: Show load dialog
-                }
-            )
+            if activeScreen == .home {
+                HomeView(
+                    onBuildFromScratch: { activeScreen = .beginner },
+                    onApplyPresets: { activeScreen = .presets }
+                )
+            } else {
+                AppTopBar(
+                    title: activeScreen == .beginner ? "Build" : "Presets",
+                    onBack: { activeScreen = .home }
+                )
 
-            Divider()
+                HeaderView(
+                    audioEngine: audioEngine,
+                    onSave: {
+                        presetNameInput = ""
+                        showingSaveDialog = true
+                    },
+                    onLoad: {
+                        // TODO: Show load dialog
+                    }
+                )
 
-            // Tab selector
-            Picker("Mode", selection: $selectedTab) {
-                Text("Presets").tag(0)
-                Text("Beginner").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding()
+                Divider()
 
-            Divider()
-
-            // Content area based on selected tab
-            Group {
-                switch selectedTab {
-                case 0:
-                    PresetView(
-                        audioEngine: audioEngine,
-                        presetManager: presetManager,
-                        onPresetApplied: {
-                            selectedTab = 1
-                        }
-                    )
-                case 1:
-                    BeginnerView(audioEngine: audioEngine)
-                default:
-                    EmptyView()
+                Group {
+                    switch activeScreen {
+                    case .presets:
+                        PresetView(
+                            audioEngine: audioEngine,
+                            presetManager: presetManager,
+                            onPresetApplied: {
+                                activeScreen = .beginner
+                            }
+                        )
+                    case .beginner:
+                        BeginnerView(audioEngine: audioEngine)
+                    case .home:
+                        EmptyView()
+                    }
                 }
             }
         }
@@ -77,6 +77,94 @@ struct ContentView: View {
         presetManager.savePreset(name: presetNameInput, graph: graph)
 
         print("✅ Preset saved: \(presetNameInput)")
+    }
+}
+
+enum AppScreen {
+    case home
+    case presets
+    case beginner
+}
+
+struct HomeView: View {
+    let onBuildFromScratch: () -> Void
+    let onApplyPresets: () -> Void
+    @State private var isVisible = false
+    @AppStorage("homeHasAppeared") private var homeHasAppeared = false
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            VStack(spacing: 8) {
+                Text("HoldOn")
+                    .font(.system(size: 44, weight: .semibold))
+                Text("Shape your system audio in real time")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+            }
+
+            HStack(spacing: 16) {
+                Button(action: onBuildFromScratch) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 28))
+                        Text("Build from scratch")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(width: 220, height: 140)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: onApplyPresets) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "tray.full")
+                            .font(.system(size: 28))
+                        Text("Apply saved presets")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(width: 220, height: 140)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 10)
+        .onAppear {
+            isVisible = false
+            let duration = homeHasAppeared ? 0.45 : 0.8
+            withAnimation(.easeOut(duration: duration)) {
+                isVisible = true
+            }
+            homeHasAppeared = true
+        }
+    }
+}
+
+struct AppTopBar: View {
+    let title: String
+    let onBack: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                Text("Home")
+            }
+            .buttonStyle(.plain)
+
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 }
 

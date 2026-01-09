@@ -4,6 +4,7 @@ import SwiftUI
 
 struct BeginnerView: View {
     @ObservedObject var audioEngine: AudioEngine
+    @Environment(\.scenePhase) private var scenePhase
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
     @State private var showSignalFlow = false
@@ -28,7 +29,21 @@ struct BeginnerView: View {
     @State private var rightStartNodeID = UUID()
     @State private var rightEndNodeID = UUID()
     @State private var graphMode: GraphMode = .single
+    @State private var nextAccentIndex = 0
+    @State private var isAppActive = true
     private let connectionSnapRadius: CGFloat = 120
+    private let accentPalette: [AccentStyle] = [
+        AccentStyle(
+            fill: Color(red: 0.93, green: 0.88, blue: 0.78),
+            fillDark: Color(red: 0.86, green: 0.80, blue: 0.67),
+            text: Color(red: 0.24, green: 0.20, blue: 0.15)
+        ),
+        AccentStyle(
+            fill: Color(red: 0.82, green: 0.64, blue: 0.42),
+            fillDark: Color(red: 0.73, green: 0.55, blue: 0.35),
+            text: Color(red: 0.22, green: 0.18, blue: 0.13)
+        )
+    ]
 
     enum WiringMode {
         case automatic  // Position-based with manual override
@@ -41,6 +56,7 @@ struct BeginnerView: View {
         let pathIDs = wiringMode == .automatic
             ? Set((leftAutoPath + rightAutoPath).map { $0.id })
             : reachableNodeIDsFromStart()
+        let isAnimating = audioEngine.isRunning && showSignalFlow && isAppActive
 
         VStack(spacing: 0) {
             // Effect palette at top
@@ -176,7 +192,7 @@ struct BeginnerView: View {
                             FlowLine(
                                 from: connection.from,
                                 to: connection.to,
-                                isActive: audioEngine.isRunning && showSignalFlow,
+                                isActive: isAnimating,
                                 level: levelForNode(connection.toNodeId)
                             )
                         }
@@ -189,7 +205,7 @@ struct BeginnerView: View {
                             FlowLine(
                                 from: connection.from,
                                 to: connection.to,
-                                isActive: audioEngine.isRunning && showSignalFlow,
+                                isActive: isAnimating,
                                 level: levelForNode(connection.toNodeId)
                             )
                             .contextMenu {
@@ -415,6 +431,7 @@ struct BeginnerView: View {
                             effect: bindingForEffect(effectValue.id),
                             isWired: isWired,
                             isSelected: isSelected,
+                            tileStyle: accentPalette[effectValue.accentIndex % accentPalette.count],
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     removeEffect(id: effectValue.id)
@@ -550,7 +567,10 @@ struct BeginnerView: View {
                     },
                     onAdd: { newNode in
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            effectChain.append(newNode)
+                            var node = newNode
+                            node.accentIndex = nextAccentIndex
+                            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
+                            effectChain.append(node)
                             applyChainToEngine()
                         }
                     }
@@ -569,6 +589,9 @@ struct BeginnerView: View {
             applyGraphSnapshot(snapshot)
             audioEngine.pendingGraphSnapshot = nil
         }
+        .onChange(of: scenePhase) { phase in
+            isAppActive = phase == .active
+        }
         .contextMenu {
             if wiringMode == .manual && !selectedNodeIDs.isEmpty {
                 Button("Delete Selected Nodes") {
@@ -585,7 +608,13 @@ struct BeginnerView: View {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
             let lane: GraphLane? = graphMode == .split ? .left : nil
             let position = defaultNodePosition(in: canvasSize, lane: lane)
-            let newEffect = BeginnerNode(type: type, position: position, lane: lane ?? .left)
+            let newEffect = BeginnerNode(
+                type: type,
+                position: position,
+                lane: lane ?? .left,
+                accentIndex: nextAccentIndex
+            )
+            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
             effectChain.append(newEffect)
             applyChainToEngine()
         }
@@ -607,7 +636,8 @@ struct BeginnerView: View {
             position: CGPoint(x: source.position.x + 40, y: source.position.y + 40),
             lane: source.lane,
             isEnabled: source.isEnabled,
-            parameters: source.parameters
+            parameters: source.parameters,
+            accentIndex: source.accentIndex
         )
         clone.position = clamp(clone.position, to: canvasSize, lane: graphMode == .split ? clone.lane : nil)
         effectChain.append(clone)
@@ -715,6 +745,8 @@ struct BeginnerView: View {
         if graphMode == .split {
             manualConnections.removeAll { laneForConnection($0) == nil }
         }
+        let maxAccent = effectChain.map(\.accentIndex).max() ?? -1
+        nextAccentIndex = (maxAccent + 1) % accentPalette.count
         selectedNodeIDs.removeAll()
         selectedWireID = nil
         applyChainToEngine()
@@ -1562,29 +1594,29 @@ struct EffectPaletteButton: View {
     let onDragStart: () -> Void
     @State private var isHovered = false
     @State private var isDragging = false
+    private let tileBase = Color(red: 0.20, green: 0.17, blue: 0.14)
+    private let textColor = Color(red: 0.95, green: 0.92, blue: 0.88)
 
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: effectType.icon)
-                .font(.system(size: 24))
-                .foregroundColor(.white)
-                .frame(width: 50, height: 50)
-                .background(
-                    LinearGradient(
-                        colors: isHovered ? [.blue.opacity(0.8), .blue] : [.blue.opacity(0.6), .blue.opacity(0.8)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .font(.system(size: 22, weight: .light))
+                .symbolRenderingMode(.monochrome)
+                .foregroundColor(textColor)
+                .frame(width: 56, height: 56)
+                .background(tileBase)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .shadow(color: .black.opacity(0.2), radius: isHovered ? 8 : 4, y: isHovered ? 4 : 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isHovered ? Color(red: 0.68, green: 0.52, blue: 0.32) : Color.clear, lineWidth: 1)
+                )
                 .scaleEffect(isHovered ? 1.05 : 1.0)
                 .opacity(isDragging ? 0.5 : 1.0)
 
             Text(effectType.rawValue)
                 .font(.caption2)
                 .fontWeight(.medium)
-                .foregroundColor(.primary)
+                .foregroundColor(textColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(width: 70)
@@ -1747,55 +1779,64 @@ struct FlowLine: View {
         let length = max(sqrt(dx * dx + dy * dy), 0.001)
         let nx = -dy / length
         let ny = dx / length
-        TimelineView(.animation) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            let speed = isActive ? 0.35 : 0.0
-            let phase = CGFloat((time * speed).truncatingRemainder(dividingBy: 1.0))
+        Group {
+            if isActive {
+                TimelineView(.animation) { context in
+                    let time = context.date.timeIntervalSinceReferenceDate
+                    let speed = 0.35
+                    let phase = CGFloat((time * speed).truncatingRemainder(dividingBy: 1.0))
 
-            ZStack {
+                    ZStack {
+                        Path { path in
+                            path.move(to: from)
+                            path.addLine(to: to)
+                        }
+                        .stroke(Color.blue.opacity(baseOpacity), lineWidth: thickness)
+                        .contentShape(Path { path in
+                            path.move(to: from)
+                            path.addLine(to: to)
+                        }.strokedPath(.init(lineWidth: thickness + 10)))
+
+                        Path { path in
+                            path.move(to: from)
+                            path.addLine(to: to)
+                        }
+                        .stroke(glowColor, lineWidth: thickness + 4)
+                        .blur(radius: 6 + 6 * intensity)
+
+                        ForEach(0..<packetCount, id: \.self) { packetIndex in
+                            ForEach(0..<dotsPerPacket, id: \.self) { dotIndex in
+                                let packetOffset = CGFloat(packetIndex) / CGFloat(packetCount)
+                                let localOffset = (CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1))) * packetSpan
+                                let t = (phase + packetOffset + localOffset).truncatingRemainder(dividingBy: 1.0)
+                                let sizeScale = 0.5 + 0.6 * (1 - CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1)))
+                                let dotSize = baseDotSize * sizeScale
+                                let drift = sin((phase * 6.28318) + CGFloat(packetIndex * 7 + dotIndex)) * jitterScale
+                                let basePoint = pointAlongLine(from: from, to: to, t: t)
+                                let particlePoint = CGPoint(
+                                    x: basePoint.x + nx * drift,
+                                    y: basePoint.y + ny * drift
+                                )
+
+                                Circle()
+                                    .fill(glowColor)
+                                    .frame(width: dotSize, height: dotSize)
+                                    .position(particlePoint)
+                                    .shadow(color: glowColor.opacity(0.7), radius: 6)
+                            }
+                        }
+                    }
+                }
+            } else {
                 Path { path in
                     path.move(to: from)
                     path.addLine(to: to)
                 }
-                .stroke(Color.blue.opacity(baseOpacity), lineWidth: thickness)
-                .contentShape(Path { path in
-                    path.move(to: from)
-                    path.addLine(to: to)
-                }.strokedPath(.init(lineWidth: thickness + 10)))
-
-                if isActive {
-                    Path { path in
-                        path.move(to: from)
-                        path.addLine(to: to)
-                    }
-                    .stroke(glowColor, lineWidth: thickness + 4)
-                    .blur(radius: 6 + 6 * intensity)
-
-                    ForEach(0..<packetCount, id: \.self) { packetIndex in
-                        ForEach(0..<dotsPerPacket, id: \.self) { dotIndex in
-                            let packetOffset = CGFloat(packetIndex) / CGFloat(packetCount)
-                            let localOffset = (CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1))) * packetSpan
-                            let t = (phase + packetOffset + localOffset).truncatingRemainder(dividingBy: 1.0)
-                            let sizeScale = 0.5 + 0.6 * (1 - CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1)))
-                            let dotSize = baseDotSize * sizeScale
-                            let drift = sin((phase * 6.28318) + CGFloat(packetIndex * 7 + dotIndex)) * jitterScale
-                            let basePoint = pointAlongLine(from: from, to: to, t: t)
-                            let particlePoint = CGPoint(
-                                x: basePoint.x + nx * drift,
-                                y: basePoint.y + ny * drift
-                            )
-
-                            Circle()
-                                .fill(glowColor)
-                                .frame(width: dotSize, height: dotSize)
-                                .position(particlePoint)
-                                .shadow(color: glowColor.opacity(0.7), radius: 6)
-                        }
-                    }
-                }
+                .stroke(Color.blue.opacity(0.22), lineWidth: 2)
             }
         }
         .onAppear {
+            guard isActive else { return }
             withAnimation(.interpolatingSpring(stiffness: 120, damping: 8).repeatForever(autoreverses: true)) {
                 bounce = 1
             }
@@ -1818,6 +1859,12 @@ private struct CanvasConnection: Identifiable {
     let isManual: Bool
 }
 
+fileprivate struct AccentStyle {
+    let fill: Color
+    let fillDark: Color
+    let text: Color
+}
+
 
 // MARK: - Effect Block
 
@@ -1825,113 +1872,132 @@ struct EffectBlockHorizontal: View {
     @Binding var effect: BeginnerNode
     let isWired: Bool
     let isSelected: Bool
+    fileprivate let tileStyle: AccentStyle
     let onRemove: () -> Void
     let onUpdate: () -> Void
     @State private var isHovered = false
     @State private var isExpanded = false
+    private let cardBackground = Color(red: 0.18, green: 0.16, blue: 0.13)
+    private let cardBorder = Color(red: 0.68, green: 0.52, blue: 0.32)
+    private let tileDisabled = Color(red: 0.32, green: 0.30, blue: 0.26)
+    private let disabledText = Color(red: 0.78, green: 0.74, blue: 0.68)
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
                 // Icon and name
                 VStack(spacing: 6) {
-                    Image(systemName: effect.type.icon)
-                        .font(.system(size: 28))
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(
-                            LinearGradient(
-                                colors: getEffectEnabled() ? [.blue, .blue.opacity(0.7)] : [.gray, .gray.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(
+                                getEffectEnabled()
+                                    ? LinearGradient(
+                                        colors: [tileStyle.fill, tileStyle.fillDark],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [tileDisabled, tileDisabled.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
                             )
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(getEffectEnabled() ? Color.blue.opacity(0.5) : Color.clear, lineWidth: 2)
-                        )
-                        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                    .blur(radius: 0.6)
+                                    .offset(y: -0.5)
+                                    .mask(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [.white, .clear],
+                                                    startPoint: .top,
+                                                    endPoint: .bottom
+                                                )
+                                            )
+                                    )
+                            )
 
-                    Text(effect.type.rawValue)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .frame(width: 80)
-                }
+                        VStack(spacing: 6) {
+                            Image(systemName: effect.type.icon)
+                                .font(.system(size: 26, weight: .light))
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundColor(getEffectEnabled() ? tileStyle.text : disabledText)
 
-                // Control buttons
-                HStack(spacing: 8) {
-                    // Toggle
-                    Button(action: {
-                        setEffectEnabled(!getEffectEnabled())
-                    }) {
-                        Image(systemName: getEffectEnabled() ? "power.circle.fill" : "power.circle")
-                            .font(.system(size: 18))
-                            .foregroundColor(getEffectEnabled() ? .green : .secondary)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Expand/collapse
-                    Button(action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            isExpanded.toggle()
+                            Text(effect.type.rawValue.uppercased())
+                                .font(.system(size: 9, weight: .semibold))
+                                .tracking(0.8)
+                                .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.85))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                         }
-                    }) {
-                        Image(systemName: isExpanded ? "chevron.up.circle.fill" : "slider.horizontal.3")
-                            .font(.system(size: 18))
-                            .foregroundColor(.blue)
+                        .padding(.horizontal, 6)
                     }
-                    .buttonStyle(.plain)
-
-                    // Remove
-                    Button(action: onRemove) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.red)
-                    }
-                    .buttonStyle(.plain)
+                    .frame(width: 92, height: 92)
                 }
+
             }
-            .padding()
-            .frame(width: 120)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(NSColor.controlBackgroundColor))
-                    .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
-            )
+            .padding(10)
             .scaleEffect(isHovered ? 1.03 : 1.0)
             .opacity(isWired ? 1.0 : 0.45)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? Color.blue.opacity(0.8) : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? cardBorder : Color.clear, lineWidth: 2)
             )
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isHovered = hovering
                 }
             }
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .onTapGesture(count: 2) {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    isExpanded.toggle()
+                }
+            }
 
             // Expanded parameters
-            if isExpanded && getEffectEnabled() {
+            if isExpanded {
                 VStack(spacing: 12) {
                     EffectParametersViewCompact(
                         effectType: effect.type,
                         parameters: $effect.parameters,
                         onChange: onUpdate
                     )
+
+                    Divider()
+                        .background(cardBorder.opacity(0.4))
+
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            setEffectEnabled(!getEffectEnabled())
+                        }) {
+                            Label(getEffectEnabled() ? "On" : "Off", systemImage: "power")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(role: .destructive, action: onRemove) {
+                            Label("Delete", systemImage: "trash")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 }
                 .padding()
-                .frame(width: 200)
+                .frame(width: 220)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(NSColor.controlBackgroundColor).opacity(0.9))
+                        .fill(Color(red: 0.22, green: 0.19, blue: 0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(cardBorder.opacity(0.35), lineWidth: 1)
+                        )
                         .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
                 )
                 .padding(.top, 8)
-                .transition(.scale(scale: 0.8, anchor: .top).combined(with: .opacity))
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
     }

@@ -70,17 +70,17 @@ enum EffectType: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .bassBoost:
-            return "speaker.wave.3.fill"
+            return "speaker.wave.3"
         case .clarity:
             return "sparkles"
         case .reverb:
-            return "building.columns.fill"
+            return "building.columns"
         case .compressor:
             return "waveform.path.ecg"
         case .stereoWidth:
             return "arrow.left.and.right"
         case .pitchShift:
-            return "hare.fill"
+            return "hare"
         case .rubberBandPitch:
             return "music.note.list"
         case .simpleEQ:
@@ -88,7 +88,7 @@ enum EffectType: String, Codable, CaseIterable {
         case .tenBandEQ:
             return "slider.horizontal.2.square"
         case .deMud:
-            return "bandage.fill"
+            return "bandage"
         case .delay:
             return "arrow.3.trianglepath"
         case .distortion:
@@ -96,7 +96,7 @@ enum EffectType: String, Codable, CaseIterable {
         case .tremolo:
             return "waveform"
         case .chorus:
-            return "waveform.circle.fill"
+            return "waveform.circle"
         case .phaser:
             return "circle.dotted.and.circle"
         case .flanger:
@@ -447,13 +447,15 @@ struct BeginnerNode: Identifiable, Codable {
     var lane: GraphLane
     var isEnabled: Bool
     var parameters: NodeEffectParameters
+    var accentIndex: Int
 
     init(
         type: EffectType,
         position: CGPoint = .zero,
         lane: GraphLane = .left,
         isEnabled: Bool = true,
-        parameters: NodeEffectParameters = NodeEffectParameters.defaults()
+        parameters: NodeEffectParameters = NodeEffectParameters.defaults(),
+        accentIndex: Int = 0
     ) {
         self.id = UUID()
         self.type = type
@@ -461,6 +463,7 @@ struct BeginnerNode: Identifiable, Codable {
         self.lane = lane
         self.isEnabled = isEnabled
         self.parameters = parameters
+        self.accentIndex = accentIndex
     }
 
     enum CodingKeys: String, CodingKey {
@@ -470,6 +473,7 @@ struct BeginnerNode: Identifiable, Codable {
         case lane
         case isEnabled
         case parameters
+        case accentIndex
     }
 
     init(from decoder: Decoder) throws {
@@ -480,6 +484,7 @@ struct BeginnerNode: Identifiable, Codable {
         self.lane = try container.decodeIfPresent(GraphLane.self, forKey: .lane) ?? .left
         self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
         self.parameters = try container.decodeIfPresent(NodeEffectParameters.self, forKey: .parameters) ?? NodeEffectParameters.defaults()
+        self.accentIndex = try container.decodeIfPresent(Int.self, forKey: .accentIndex) ?? 0
     }
 }
 

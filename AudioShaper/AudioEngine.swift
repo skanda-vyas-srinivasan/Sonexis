@@ -1556,8 +1556,10 @@ class AudioEngine: ObservableObject {
                 )
             }
             let targetId = nodeId
-            var bandStates = targetId.flatMap { tenBandStatesByNode[$0] }
-            bandStates = normalizedTenBandStates(bandStates, channelCount: channelCount)
+            var bandStates = normalizedTenBandStates(
+                targetId.flatMap { tenBandStatesByNode[$0] },
+                channelCount: channelCount
+            )
 
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
