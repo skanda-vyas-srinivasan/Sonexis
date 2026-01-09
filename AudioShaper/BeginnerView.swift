@@ -34,7 +34,6 @@ struct BeginnerView: View {
     @State private var isTrayCollapsed = false
     @State private var dropAnimatedNodeIDs: Set<UUID> = []
     @State private var beatPulse: CGFloat = 0
-    @State private var beatTimer: Timer?
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
@@ -126,9 +125,7 @@ struct BeginnerView: View {
                     AppGradients.background
                         .ignoresSafeArea()
 
-                    AnimatedGrid(intensity: showSignalFlow ? 0.6 : 0.3)
-
-                    ScanlinesOverlay()
+                    StaticGrid()
 
                     Rectangle()
                         .fill(Color.clear)
@@ -583,17 +580,9 @@ struct BeginnerView: View {
         }
         .onAppear {
             showSignalFlow = audioEngine.isRunning
-            if audioEngine.isRunning {
-                startBeatStub()
-            }
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
-            if isRunning {
-                startBeatStub()
-            } else {
-                stopBeatStub()
-            }
         }
         .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
             guard let snapshot else { return }
@@ -602,14 +591,6 @@ struct BeginnerView: View {
         }
         .onChange(of: scenePhase) { phase in
             isAppActive = phase == .active
-            if !isAppActive {
-                stopBeatStub()
-            } else if audioEngine.isRunning {
-                startBeatStub()
-            }
-        }
-        .onDisappear {
-            stopBeatStub()
         }
         .contextMenu {
             if wiringMode == .manual && !selectedNodeIDs.isEmpty {
@@ -647,21 +628,6 @@ struct BeginnerView: View {
         }
     }
 
-    private func startBeatStub() {
-        guard beatTimer == nil else { return }
-        beatTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            beatPulse = 1
-            withAnimation(.easeOut(duration: 0.2)) {
-                beatPulse = 0
-            }
-        }
-    }
-
-    private func stopBeatStub() {
-        beatTimer?.invalidate()
-        beatTimer = nil
-        beatPulse = 0
-    }
 
     private func removeEffect(id: UUID) {
         effectChain.removeAll { $0.id == id }
@@ -1921,24 +1887,18 @@ struct FlowLine: View {
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
-        let glowColor = AppColors.neonCyan.opacity(0.35 + 0.55 * intensity + 0.4 * beatPulse)
-        let thickness: CGFloat = 2 + 5 * intensity + 2 * bounce + 6 * beatPulse
-        let packetCount = 4
-        let dotsPerPacket = 8
-        let packetSpan: CGFloat = 0.22
-        let baseDotSize: CGFloat = 2.5 + 3.5 * intensity + 2.0 * beatPulse
-        let jitterScale: CGFloat = 6 + 8 * intensity
-        let dx = to.x - from.x
-        let dy = to.y - from.y
-        let length = max(sqrt(dx * dx + dy * dy), 0.001)
-        let nx = -dy / length
-        let ny = dx / length
+        let glowColor = AppColors.neonCyan.opacity(0.35 + 0.55 * intensity)
+        let thickness: CGFloat = 3.5 + 6 * intensity
         Group {
             if isActive {
-                TimelineView(.animation) { context in
+                TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { context in
                     let time = context.date.timeIntervalSinceReferenceDate
-                    let speed = 0.35 + Double(0.15 * beatPulse)
-                    let phase = CGFloat((time * speed).truncatingRemainder(dividingBy: 1.0))
+                    let dx = to.x - from.x
+                    let dy = to.y - from.y
+                    let length = max(sqrt(dx * dx + dy * dy), 1)
+                    let pixelsPerSecond: CGFloat = 90
+                    let phaseSpeed = pixelsPerSecond / length
+                    let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
 
                     ZStack {
                         Path { path in
@@ -1951,34 +1911,12 @@ struct FlowLine: View {
                             path.addLine(to: to)
                         }.strokedPath(.init(lineWidth: thickness + 10)))
 
-                        Path { path in
-                            path.move(to: from)
-                            path.addLine(to: to)
-                        }
-                        .stroke(glowColor, lineWidth: thickness + 4)
-                        .blur(radius: 6 + 6 * intensity + 6 * beatPulse)
-
-                        ForEach(0..<packetCount, id: \.self) { packetIndex in
-                            ForEach(0..<dotsPerPacket, id: \.self) { dotIndex in
-                                let packetOffset = CGFloat(packetIndex) / CGFloat(packetCount)
-                                let localOffset = (CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1))) * packetSpan
-                                let t = (phase + packetOffset + localOffset).truncatingRemainder(dividingBy: 1.0)
-                                let sizeScale = 0.5 + 0.6 * (1 - CGFloat(dotIndex) / CGFloat(max(dotsPerPacket - 1, 1)))
-                                let dotSize = baseDotSize * sizeScale
-                                let drift = sin((phase * 6.28318) + CGFloat(packetIndex * 7 + dotIndex)) * jitterScale
-                                let basePoint = pointAlongLine(from: from, to: to, t: t)
-                                let particlePoint = CGPoint(
-                                    x: basePoint.x + nx * drift,
-                                    y: basePoint.y + ny * drift
-                                )
-
-                                Circle()
-                                    .fill(glowColor)
-                                    .frame(width: dotSize, height: dotSize)
-                                    .position(particlePoint)
-                                    .shadow(color: glowColor.opacity(0.7), radius: 6)
-                            }
-                        }
+                        MovingArrowheads(
+                            from: from,
+                            to: to,
+                            color: AppColors.neonCyan.opacity(0.85),
+                            phase: phase
+                        )
                     }
                 }
             } else {
@@ -1989,12 +1927,7 @@ struct FlowLine: View {
                 .stroke(AppColors.wireInactive.opacity(0.8), lineWidth: 2)
             }
         }
-        .onAppear {
-            guard isActive else { return }
-            withAnimation(.interpolatingSpring(stiffness: 120, damping: 8).repeatForever(autoreverses: true)) {
-                bounce = 1
-            }
-        }
+        .onAppear { }
     }
 
     private func pointAlongLine(from: CGPoint, to: CGPoint, t: CGFloat) -> CGPoint {
@@ -2023,6 +1956,47 @@ fileprivate struct AccentStyle {
         fillDark: Color(red: 0.86, green: 0.80, blue: 0.67),
         text: Color(red: 0.24, green: 0.20, blue: 0.15)
     )
+}
+
+fileprivate struct MovingArrowheads: View {
+    let from: CGPoint
+    let to: CGPoint
+    let color: Color
+    let phase: CGFloat
+
+    var body: some View {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = max(sqrt(dx * dx + dy * dy), 1)
+        let spacing: CGFloat = 140
+        let arrowSize: CGFloat = 6
+        let steps = max(Int(length / spacing), 1)
+
+        return ZStack {
+            ForEach(0..<steps, id: \.self) { index in
+                let base = CGFloat(index + 1) / CGFloat(steps + 1)
+                let t = (base + phase).truncatingRemainder(dividingBy: 1.0)
+                let point = CGPoint(x: from.x + dx * t, y: from.y + dy * t)
+                let angle = atan2(dy, dx)
+
+                Path { path in
+                    let tip = point
+                    let left = CGPoint(
+                        x: tip.x - arrowSize * cos(angle - .pi / 6),
+                        y: tip.y - arrowSize * sin(angle - .pi / 6)
+                    )
+                    let right = CGPoint(
+                        x: tip.x - arrowSize * cos(angle + .pi / 6),
+                        y: tip.y - arrowSize * sin(angle + .pi / 6)
+                    )
+                    path.move(to: left)
+                    path.addLine(to: tip)
+                    path.addLine(to: right)
+                }
+                .stroke(color, lineWidth: 1.5)
+            }
+        }
+    }
 }
 
 
