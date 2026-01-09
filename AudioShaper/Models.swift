@@ -16,6 +16,11 @@ enum EffectType: String, Codable, CaseIterable {
     case delay = "Delay"
     case distortion = "Distortion"
     case tremolo = "Tremolo"
+    case chorus = "Chorus"
+    case phaser = "Phaser"
+    case flanger = "Flanger"
+    case bitcrusher = "Bitcrusher"
+    case tapeSaturation = "Tape Saturation"
 
     var description: String {
         switch self {
@@ -43,6 +48,16 @@ enum EffectType: String, Codable, CaseIterable {
             return "Adds warmth, grit, and harmonic saturation"
         case .tremolo:
             return "Pulsing volume modulation"
+        case .chorus:
+            return "Thickens sound with lush modulation"
+        case .phaser:
+            return "Swirling, sweeping movement"
+        case .flanger:
+            return "Jet-like sweeping comb filter"
+        case .bitcrusher:
+            return "Retro digital grit and crunch"
+        case .tapeSaturation:
+            return "Warm, smooth analog saturation"
         }
     }
 
@@ -72,6 +87,16 @@ enum EffectType: String, Codable, CaseIterable {
             return "waveform.path.badge.plus"
         case .tremolo:
             return "waveform"
+        case .chorus:
+            return "waveform.circle.fill"
+        case .phaser:
+            return "circle.dotted.and.circle"
+        case .flanger:
+            return "waveform.path"
+        case .bitcrusher:
+            return "square.grid.3x3"
+        case .tapeSaturation:
+            return "record.circle"
         }
     }
 }
@@ -122,6 +147,16 @@ struct EffectBlock: Identifiable, Codable {
             return ["drive": 50.0, "mix": 50.0] // 0-100 scale
         case .tremolo:
             return ["rate": 5.0, "depth": 50.0] // rate in Hz, depth 0-100
+        case .chorus:
+            return ["rate": 0.8, "depth": 40.0, "mix": 35.0]
+        case .phaser:
+            return ["rate": 0.6, "depth": 50.0]
+        case .flanger:
+            return ["rate": 0.6, "depth": 40.0, "feedback": 25.0, "mix": 40.0]
+        case .bitcrusher:
+            return ["bitDepth": 8.0, "downsample": 4.0, "mix": 60.0]
+        case .tapeSaturation:
+            return ["drive": 35.0, "mix": 50.0]
         }
     }
 }
@@ -175,6 +210,20 @@ struct NodeEffectParameters: Codable, Equatable {
     var distortionMix: Double
     var tremoloRate: Double
     var tremoloDepth: Double
+    var chorusRate: Double
+    var chorusDepth: Double
+    var chorusMix: Double
+    var phaserRate: Double
+    var phaserDepth: Double
+    var flangerRate: Double
+    var flangerDepth: Double
+    var flangerFeedback: Double
+    var flangerMix: Double
+    var bitcrusherBitDepth: Double
+    var bitcrusherDownsample: Double
+    var bitcrusherMix: Double
+    var tapeSaturationDrive: Double
+    var tapeSaturationMix: Double
 
     static func defaults() -> NodeEffectParameters {
         NodeEffectParameters(
@@ -196,7 +245,21 @@ struct NodeEffectParameters: Codable, Equatable {
             distortionDrive: 0.5,
             distortionMix: 0.5,
             tremoloRate: 5.0,
-            tremoloDepth: 0.5
+            tremoloDepth: 0.5,
+            chorusRate: 0.8,
+            chorusDepth: 0.4,
+            chorusMix: 0.35,
+            phaserRate: 0.6,
+            phaserDepth: 0.5,
+            flangerRate: 0.6,
+            flangerDepth: 0.4,
+            flangerFeedback: 0.25,
+            flangerMix: 0.4,
+            bitcrusherBitDepth: 8,
+            bitcrusherDownsample: 4,
+            bitcrusherMix: 0.6,
+            tapeSaturationDrive: 0.35,
+            tapeSaturationMix: 0.5
         )
     }
 }

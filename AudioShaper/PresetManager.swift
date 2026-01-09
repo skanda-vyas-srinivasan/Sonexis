@@ -113,6 +113,8 @@ struct SavedPreset: Identifiable, Codable {
             params.stereoWidthAmount = values.stereoWidthAmount ?? params.stereoWidthAmount
         case .delay, .distortion, .tremolo:
             break
+        case .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation:
+            break
         }
         return params
     }

@@ -134,6 +134,59 @@ class AudioEngine: ObservableObject {
     @Published var tremoloRate: Double = 5.0 // Hz (0.1 to 20)
     @Published var tremoloDepth: Double = 0.5 // 0 to 1
 
+    // Chorus effect
+    @Published var chorusEnabled = false {
+        didSet {
+            if !chorusEnabled {
+                resetChorusState()
+            }
+        }
+    }
+    @Published var chorusRate: Double = 0.8
+    @Published var chorusDepth: Double = 0.4
+    @Published var chorusMix: Double = 0.35
+
+    // Phaser effect
+    @Published var phaserEnabled = false {
+        didSet {
+            if !phaserEnabled {
+                resetPhaserState()
+            }
+        }
+    }
+    @Published var phaserRate: Double = 0.6
+    @Published var phaserDepth: Double = 0.5
+
+    // Flanger effect
+    @Published var flangerEnabled = false {
+        didSet {
+            if !flangerEnabled {
+                resetFlangerState()
+            }
+        }
+    }
+    @Published var flangerRate: Double = 0.6
+    @Published var flangerDepth: Double = 0.4
+    @Published var flangerFeedback: Double = 0.25
+    @Published var flangerMix: Double = 0.4
+
+    // Bitcrusher effect
+    @Published var bitcrusherEnabled = false {
+        didSet {
+            if !bitcrusherEnabled {
+                resetBitcrusherState()
+            }
+        }
+    }
+    @Published var bitcrusherBitDepth: Double = 8
+    @Published var bitcrusherDownsample: Double = 4
+    @Published var bitcrusherMix: Double = 0.6
+
+    // Tape saturation effect
+    @Published var tapeSaturationEnabled = false
+    @Published var tapeSaturationDrive: Double = 0.35
+    @Published var tapeSaturationMix: Double = 0.5
+
     @Published var processingEnabled = true {
         didSet {
             if !processingEnabled {
@@ -244,6 +297,35 @@ class AudioEngine: ObservableObject {
     // Tremolo state (LFO phase)
     private var tremoloPhase: Double = 0
     private var tremoloPhaseByNode: [UUID: Double] = [:]
+
+    // Chorus state (delay modulation)
+    private var chorusBuffer: [[Float]] = []
+    private var chorusWriteIndex = 0
+    private var chorusPhase: Double = 0
+    private var chorusBuffersByNode: [UUID: [[Float]]] = [:]
+    private var chorusWriteIndexByNode: [UUID: Int] = [:]
+    private var chorusPhaseByNode: [UUID: Double] = [:]
+
+    // Flanger state (short delay modulation with feedback)
+    private var flangerBuffer: [[Float]] = []
+    private var flangerWriteIndex = 0
+    private var flangerPhase: Double = 0
+    private var flangerBuffersByNode: [UUID: [[Float]]] = [:]
+    private var flangerWriteIndexByNode: [UUID: Int] = [:]
+    private var flangerPhaseByNode: [UUID: Double] = [:]
+
+    // Phaser state (all-pass)
+    private let phaserStageCount = 2
+    private var phaserStates: [[AllPassState]] = []
+    private var phaserStatesByNode: [UUID: [[AllPassState]]] = [:]
+    private var phaserPhase: Double = 0
+    private var phaserPhaseByNode: [UUID: Double] = [:]
+
+    // Bitcrusher state
+    private var bitcrusherHoldCounters: [Int] = []
+    private var bitcrusherHoldValues: [Float] = []
+    private var bitcrusherHoldCountersByNode: [UUID: [Int]] = [:]
+    private var bitcrusherHoldValuesByNode: [UUID: [Float]] = [:]
 
 
     // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
@@ -766,6 +848,42 @@ class AudioEngine: ObservableObject {
         return merged
     }
 
+    private func readDelaySample(
+        buffer: [[Float]],
+        writeIndex: Int,
+        delaySamples: Double,
+        channel: Int
+    ) -> Float {
+        let bufferSize = buffer[channel].count
+        if bufferSize == 0 {
+            return 0
+        }
+        let delay = max(min(delaySamples, Double(bufferSize - 1)), 0)
+        let readPos = Double(writeIndex) - delay
+        let wrapped = readPos < 0 ? readPos + Double(bufferSize) : readPos
+        let index0 = Int(wrapped) % bufferSize
+        let index1 = (index0 + 1) % bufferSize
+        let frac = Float(wrapped - Double(index0))
+        let s0 = buffer[channel][index0]
+        let s1 = buffer[channel][index1]
+        return s0 + (s1 - s0) * frac
+    }
+
+    private func allPassProcess(x: Float, coefficient a: Float, state: inout AllPassState) -> Float {
+        let y = -a * x + state.x1 + a * state.y1
+        state.x1 = x
+        state.y1 = y
+        return y
+    }
+
+    private func quantizeSample(_ sample: Float, bitDepth: Int) -> Float {
+        let clamped = min(max(sample, -1), 1)
+        let levels = Float((1 << max(min(bitDepth, 16), 1)) - 1)
+        let normalized = (clamped + 1) * 0.5
+        let quantized = round(normalized * levels) / levels
+        return quantized * 2 - 1
+    }
+
     private func applySoftLimiter(_ buffer: [[Float]]) -> [[Float]] {
         let threshold: Float = 0.9
         var limited = buffer
@@ -1015,6 +1133,11 @@ class AudioEngine: ObservableObject {
             .delay,
             .distortion,
             .tremolo,
+            .chorus,
+            .phaser,
+            .flanger,
+            .bitcrusher,
+            .tapeSaturation,
             .stereoWidth
         ]
     }
@@ -1583,6 +1706,255 @@ class AudioEngine: ObservableObject {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
+        case .chorus:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? chorusEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let rateValue = nodeParams(for: nodeId)?.chorusRate ?? chorusRate
+            let depthValue = nodeParams(for: nodeId)?.chorusDepth ?? chorusDepth
+            let mixValue = nodeParams(for: nodeId)?.chorusMix ?? chorusMix
+            guard mixValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let baseDelay = 0.02
+            let depthDelay = 0.01 * depthValue
+            let bufferLength = Int(sampleRate * 0.05)
+            let targetId = nodeId
+            var buffer = targetId.flatMap { chorusBuffersByNode[$0] } ?? chorusBuffer
+            var writeIndex = targetId.flatMap { chorusWriteIndexByNode[$0] } ?? chorusWriteIndex
+            var phase = targetId.flatMap { chorusPhaseByNode[$0] } ?? chorusPhase
+            if buffer.count != channelCount || buffer.first?.count != bufferLength {
+                buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferLength), count: channelCount)
+                writeIndex = 0
+            }
+
+            for frame in 0..<frameLength {
+                let lfo = (sin(phase) + 1) * 0.5
+                let delaySamples = (baseDelay + depthDelay * lfo) * sampleRate
+                for channel in 0..<channelCount {
+                    let dry = processedAudio[channel][frame]
+                    let wet = readDelaySample(buffer: buffer, writeIndex: writeIndex, delaySamples: delaySamples, channel: channel)
+                    let mix = Float(mixValue)
+                    processedAudio[channel][frame] = dry * (1 - mix) + wet * mix
+                    buffer[channel][writeIndex] = dry
+                }
+                writeIndex = (writeIndex + 1) % bufferLength
+                phase += rateValue * 2.0 * .pi / sampleRate
+                if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
+            }
+
+            if let id = targetId {
+                chorusBuffersByNode[id] = buffer
+                chorusWriteIndexByNode[id] = writeIndex
+                chorusPhaseByNode[id] = phase
+            } else {
+                chorusBuffer = buffer
+                chorusWriteIndex = writeIndex
+                chorusPhase = phase
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .phaser:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? phaserEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let rateValue = nodeParams(for: nodeId)?.phaserRate ?? phaserRate
+            let depthValue = nodeParams(for: nodeId)?.phaserDepth ?? phaserDepth
+            guard depthValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            var phase = nodeId.flatMap { phaserPhaseByNode[$0] } ?? phaserPhase
+            let targetId = nodeId
+            var states = targetId.flatMap { phaserStatesByNode[$0] } ?? phaserStates
+            if states.count != channelCount || states.first?.count != phaserStageCount {
+                states = Array(
+                    repeating: Array(repeating: AllPassState(), count: phaserStageCount),
+                    count: channelCount
+                )
+            }
+
+            for frame in 0..<frameLength {
+                let lfo = (sin(phase) + 1) * 0.5
+                let freq = 200 + lfo * (800 * depthValue)
+                let g = tan(Double.pi * freq / sampleRate)
+                let a = Float((1 - g) / (1 + g))
+                for channel in 0..<channelCount {
+                    var sample = processedAudio[channel][frame]
+                    for stage in 0..<phaserStageCount {
+                        var state = states[channel][stage]
+                        sample = allPassProcess(x: sample, coefficient: a, state: &state)
+                        states[channel][stage] = state
+                    }
+                    let mix = Float(depthValue)
+                    processedAudio[channel][frame] = processedAudio[channel][frame] * (1 - mix) + sample * mix
+                }
+                phase += rateValue * 2.0 * .pi / sampleRate
+                if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
+            }
+
+            if let id = targetId {
+                phaserStatesByNode[id] = states
+                phaserPhaseByNode[id] = phase
+            } else {
+                phaserStates = states
+                phaserPhase = phase
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .flanger:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? flangerEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let rateValue = nodeParams(for: nodeId)?.flangerRate ?? flangerRate
+            let depthValue = nodeParams(for: nodeId)?.flangerDepth ?? flangerDepth
+            let feedbackValue = nodeParams(for: nodeId)?.flangerFeedback ?? flangerFeedback
+            let mixValue = nodeParams(for: nodeId)?.flangerMix ?? flangerMix
+            guard mixValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let baseDelay = 0.003
+            let depthDelay = 0.002 * depthValue
+            let bufferLength = Int(sampleRate * 0.01)
+            let targetId = nodeId
+            var buffer = targetId.flatMap { flangerBuffersByNode[$0] } ?? flangerBuffer
+            var writeIndex = targetId.flatMap { flangerWriteIndexByNode[$0] } ?? flangerWriteIndex
+            var phase = targetId.flatMap { flangerPhaseByNode[$0] } ?? flangerPhase
+            if buffer.count != channelCount || buffer.first?.count != bufferLength {
+                buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferLength), count: channelCount)
+                writeIndex = 0
+            }
+
+            for frame in 0..<frameLength {
+                let lfo = (sin(phase) + 1) * 0.5
+                let delaySamples = (baseDelay + depthDelay * lfo) * sampleRate
+                for channel in 0..<channelCount {
+                    let dry = processedAudio[channel][frame]
+                    let wet = readDelaySample(buffer: buffer, writeIndex: writeIndex, delaySamples: delaySamples, channel: channel)
+                    let mix = Float(mixValue)
+                    processedAudio[channel][frame] = dry * (1 - mix) + wet * mix
+                    buffer[channel][writeIndex] = dry + wet * Float(feedbackValue)
+                }
+                writeIndex = (writeIndex + 1) % bufferLength
+                phase += rateValue * 2.0 * .pi / sampleRate
+                if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
+            }
+
+            if let id = targetId {
+                flangerBuffersByNode[id] = buffer
+                flangerWriteIndexByNode[id] = writeIndex
+                flangerPhaseByNode[id] = phase
+            } else {
+                flangerBuffer = buffer
+                flangerWriteIndex = writeIndex
+                flangerPhase = phase
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .bitcrusher:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? bitcrusherEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let bitDepthValue = Int(nodeParams(for: nodeId)?.bitcrusherBitDepth ?? bitcrusherBitDepth)
+            let downsampleValue = Int(nodeParams(for: nodeId)?.bitcrusherDownsample ?? bitcrusherDownsample)
+            let mixValue = nodeParams(for: nodeId)?.bitcrusherMix ?? bitcrusherMix
+            guard mixValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let targetId = nodeId
+            var counters = targetId.flatMap { bitcrusherHoldCountersByNode[$0] } ?? bitcrusherHoldCounters
+            var holds = targetId.flatMap { bitcrusherHoldValuesByNode[$0] } ?? bitcrusherHoldValues
+            if counters.count != channelCount {
+                counters = [Int](repeating: 0, count: channelCount)
+            }
+            if holds.count != channelCount {
+                holds = [Float](repeating: 0, count: channelCount)
+            }
+            let ds = max(downsampleValue, 1)
+            let mix = Float(mixValue)
+
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    if counters[channel] == 0 {
+                        holds[channel] = processedAudio[channel][frame]
+                        counters[channel] = ds - 1
+                    } else {
+                        counters[channel] -= 1
+                    }
+                    let crushed = quantizeSample(holds[channel], bitDepth: bitDepthValue)
+                    let dry = processedAudio[channel][frame]
+                    processedAudio[channel][frame] = dry * (1 - mix) + crushed * mix
+                }
+            }
+
+            if let id = targetId {
+                bitcrusherHoldCountersByNode[id] = counters
+                bitcrusherHoldValuesByNode[id] = holds
+            } else {
+                bitcrusherHoldCounters = counters
+                bitcrusherHoldValues = holds
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .tapeSaturation:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? tapeSaturationEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let driveValue = nodeParams(for: nodeId)?.tapeSaturationDrive ?? tapeSaturationDrive
+            let mixValue = nodeParams(for: nodeId)?.tapeSaturationMix ?? tapeSaturationMix
+            guard mixValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let drive = Float(1 + driveValue * 4)
+            let mix = Float(mixValue)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let dry = processedAudio[channel][frame]
+                    let wet = tanhf(dry * drive) / tanhf(drive)
+                    processedAudio[channel][frame] = dry * (1 - mix) + wet * mix
+                }
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
         case .stereoWidth:
             if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
@@ -1652,6 +2024,18 @@ class AudioEngine: ObservableObject {
         }
         if compressorEnvelope.count != channelCount {
             compressorEnvelope = [Float](repeating: 0, count: channelCount)
+        }
+        if phaserStates.count != channelCount {
+            phaserStates = Array(
+                repeating: Array(repeating: AllPassState(), count: phaserStageCount),
+                count: channelCount
+            )
+        }
+        if bitcrusherHoldCounters.count != channelCount {
+            bitcrusherHoldCounters = [Int](repeating: 0, count: channelCount)
+        }
+        if bitcrusherHoldValues.count != channelCount {
+            bitcrusherHoldValues = [Float](repeating: 0, count: channelCount)
         }
     }
 
@@ -1870,6 +2254,49 @@ class AudioEngine: ObservableObject {
         delayWriteIndex = 0
     }
 
+    private func resetChorusState() {
+        withEffectStateLock {
+            chorusBuffer.removeAll()
+            chorusWriteIndex = 0
+            chorusPhase = 0
+            chorusBuffersByNode.removeAll()
+            chorusWriteIndexByNode.removeAll()
+            chorusPhaseByNode.removeAll()
+        }
+    }
+
+    private func resetFlangerState() {
+        withEffectStateLock {
+            flangerBuffer.removeAll()
+            flangerWriteIndex = 0
+            flangerPhase = 0
+            flangerBuffersByNode.removeAll()
+            flangerWriteIndexByNode.removeAll()
+            flangerPhaseByNode.removeAll()
+        }
+    }
+
+    private func resetPhaserState() {
+        withEffectStateLock {
+            phaserStates = Array(
+                repeating: Array(repeating: AllPassState(), count: phaserStageCount),
+                count: phaserStates.count
+            )
+            phaserPhase = 0
+            phaserStatesByNode.removeAll()
+            phaserPhaseByNode.removeAll()
+        }
+    }
+
+    private func resetBitcrusherState() {
+        withEffectStateLock {
+            bitcrusherHoldCounters = bitcrusherHoldCounters.map { _ in 0 }
+            bitcrusherHoldValues = bitcrusherHoldValues.map { _ in 0 }
+            bitcrusherHoldCountersByNode.removeAll()
+            bitcrusherHoldValuesByNode.removeAll()
+        }
+    }
+
     private func resetEffectState() {
         withEffectStateLock {
             resetBassBoostStateUnlocked()
@@ -1881,6 +2308,15 @@ class AudioEngine: ObservableObject {
             tremoloPhase = 0
             resetReverbStateUnlocked()
             resetDelayStateUnlocked()
+            chorusBuffer.removeAll()
+            chorusWriteIndex = 0
+            chorusPhase = 0
+            flangerBuffer.removeAll()
+            flangerWriteIndex = 0
+            flangerPhase = 0
+            phaserPhase = 0
+            bitcrusherHoldCounters = bitcrusherHoldCounters.map { _ in 0 }
+            bitcrusherHoldValues = bitcrusherHoldValues.map { _ in 0 }
             bassBoostStatesByNode.removeAll()
             clarityStatesByNode.removeAll()
             nightcoreStatesByNode.removeAll()
@@ -1894,6 +2330,15 @@ class AudioEngine: ObservableObject {
             delayBuffersByNode.removeAll()
             delayWriteIndexByNode.removeAll()
             tremoloPhaseByNode.removeAll()
+            chorusBuffersByNode.removeAll()
+            chorusWriteIndexByNode.removeAll()
+            chorusPhaseByNode.removeAll()
+            flangerBuffersByNode.removeAll()
+            flangerWriteIndexByNode.removeAll()
+            flangerPhaseByNode.removeAll()
+            phaserStatesByNode.removeAll()
+            bitcrusherHoldCountersByNode.removeAll()
+            bitcrusherHoldValuesByNode.removeAll()
         }
         DispatchQueue.main.async {
             self.effectLevels = [:]
@@ -2250,6 +2695,14 @@ class AudioEngine: ObservableObject {
         compressorEnabled = false
         reverbEnabled = false
         stereoWidthEnabled = false
+        delayEnabled = false
+        distortionEnabled = false
+        tremoloEnabled = false
+        chorusEnabled = false
+        phaserEnabled = false
+        flangerEnabled = false
+        bitcrusherEnabled = false
+        tapeSaturationEnabled = false
         resetTenBandValues()
 
         // Then apply each effect from the chain
@@ -2330,6 +2783,21 @@ class AudioEngine: ObservableObject {
             case .tremolo:
                 tremoloEnabled = effect.isEnabled
                 // Tremolo parameters will be added to EffectParameters later
+
+            case .chorus:
+                chorusEnabled = effect.isEnabled
+
+            case .phaser:
+                phaserEnabled = effect.isEnabled
+
+            case .flanger:
+                flangerEnabled = effect.isEnabled
+
+            case .bitcrusher:
+                bitcrusherEnabled = effect.isEnabled
+
+            case .tapeSaturation:
+                tapeSaturationEnabled = effect.isEnabled
             }
         }
 
@@ -2358,6 +2826,11 @@ class AudioEngine: ObservableObject {
         delayEnabled = activeTypes.contains(.delay)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+        chorusEnabled = activeTypes.contains(.chorus)
+        phaserEnabled = activeTypes.contains(.phaser)
+        flangerEnabled = activeTypes.contains(.flanger)
+        bitcrusherEnabled = activeTypes.contains(.bitcrusher)
+        tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
 
         if !activeTypes.contains(.tenBandEQ) {
             resetTenBandValues()
@@ -2396,6 +2869,11 @@ class AudioEngine: ObservableObject {
         delayEnabled = activeTypes.contains(.delay)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+        chorusEnabled = activeTypes.contains(.chorus)
+        phaserEnabled = activeTypes.contains(.phaser)
+        flangerEnabled = activeTypes.contains(.flanger)
+        bitcrusherEnabled = activeTypes.contains(.bitcrusher)
+        tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
     }
 
     func updateEffectGraphSplit(
@@ -2435,6 +2913,11 @@ class AudioEngine: ObservableObject {
         delayEnabled = activeTypes.contains(.delay)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+        chorusEnabled = activeTypes.contains(.chorus)
+        phaserEnabled = activeTypes.contains(.phaser)
+        flangerEnabled = activeTypes.contains(.flanger)
+        bitcrusherEnabled = activeTypes.contains(.bitcrusher)
+        tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
     }
 
     func updateGraphSnapshot(_ snapshot: GraphSnapshot?) {
@@ -2462,6 +2945,16 @@ class AudioEngine: ObservableObject {
         delayBuffersByNode = delayBuffersByNode.filter { ids.contains($0.key) }
         delayWriteIndexByNode = delayWriteIndexByNode.filter { ids.contains($0.key) }
         tremoloPhaseByNode = tremoloPhaseByNode.filter { ids.contains($0.key) }
+        chorusBuffersByNode = chorusBuffersByNode.filter { ids.contains($0.key) }
+        chorusWriteIndexByNode = chorusWriteIndexByNode.filter { ids.contains($0.key) }
+        chorusPhaseByNode = chorusPhaseByNode.filter { ids.contains($0.key) }
+        flangerBuffersByNode = flangerBuffersByNode.filter { ids.contains($0.key) }
+        flangerWriteIndexByNode = flangerWriteIndexByNode.filter { ids.contains($0.key) }
+        flangerPhaseByNode = flangerPhaseByNode.filter { ids.contains($0.key) }
+        phaserStatesByNode = phaserStatesByNode.filter { ids.contains($0.key) }
+        phaserPhaseByNode = phaserPhaseByNode.filter { ids.contains($0.key) }
+        bitcrusherHoldCountersByNode = bitcrusherHoldCountersByNode.filter { ids.contains($0.key) }
+        bitcrusherHoldValuesByNode = bitcrusherHoldValuesByNode.filter { ids.contains($0.key) }
     }
 }
 
@@ -2556,6 +3049,11 @@ private struct BiquadState {
     var x2: Float = 0
     var y1: Float = 0
     var y2: Float = 0
+}
+
+private struct AllPassState {
+    var x1: Float = 0
+    var y1: Float = 0
 }
 
 private struct BiquadCoefficients {

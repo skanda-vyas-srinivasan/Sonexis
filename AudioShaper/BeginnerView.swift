@@ -765,6 +765,25 @@ struct BeginnerView: View {
             case .tremolo:
                 params.tremoloRate = audioEngine.tremoloRate
                 params.tremoloDepth = audioEngine.tremoloDepth
+            case .chorus:
+                params.chorusRate = audioEngine.chorusRate
+                params.chorusDepth = audioEngine.chorusDepth
+                params.chorusMix = audioEngine.chorusMix
+            case .phaser:
+                params.phaserRate = audioEngine.phaserRate
+                params.phaserDepth = audioEngine.phaserDepth
+            case .flanger:
+                params.flangerRate = audioEngine.flangerRate
+                params.flangerDepth = audioEngine.flangerDepth
+                params.flangerFeedback = audioEngine.flangerFeedback
+                params.flangerMix = audioEngine.flangerMix
+            case .bitcrusher:
+                params.bitcrusherBitDepth = audioEngine.bitcrusherBitDepth
+                params.bitcrusherDownsample = audioEngine.bitcrusherDownsample
+                params.bitcrusherMix = audioEngine.bitcrusherMix
+            case .tapeSaturation:
+                params.tapeSaturationDrive = audioEngine.tapeSaturationDrive
+                params.tapeSaturationMix = audioEngine.tapeSaturationMix
             }
             updated.parameters = params
             return updated
@@ -1500,7 +1519,7 @@ struct EffectPalette: View {
     private let effects: [EffectType] = [
         .bassBoost, .pitchShift, .clarity, .deMud,
         .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
-        .delay, .distortion, .tremolo
+        .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation
     ]
 
     var body: some View {
@@ -1983,6 +2002,30 @@ struct EffectParametersViewCompact: View {
             case .tremolo:
                 CompactSlider(label: "Rate", value: $parameters.tremoloRate, range: 0.1...20, format: .hz, onChange: onChange)
                 CompactSlider(label: "Depth", value: $parameters.tremoloDepth, range: 0...1, format: .percent, onChange: onChange)
+
+            case .chorus:
+                CompactSlider(label: "Rate", value: $parameters.chorusRate, range: 0.1...5, format: .hz, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.chorusDepth, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.chorusMix, range: 0...1, format: .percent, onChange: onChange)
+
+            case .phaser:
+                CompactSlider(label: "Rate", value: $parameters.phaserRate, range: 0.1...5, format: .hz, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.phaserDepth, range: 0...1, format: .percent, onChange: onChange)
+
+            case .flanger:
+                CompactSlider(label: "Rate", value: $parameters.flangerRate, range: 0.1...5, format: .hz, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.flangerDepth, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Feedback", value: $parameters.flangerFeedback, range: 0...0.95, format: .percent, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.flangerMix, range: 0...1, format: .percent, onChange: onChange)
+
+            case .bitcrusher:
+                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, range: 4...16, format: .integer, onChange: onChange)
+                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, range: 1...20, format: .integer, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.bitcrusherMix, range: 0...1, format: .percent, onChange: onChange)
+
+            case .tapeSaturation:
+                CompactSlider(label: "Drive", value: $parameters.tapeSaturationDrive, range: 0...1, format: .percent, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.tapeSaturationMix, range: 0...1, format: .percent, onChange: onChange)
             }
         }
     }
@@ -2032,6 +2075,7 @@ struct CompactSlider: View {
         case dbValue
         case ms
         case hz
+        case integer
     }
 
     var body: some View {
@@ -2068,6 +2112,8 @@ struct CompactSlider: View {
             return String(format: "%.0f ms", value * 1000)
         case .hz:
             return String(format: "%.1f Hz", value)
+        case .integer:
+            return String(format: "%.0f", value)
         }
     }
 }
