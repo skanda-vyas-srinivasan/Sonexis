@@ -26,16 +26,18 @@ struct ContentView: View {
                         onBack: { activeScreen = .home }
                     )
 
-                    HeaderView(
-                        audioEngine: audioEngine,
-                        onSave: {
-                            presetNameInput = ""
-                            showingSaveDialog = true
-                        },
-                        onLoad: {
-                            showingLoadDialog = true
-                        }
-                    )
+                    if activeScreen == .beginner {
+                        HeaderView(
+                            audioEngine: audioEngine,
+                            onSave: {
+                                presetNameInput = ""
+                                showingSaveDialog = true
+                            },
+                            onLoad: {
+                                showingLoadDialog = true
+                            }
+                        )
+                    }
 
                     Divider()
                         .background(AppColors.gridLines)
@@ -552,7 +554,8 @@ struct PresetCard: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack {
+        Button(action: onApply) {
+            HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(preset.name)
                         .font(AppTypography.heading)
@@ -562,28 +565,32 @@ struct PresetCard: View {
                         .foregroundColor(AppColors.neonCyan)
                 }
 
-            Spacer()
-
-            Button("Apply") {
-                onApply()
+                Spacer()
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppColors.neonCyan)
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .foregroundColor(AppColors.error)
+            .padding()
+            .background(isHovered ? AppColors.midPurple : AppColors.darkPurple)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isHovered ? AppColors.neonPink : AppColors.gridLines, lineWidth: isHovered ? 2 : 1)
+            )
+            .cornerRadius(12)
+            .shadow(color: AppColors.neonPink.opacity(isHovered ? 0.4 : 0), radius: 12)
+            .overlay(alignment: .topTrailing) {
+                if isHovered {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(AppColors.error)
+                            .padding(6)
+                            .background(AppColors.darkPurple.opacity(0.9))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
+                }
             }
-            .buttonStyle(.plain)
         }
-        .padding()
-        .background(isHovered ? AppColors.midPurple : AppColors.darkPurple)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isHovered ? AppColors.neonPink : AppColors.gridLines, lineWidth: isHovered ? 2 : 1)
-        )
-        .cornerRadius(12)
-        .shadow(color: AppColors.neonPink.opacity(isHovered ? 0.4 : 0), radius: 12)
+        .buttonStyle(.plain)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.2)) {
                 isHovered = hovering
