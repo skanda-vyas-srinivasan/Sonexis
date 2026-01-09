@@ -10,6 +10,7 @@ enum EffectType: String, Codable, CaseIterable {
     case compressor = "Soft Compression"
     case stereoWidth = "Stereo Widening"
     case pitchShift = "Pitch Effect"
+    case rubberBandPitch = "Pitch (Rubber Band)"
     case simpleEQ = "Simple EQ"
     case tenBandEQ = "10-Band EQ"
     case deMud = "De-Mud"
@@ -37,6 +38,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "Makes sound feel wider and more spacious"
         case .pitchShift:
             return "Changes the pitch up or down"
+        case .rubberBandPitch:
+            return "High-quality pitch shift"
         case .simpleEQ:
             return "Adjust bass, middle, and treble"
         case .tenBandEQ:
@@ -78,6 +81,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "arrow.left.and.right"
         case .pitchShift:
             return "hare.fill"
+        case .rubberBandPitch:
+            return "music.note.list"
         case .simpleEQ:
             return "slider.horizontal.3"
         case .tenBandEQ:
@@ -137,6 +142,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["width": 30.0] // 0-100 scale
         case .pitchShift:
             return ["pitch": 0.0, "preserveTiming": 1.0] // -12 to +12 semitones
+        case .rubberBandPitch:
+            return ["semitones": 0.0]
         case .simpleEQ:
             return ["bass": 0.0, "mids": 0.0, "treble": 0.0] // -12 to +12 dB
         case .tenBandEQ:
@@ -233,6 +240,7 @@ struct NodeEffectParameters: Codable, Equatable {
     var tapeSaturationMix: Double
     var resampleRate: Double
     var resampleCrossfade: Double
+    var rubberBandPitchSemitones: Double
 
     init(
         bassBoostAmount: Double,
@@ -269,7 +277,8 @@ struct NodeEffectParameters: Codable, Equatable {
         tapeSaturationDrive: Double,
         tapeSaturationMix: Double,
         resampleRate: Double,
-        resampleCrossfade: Double
+        resampleCrossfade: Double,
+        rubberBandPitchSemitones: Double
     ) {
         self.bassBoostAmount = bassBoostAmount
         self.nightcoreIntensity = nightcoreIntensity
@@ -306,6 +315,7 @@ struct NodeEffectParameters: Codable, Equatable {
         self.tapeSaturationMix = tapeSaturationMix
         self.resampleRate = resampleRate
         self.resampleCrossfade = resampleCrossfade
+        self.rubberBandPitchSemitones = rubberBandPitchSemitones
     }
 
     static func defaults() -> NodeEffectParameters {
@@ -344,7 +354,8 @@ struct NodeEffectParameters: Codable, Equatable {
             tapeSaturationDrive: 0.35,
             tapeSaturationMix: 0.5,
             resampleRate: 1.0,
-            resampleCrossfade: 0.3
+            resampleCrossfade: 0.3,
+            rubberBandPitchSemitones: 0.0
         )
     }
 
@@ -384,6 +395,7 @@ struct NodeEffectParameters: Codable, Equatable {
         case tapeSaturationMix
         case resampleRate
         case resampleCrossfade
+        case rubberBandPitchSemitones
     }
 
     init(from decoder: Decoder) throws {
@@ -424,6 +436,7 @@ struct NodeEffectParameters: Codable, Equatable {
         tapeSaturationMix = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationMix) ?? defaults.tapeSaturationMix
         resampleRate = try container.decodeIfPresent(Double.self, forKey: .resampleRate) ?? defaults.resampleRate
         resampleCrossfade = try container.decodeIfPresent(Double.self, forKey: .resampleCrossfade) ?? defaults.resampleCrossfade
+        rubberBandPitchSemitones = try container.decodeIfPresent(Double.self, forKey: .rubberBandPitchSemitones) ?? defaults.rubberBandPitchSemitones
     }
 }
 

@@ -116,7 +116,10 @@ struct SavedPreset: Identifiable, Codable {
         case .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation:
             break
         case .resampling:
-            break
+            params.resampleRate = values.resampleRate ?? params.resampleRate
+            params.resampleCrossfade = values.resampleCrossfade ?? params.resampleCrossfade
+        case .rubberBandPitch:
+            params.rubberBandPitchSemitones = values.rubberBandPitchSemitones ?? params.rubberBandPitchSemitones
         }
         return params
     }
@@ -163,6 +166,13 @@ struct EffectChainSnapshot: Codable {
 
         // Stereo Width
         var stereoWidthAmount: Double?
+
+        // Resampling
+        var resampleRate: Double?
+        var resampleCrossfade: Double?
+
+        // Rubber Band
+        var rubberBandPitchSemitones: Double?
     }
 }
 

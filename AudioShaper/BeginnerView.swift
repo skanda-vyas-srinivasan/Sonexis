@@ -729,6 +729,8 @@ struct BeginnerView: View {
                 params.bassBoostAmount = audioEngine.bassBoostAmount
             case .pitchShift:
                 params.nightcoreIntensity = audioEngine.nightcoreIntensity
+            case .rubberBandPitch:
+                params.rubberBandPitchSemitones = audioEngine.rubberBandPitchSemitones
             case .clarity:
                 params.clarityAmount = audioEngine.clarityAmount
             case .deMud:
@@ -788,6 +790,7 @@ struct BeginnerView: View {
                 params.tapeSaturationMix = audioEngine.tapeSaturationMix
             case .resampling:
                 params.resampleRate = audioEngine.resampleRate
+                params.resampleCrossfade = audioEngine.resampleCrossfade
             }
             updated.parameters = params
             return updated
@@ -1523,7 +1526,8 @@ struct EffectPalette: View {
     private let effects: [EffectType] = [
         .bassBoost, .clarity, .deMud,
         .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
-        .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation, .resampling
+        .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
+        .resampling, .rubberBandPitch
     ]
 
     var body: some View {
@@ -1958,6 +1962,9 @@ struct EffectParametersViewCompact: View {
             case .pitchShift:
                 EmptyView()
 
+            case .rubberBandPitch:
+                CompactSlider(label: "Semitones", value: $parameters.rubberBandPitchSemitones, range: -12...12, format: .semitones, onChange: onChange)
+
             case .clarity:
                 CompactSlider(label: "Amount", value: $parameters.clarityAmount, range: 0...1, format: .percent, onChange: onChange)
 
@@ -2085,6 +2092,7 @@ struct CompactSlider: View {
         case hz
         case integer
         case ratio
+        case semitones
     }
 
     var body: some View {
@@ -2125,6 +2133,8 @@ struct CompactSlider: View {
             return String(format: "%.0f", value)
         case .ratio:
             return String(format: "%.2fx", value)
+        case .semitones:
+            return String(format: "%+.1f st", value)
         }
     }
 }

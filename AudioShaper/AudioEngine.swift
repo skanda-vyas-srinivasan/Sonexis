@@ -190,6 +190,10 @@ class AudioEngine: ObservableObject {
     // Resampling effect (pitch+speed)
     @Published var resampleEnabled = false
     @Published var resampleRate: Double = 1.0
+    @Published var resampleCrossfade: Double = 0.3
+
+    @Published var rubberBandPitchEnabled = false
+    @Published var rubberBandPitchSemitones: Double = 0.0
 
     @Published var processingEnabled = true {
         didSet {
@@ -340,6 +344,10 @@ class AudioEngine: ObservableObject {
     private var resampleCrossfadeTotalByNode: [UUID: Int] = [:]
     private var resampleCrossfadeStartPhaseByNode: [UUID: Double] = [:]
     private var resampleCrossfadeTargetPhaseByNode: [UUID: Double] = [:]
+
+    // Rubber Band state
+    private var rubberBandNodes: [UUID: RubberBandWrapper] = [:]
+    private var rubberBandGlobalByType: [EffectType: RubberBandWrapper] = [:]
 
     // Bitcrusher state
     private var bitcrusherHoldCounters: [Int] = []
@@ -1153,6 +1161,7 @@ class AudioEngine: ObservableObject {
             .bitcrusher,
             .tapeSaturation,
             .resampling,
+            .rubberBandPitch,
             .stereoWidth
         ]
     }
@@ -1170,6 +1179,68 @@ class AudioEngine: ObservableObject {
     private func nodeIsEnabled(_ nodeId: UUID?) -> Bool {
         guard let nodeId else { return true }
         return nodeEnabled[nodeId] ?? true
+    }
+
+    private func rubberBandProcessor(
+        for nodeId: UUID?,
+        type: EffectType,
+        sampleRate: Double,
+        channels: Int
+    ) -> RubberBandWrapper {
+        if let nodeId {
+            if let existing = rubberBandNodes[nodeId] {
+                existing.configure(withSampleRate: sampleRate, channels: Int32(channels))
+                return existing
+            }
+            let created = RubberBandWrapper(sampleRate: sampleRate, channels: Int32(channels))
+            rubberBandNodes[nodeId] = created
+            return created
+        }
+
+        if let existing = rubberBandGlobalByType[type] {
+            existing.configure(withSampleRate: sampleRate, channels: Int32(channels))
+            return existing
+        }
+        let created = RubberBandWrapper(sampleRate: sampleRate, channels: Int32(channels))
+        rubberBandGlobalByType[type] = created
+        return created
+    }
+
+    private func applyRubberBand(
+        _ processor: RubberBandWrapper,
+        to processedAudio: inout [[Float]],
+        frameLength: Int,
+        channelCount: Int
+    ) {
+        guard frameLength > 0, channelCount > 0 else { return }
+        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        for frame in 0..<frameLength {
+            for channel in 0..<channelCount {
+                interleaved[frame * channelCount + channel] = processedAudio[channel][frame]
+            }
+        }
+
+        var output = [Float](repeating: 0, count: frameLength * channelCount)
+        interleaved.withUnsafeBufferPointer { inputPtr in
+            output.withUnsafeMutableBufferPointer { outputPtr in
+                guard let inputBase = inputPtr.baseAddress, let outputBase = outputPtr.baseAddress else { return }
+                _ = processor.processInput(
+                    inputBase,
+                    frames: Int32(frameLength),
+                    channels: Int32(channelCount),
+                    output: outputBase,
+                    outputCapacity: Int32(frameLength)
+                )
+            }
+        }
+
+        var index = 0
+        for frame in 0..<frameLength {
+            for channel in 0..<channelCount {
+                processedAudio[channel][frame] = output[index]
+                index += 1
+            }
+        }
     }
 
     private var tenBandGains: [Double] {
@@ -1967,6 +2038,27 @@ class AudioEngine: ObservableObject {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
+        case .rubberBandPitch:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? rubberBandPitchEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let semitones = nodeParams(for: nodeId)?.rubberBandPitchSemitones ?? rubberBandPitchSemitones
+            guard abs(semitones) > 0.01 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let processor = rubberBandProcessor(for: nodeId, type: .rubberBandPitch, sampleRate: sampleRate, channels: channelCount)
+            processor.setPitchSemitones(semitones)
+            applyRubberBand(processor, to: &processedAudio, frameLength: frameLength, channelCount: channelCount)
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
         case .resampling:
             if let id = nodeId, !nodeIsEnabled(id) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
@@ -1977,7 +2069,7 @@ class AudioEngine: ObservableObject {
                 return
             }
             let rateValue = nodeParams(for: nodeId)?.resampleRate ?? resampleRate
-            let crossfadeValue = nodeParams(for: nodeId)?.resampleCrossfade ?? 0.3
+            let crossfadeValue = nodeParams(for: nodeId)?.resampleCrossfade ?? resampleCrossfade
             guard rateValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -2433,6 +2525,10 @@ class AudioEngine: ObservableObject {
             resampleCrossfadeTotal = 0
             resampleCrossfadeStartPhase = 0
             resampleCrossfadeTargetPhase = 0
+            rubberBandNodes.values.forEach { $0.reset() }
+            rubberBandGlobalByType.values.forEach { $0.reset() }
+            rubberBandNodes.removeAll()
+            rubberBandGlobalByType.removeAll()
             bassBoostStatesByNode.removeAll()
             clarityStatesByNode.removeAll()
             nightcoreStatesByNode.removeAll()
@@ -2800,6 +2896,18 @@ class AudioEngine: ObservableObject {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .stereoWidth, isEnabled: true, parameters: params))
         }
 
+        // Resampling
+        if resampleEnabled {
+            let params = EffectChainSnapshot.EffectParameters(resampleRate: resampleRate, resampleCrossfade: resampleCrossfade)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .resampling, isEnabled: true, parameters: params))
+        }
+
+        // Rubber Band Pitch
+        if rubberBandPitchEnabled {
+            let params = EffectChainSnapshot.EffectParameters(rubberBandPitchSemitones: rubberBandPitchSemitones)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .rubberBandPitch, isEnabled: true, parameters: params))
+        }
+
         return EffectChainSnapshot(activeEffects: activeEffects)
     }
 
@@ -2823,6 +2931,7 @@ class AudioEngine: ObservableObject {
         bitcrusherEnabled = false
         tapeSaturationEnabled = false
         resampleEnabled = false
+        rubberBandPitchEnabled = false
         resetTenBandValues()
 
         // Then apply each effect from the chain
@@ -2921,6 +3030,12 @@ class AudioEngine: ObservableObject {
 
             case .resampling:
                 resampleEnabled = effect.isEnabled
+
+            case .rubberBandPitch:
+                rubberBandPitchEnabled = effect.isEnabled
+                if let semitones = params.rubberBandPitchSemitones {
+                    rubberBandPitchSemitones = semitones
+                }
             }
         }
 
@@ -2955,6 +3070,7 @@ class AudioEngine: ObservableObject {
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
         resampleEnabled = activeTypes.contains(.resampling)
+        rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
 
         if !activeTypes.contains(.tenBandEQ) {
             resetTenBandValues()
@@ -2999,6 +3115,7 @@ class AudioEngine: ObservableObject {
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
         resampleEnabled = activeTypes.contains(.resampling)
+        rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
     }
 
     func updateEffectGraphSplit(
@@ -3044,6 +3161,7 @@ class AudioEngine: ObservableObject {
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
         resampleEnabled = activeTypes.contains(.resampling)
+        rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
     }
 
     func updateGraphSnapshot(_ snapshot: GraphSnapshot?) {
@@ -3088,6 +3206,7 @@ class AudioEngine: ObservableObject {
         resampleCrossfadeTotalByNode = resampleCrossfadeTotalByNode.filter { ids.contains($0.key) }
         resampleCrossfadeStartPhaseByNode = resampleCrossfadeStartPhaseByNode.filter { ids.contains($0.key) }
         resampleCrossfadeTargetPhaseByNode = resampleCrossfadeTargetPhaseByNode.filter { ids.contains($0.key) }
+        rubberBandNodes = rubberBandNodes.filter { ids.contains($0.key) }
     }
 
 }
