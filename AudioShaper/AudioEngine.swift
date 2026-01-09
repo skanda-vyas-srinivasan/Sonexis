@@ -873,6 +873,25 @@ class AudioEngine: ObservableObject {
         return merged
     }
 
+    private func normalizedBiquadStates(_ states: [BiquadState], channelCount: Int) -> [BiquadState] {
+        guard states.count == channelCount else {
+            return [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        return states
+    }
+
+    private func normalizedTenBandStates(_ states: [[BiquadState]]?, channelCount: Int) -> [[BiquadState]] {
+        if let states = states,
+           states.count == tenBandFrequencies.count,
+           !states.isEmpty,
+           states.allSatisfy({ $0.count == channelCount }) {
+            return states
+        }
+        return tenBandFrequencies.map { _ in
+            [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+    }
+
     private func readDelaySample(
         buffer: [[Float]],
         writeIndex: Int,
@@ -1297,6 +1316,7 @@ class AudioEngine: ObservableObject {
             } else {
                 states = bassBoostState
             }
+            states = normalizedBiquadStates(states, channelCount: channelCount)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     var state = states[channel]
@@ -1356,6 +1376,7 @@ class AudioEngine: ObservableObject {
             } else {
                 states = clarityState
             }
+            states = normalizedBiquadStates(states, channelCount: channelCount)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     var state = states[channel]
@@ -1400,6 +1421,7 @@ class AudioEngine: ObservableObject {
             } else {
                 states = deMudState
             }
+            states = normalizedBiquadStates(states, channelCount: channelCount)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     var state = states[channel]
@@ -1456,6 +1478,9 @@ class AudioEngine: ObservableObject {
             var bassStates = targetId.flatMap { eqBassStatesByNode[$0] } ?? eqBassState
             var midsStates = targetId.flatMap { eqMidsStatesByNode[$0] } ?? eqMidsState
             var trebleStates = targetId.flatMap { eqTrebleStatesByNode[$0] } ?? eqTrebleState
+            bassStates = normalizedBiquadStates(bassStates, channelCount: channelCount)
+            midsStates = normalizedBiquadStates(midsStates, channelCount: channelCount)
+            trebleStates = normalizedBiquadStates(trebleStates, channelCount: channelCount)
 
             if bass != 0 {
                 for channel in 0..<channelCount {
@@ -1532,7 +1557,7 @@ class AudioEngine: ObservableObject {
             }
             let targetId = nodeId
             var bandStates = targetId.flatMap { tenBandStatesByNode[$0] }
-                ?? tenBandFrequencies.map { _ in [BiquadState](repeating: BiquadState(), count: channelCount) }
+            bandStates = normalizedTenBandStates(bandStates, channelCount: channelCount)
 
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
