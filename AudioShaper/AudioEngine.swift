@@ -3455,11 +3455,14 @@ private func audioQueueOutputCallback(
             inBuffer.pointee.mAudioDataByteSize = UInt32(byteCount)
         } else {
             // Buffer too small, fill with silence
-            inBuffer.pointee.mAudioDataByteSize = 0
+            memset(inBuffer.pointee.mAudioData, 0, bufferSize)
+            inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
         }
     } else {
         // No audio data available, output silence
-        inBuffer.pointee.mAudioDataByteSize = 0
+        let bufferSize = Int(inBuffer.pointee.mAudioDataBytesCapacity)
+        memset(inBuffer.pointee.mAudioData, 0, bufferSize)
+        inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
         DebugCounter.emptyCount += 1
         if DebugCounter.emptyCount % 50 == 0 {
             print("🔇 AudioQueue empty buffer x\(DebugCounter.emptyCount)")
