@@ -34,17 +34,51 @@ struct BeginnerView: View {
     @State private var isTrayCollapsed = false
     @State private var dropAnimatedNodeIDs: Set<UUID> = []
     @State private var beatPulse: CGFloat = 0
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var zoomStartScale: CGFloat = 1.0
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
-            fill: Color(red: 0.93, green: 0.88, blue: 0.78),
-            fillDark: Color(red: 0.86, green: 0.80, blue: 0.67),
-            text: Color(red: 0.24, green: 0.20, blue: 0.15)
+            fill: Color(hex: "#00F5FF"),
+            fillDark: Color(hex: "#007C88"),
+            highlight: Color(hex: "#FF5FBF"),
+            text: .white
         ),
         AccentStyle(
-            fill: Color(red: 0.82, green: 0.64, blue: 0.42),
-            fillDark: Color(red: 0.73, green: 0.55, blue: 0.35),
-            text: Color(red: 0.22, green: 0.18, blue: 0.13)
+            fill: Color(hex: "#FF5FBF"),
+            fillDark: Color(hex: "#7A1F4A"),
+            highlight: Color(hex: "#00F5FF"),
+            text: .white
+        ),
+        AccentStyle(
+            fill: Color(hex: "#8B3DFF"),
+            fillDark: Color(hex: "#3A0B73"),
+            highlight: Color(hex: "#FFB800"),
+            text: .white
+        ),
+        AccentStyle(
+            fill: Color(hex: "#00FF88"),
+            fillDark: Color(hex: "#00733D"),
+            highlight: Color(hex: "#00D9FF"),
+            text: .white
+        ),
+        AccentStyle(
+            fill: Color(hex: "#FFB800"),
+            fillDark: Color(hex: "#7A4C00"),
+            highlight: Color(hex: "#FF5FBF"),
+            text: .white
+        ),
+        AccentStyle(
+            fill: Color(hex: "#FF6B00"),
+            fillDark: Color(hex: "#7A2E00"),
+            highlight: Color(hex: "#8B3DFF"),
+            text: .white
+        ),
+        AccentStyle(
+            fill: Color(hex: "#00D9FF"),
+            fillDark: Color(hex: "#004866"),
+            highlight: Color(hex: "#00FF88"),
+            text: .white
         )
     ]
 
@@ -74,33 +108,41 @@ struct BeginnerView: View {
             )
 
             VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    Picker("Graph Mode", selection: $graphMode) {
-                        Text("Stereo").tag(GraphMode.single)
-                        Text("Split L/R").tag(GraphMode.split)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 180)
-                    .tint(AppColors.neonCyan)
-                    .onChange(of: graphMode) { _ in
-                        if graphMode == .split {
-                            syncLanesForSplit()
+                HStack(spacing: 18) {
+                    HStack(spacing: 8) {
+                        Text("Graph Mode")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textMuted)
+                        Picker("", selection: $graphMode) {
+                            Text("Stereo").tag(GraphMode.single)
+                            Text("Dual Mono (L/R)").tag(GraphMode.split)
                         }
-                        applyChainToEngine()
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .onChange(of: graphMode) { _ in
+                            if graphMode == .split {
+                                syncLanesForSplit()
+                            }
+                            applyChainToEngine()
+                        }
                     }
 
-                    Picker("Wiring Mode", selection: $wiringMode) {
-                        Text("Automatic").tag(WiringMode.automatic)
-                        Text("Manual").tag(WiringMode.manual)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
-                    .tint(AppColors.neonCyan)
-                    .help(wiringMode == .automatic ?
-                          "Automatic: Effects flow left-to-right by position. Option+drag to override." :
-                          "Manual: Pure manual wiring. Option+drag to connect everything.")
-                    .onChange(of: wiringMode) { _ in
-                        applyChainToEngine()
+                    HStack(spacing: 8) {
+                        Text("Wiring")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textMuted)
+                        Picker("", selection: $wiringMode) {
+                            Text("Automatic").tag(WiringMode.automatic)
+                            Text("Manual").tag(WiringMode.manual)
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .help(wiringMode == .automatic ?
+                              "Automatic: Effects flow left-to-right by position. Option+drag to override." :
+                              "Manual: Pure manual wiring. Option+drag to connect everything.")
+                        .onChange(of: wiringMode) { _ in
+                            applyChainToEngine()
+                        }
                     }
 
                     Button("Reset Wiring") {
@@ -419,7 +461,7 @@ struct BeginnerView: View {
 
                     ForEach(effectChain, id: \.id) { effect in
                         let effectValue = effect
-                        let nodePos = nodePosition(effectValue, in: geometry.size)
+                    let nodePos = displayNodePosition(effectValue, in: geometry.size)
                         let isWired = pathIDs.contains(effectValue.id)
                         let isSelected = selectedNodeIDs.contains(effectValue.id)
                         let isDropAnimating = dropAnimatedNodeIDs.contains(effectValue.id)
@@ -440,6 +482,7 @@ struct BeginnerView: View {
                             }
                         )
                         .position(nodePos)
+                        .scaleEffect(zoomScale)
                         .simultaneousGesture(
                             TapGesture()
                                 .onEnded {
@@ -484,7 +527,7 @@ struct BeginnerView: View {
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
                                             draggingNodeID = effectValue.id
-                                            dragStartPosition = nodePos
+                                            dragStartPosition = nodePosition(effectValue, in: geometry.size)
                                             if wiringMode == .manual {
                                                 if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
                                                     selectedNodeIDs = [effectValue.id]
@@ -496,13 +539,15 @@ struct BeginnerView: View {
                                                 }
                                             }
                                         }
-                                        let delta = CGSize(width: value.translation.width, height: value.translation.height)
+                                        let delta = unzoomedDelta(
+                                            CGSize(width: value.translation.width, height: value.translation.height)
+                                        )
                                         if wiringMode == .manual, !selectedNodeIDs.isEmpty {
                                             moveSelectedNodes(by: delta, in: geometry.size)
                                         } else {
                                             let newPosition = CGPoint(
-                                                x: dragStartPosition.x + value.translation.width,
-                                                y: dragStartPosition.y + value.translation.height
+                                                x: dragStartPosition.x + delta.width,
+                                                y: dragStartPosition.y + delta.height
                                             )
                                             updateNodePosition(
                                                 effectValue.id,
@@ -574,10 +619,29 @@ struct BeginnerView: View {
                         }
                     }
                 ))
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            let next = zoomStartScale * value
+                            zoomScale = min(max(next, 0.6), 1.8)
+                        }
+                        .onEnded { _ in
+                            zoomStartScale = zoomScale
+                        }
+                )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .overlay(
+            HStack {
+                Button("Zoom In") { zoomIn() }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button("Zoom Out") { zoomOut() }
+                    .keyboardShortcut("-", modifiers: .command)
+            }
+            .hidden()
+        )
         .onAppear {
             showSignalFlow = audioEngine.isRunning
         }
@@ -975,6 +1039,39 @@ struct BeginnerView: View {
         }
     }
 
+    private func displayNodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
+        let lane = graphMode == .split ? node.lane : nil
+        return zoomedPosition(nodePosition(node, in: size), in: size, lane: lane)
+    }
+
+    private func zoomAnchor(in size: CGSize, lane: GraphLane?) -> CGPoint {
+        let start = startNodePosition(in: size, lane: lane)
+        let end = endNodePosition(in: size, lane: lane)
+        return CGPoint(x: (start.x + end.x) * 0.5, y: (start.y + end.y) * 0.5)
+    }
+
+    private func zoomedPosition(_ point: CGPoint, in size: CGSize, lane: GraphLane?) -> CGPoint {
+        let anchor = zoomAnchor(in: size, lane: lane)
+        return CGPoint(
+            x: anchor.x + (point.x - anchor.x) * zoomScale,
+            y: anchor.y + (point.y - anchor.y) * zoomScale
+        )
+    }
+
+    private func unzoomedDelta(_ delta: CGSize) -> CGSize {
+        CGSize(width: delta.width / zoomScale, height: delta.height / zoomScale)
+    }
+
+    private func zoomIn() {
+        zoomScale = min(zoomScale + 0.1, 1.8)
+        zoomStartScale = zoomScale
+    }
+
+    private func zoomOut() {
+        zoomScale = max(zoomScale - 0.1, 0.6)
+        zoomStartScale = zoomScale
+    }
+
     private func selectionRect(from start: CGPoint, to end: CGPoint) -> CGRect {
         CGRect(
             x: min(start.x, end.x),
@@ -986,7 +1083,7 @@ struct BeginnerView: View {
 
     private func updateSelection(in rect: CGRect, additive: Bool) {
         let matched = effectChain.filter { node in
-            rect.contains(nodePosition(node, in: canvasSize))
+            rect.contains(displayNodePosition(node, in: canvasSize))
         }
         if additive {
             selectedNodeIDs.formUnion(matched.map { $0.id })
@@ -1059,7 +1156,7 @@ struct BeginnerView: View {
         if connection.fromNodeId == startNodeID || connection.fromNodeId == leftStartNodeID || connection.fromNodeId == rightStartNodeID {
             fromPoint = startNodePosition(in: size, lane: lane)
         } else if let node = effectChain.first(where: { $0.id == connection.fromNodeId }) {
-            fromPoint = nodePosition(node, in: size)
+            fromPoint = displayNodePosition(node, in: size)
         } else {
             return nil
         }
@@ -1068,7 +1165,7 @@ struct BeginnerView: View {
         if connection.toNodeId == endNodeID || connection.toNodeId == leftEndNodeID || connection.toNodeId == rightEndNodeID {
             toPoint = endNodePosition(in: size, lane: lane)
         } else if let node = effectChain.first(where: { $0.id == connection.toNodeId }) {
-            toPoint = nodePosition(node, in: size)
+            toPoint = displayNodePosition(node, in: size)
         } else {
             return nil
         }
@@ -1087,7 +1184,7 @@ struct BeginnerView: View {
             if connection.fromNodeId == startNodeID || connection.fromNodeId == leftStartNodeID || connection.fromNodeId == rightStartNodeID {
                 fromPoint = startNodePosition(in: size, lane: lane)
             } else if let node = effectChain.first(where: { $0.id == connection.fromNodeId }) {
-                fromPoint = nodePosition(node, in: size)
+                fromPoint = displayNodePosition(node, in: size)
             } else {
                 continue
             }
@@ -1096,7 +1193,7 @@ struct BeginnerView: View {
             if connection.toNodeId == endNodeID || connection.toNodeId == leftEndNodeID || connection.toNodeId == rightEndNodeID {
                 toPoint = endNodePosition(in: size, lane: lane)
             } else if let node = effectChain.first(where: { $0.id == connection.toNodeId }) {
-                toPoint = nodePosition(node, in: size)
+                toPoint = displayNodePosition(node, in: size)
             } else {
                 continue
             }
@@ -1115,7 +1212,7 @@ struct BeginnerView: View {
         if wiringMode == .manual {
             for nodeID in implicitEndNodes(lane: lane) {
                 guard let node = effectChain.first(where: { $0.id == nodeID }) else { continue }
-                let fromPoint = nodePosition(node, in: size)
+                let fromPoint = displayNodePosition(node, in: size)
                 let toPoint = endNodePosition(in: size, lane: lane)
                 connections.append(
                     CanvasConnection(id: UUID(), from: fromPoint, to: toPoint, toNodeId: endNodeID(for: lane), isManual: false)
@@ -1136,7 +1233,7 @@ struct BeginnerView: View {
         var previousPoint = startPoint
 
         for node in ordered {
-            let currentPoint = nodePosition(node, in: canvasSize)
+            let currentPoint = displayNodePosition(node, in: canvasSize)
             connections.append(
                 CanvasConnection(id: UUID(), from: previousPoint, to: currentPoint, toNodeId: node.id, isManual: false)
             )
@@ -1211,7 +1308,7 @@ struct BeginnerView: View {
             return startNodePosition(in: size, lane: .right)
         }
         if let fromNode = effectChain.first(where: { $0.id == fromID }) {
-            return nodePosition(fromNode, in: size)
+            return displayNodePosition(fromNode, in: size)
         }
         return nil
     }
@@ -1270,7 +1367,7 @@ struct BeginnerView: View {
             if graphMode == .split, let fromLane, node.lane != fromLane {
                 continue
             }
-            let nodePoint = nodePosition(node, in: canvasSize)
+            let nodePoint = displayNodePosition(node, in: canvasSize)
             let dx = nodePoint.x - point.x
             let dy = nodePoint.y - point.y
             let distance = sqrt(dx * dx + dy * dy)
@@ -1714,47 +1811,31 @@ fileprivate struct EffectDragPreview: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [tileStyle.fill, tileStyle.fillDark],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                        .blur(radius: 0.6)
-                        .offset(y: -0.5)
-                        .mask(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [.white, .clear],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                        )
-                )
+            NeonTile(
+                isEnabled: true,
+                style: tileStyle,
+                disabledFill: Color(hex: "#1A1426")
+            )
 
             VStack(spacing: 6) {
                 Image(systemName: effectType.icon)
-                    .font(.system(size: 26, weight: .light))
+                    .font(.system(size: 26, weight: .medium))
                     .symbolRenderingMode(.monochrome)
                     .foregroundColor(tileStyle.text)
+                    .shadow(color: Color.white.opacity(0.6), radius: 8)
+                    .shadow(color: tileStyle.fill.opacity(0.5), radius: 16)
 
                 Text(effectType.rawValue.uppercased())
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundColor(tileStyle.text.opacity(0.85))
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundColor(tileStyle.text.opacity(0.95))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .shadow(color: tileStyle.fill.opacity(0.4), radius: 10)
             }
             .padding(.horizontal, 6)
         }
-        .frame(width: 92, height: 92)
+        .frame(width: 110, height: 110)
     }
 }
 
@@ -1949,13 +2030,122 @@ private struct CanvasConnection: Identifiable {
 fileprivate struct AccentStyle {
     let fill: Color
     let fillDark: Color
+    let highlight: Color
     let text: Color
 
     static let defaultPreview = AccentStyle(
-        fill: Color(red: 0.93, green: 0.88, blue: 0.78),
-        fillDark: Color(red: 0.86, green: 0.80, blue: 0.67),
-        text: Color(red: 0.24, green: 0.20, blue: 0.15)
+        fill: Color(hex: "#8B3DFF"),
+        fillDark: Color(hex: "#3A0B73"),
+        highlight: Color(hex: "#00D9FF"),
+        text: .white
     )
+}
+
+fileprivate struct NeonTile: View {
+    let isEnabled: Bool
+    let style: AccentStyle
+    let disabledFill: Color
+
+    var body: some View {
+        let coreFill: LinearGradient = isEnabled
+            ? LinearGradient(
+                colors: [
+                    style.fillDark.opacity(0.35),
+                    style.fillDark.opacity(0.75),
+                    style.fillDark.opacity(0.98)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            : LinearGradient(
+                colors: [disabledFill, disabledFill.opacity(0.85)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+        let edgeGlow = RadialGradient(
+            colors: [
+                style.fill.opacity(0.22),
+                style.fill.opacity(0.08),
+                Color.clear
+            ],
+            center: .center,
+            startRadius: 70,
+            endRadius: 150
+        )
+
+        let accentSheen = LinearGradient(
+            colors: [
+                Color.clear,
+                style.highlight.opacity(0.75),
+                Color.clear
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        let accentStroke = LinearGradient(
+            colors: [
+                style.highlight.opacity(0.12),
+                style.highlight.opacity(0.9),
+                style.highlight.opacity(0.2)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        let accentStrokeStyle = isEnabled
+            ? AnyShapeStyle(accentStroke)
+            : AnyShapeStyle(Color.clear)
+
+        let shape = RoundedRectangle(cornerRadius: 22)
+
+        return ZStack {
+            shape.fill(coreFill)
+
+            if isEnabled {
+                shape
+                    .fill(edgeGlow)
+                    .blendMode(.screen)
+            }
+
+            shape
+                .stroke(isEnabled ? style.fill.opacity(1.0) : disabledFill.opacity(0.6), lineWidth: 4)
+                .shadow(color: isEnabled ? style.fill.opacity(0.95) : .clear, radius: 6)
+                .shadow(color: isEnabled ? style.fill.opacity(0.6) : .clear, radius: 20)
+                .shadow(color: isEnabled ? style.fill.opacity(0.3) : .clear, radius: 48)
+
+            shape
+                .stroke(isEnabled ? style.fill.opacity(0.7) : .clear, lineWidth: 10)
+                .blur(radius: 12)
+                .mask(
+                    shape
+                        .fill(Color.white)
+                        .padding(6)
+                )
+
+            shape
+                .stroke(accentStrokeStyle, lineWidth: 1.5)
+                .blendMode(.screen)
+
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.08), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .blendMode(.screen)
+                .padding(6)
+
+            shape
+                .fill(accentSheen)
+                .rotationEffect(.degrees(-12))
+                .blendMode(.screen)
+                .opacity(isEnabled ? 0.9 : 0)
+                .padding(10)
+        }
+    }
 }
 
 fileprivate struct MovingArrowheads: View {
@@ -2014,10 +2204,11 @@ struct EffectBlockHorizontal: View {
     @State private var isExpanded = false
     @State private var dropScale: CGFloat = 1.0
     @State private var dropRotation: Double = 0.0
-    private let cardBackground = Color(red: 0.18, green: 0.16, blue: 0.13)
-    private let cardBorder = Color(red: 0.68, green: 0.52, blue: 0.32)
-    private let tileDisabled = Color(red: 0.32, green: 0.30, blue: 0.26)
-    private let disabledText = Color(red: 0.78, green: 0.74, blue: 0.68)
+    private let cardBackground = Color(red: 0.08, green: 0.07, blue: 0.12)
+    private let cardBorder = AppColors.neonPink
+    private let tileDisabled = Color(hex: "#1A1426")
+    private let disabledText = Color(hex: "#80759D")
+    private let iconGlow = Color.white.opacity(0.85)
 
     var body: some View {
         let hoverScale: CGFloat = isHovered ? 1.03 : 1.0
@@ -2028,53 +2219,31 @@ struct EffectBlockHorizontal: View {
                 // Icon and name
                 VStack(spacing: 6) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(
-                                getEffectEnabled()
-                                    ? LinearGradient(
-                                        colors: [tileStyle.fill, tileStyle.fillDark],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                    : LinearGradient(
-                                        colors: [tileDisabled, tileDisabled.opacity(0.85)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                                    .blur(radius: 0.6)
-                                    .offset(y: -0.5)
-                                    .mask(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [.white, .clear],
-                                                    startPoint: .top,
-                                                    endPoint: .bottom
-                                                )
-                                            )
-                                    )
-                            )
+                        NeonTile(
+                            isEnabled: getEffectEnabled(),
+                            style: tileStyle,
+                            disabledFill: tileDisabled
+                        )
 
                         VStack(spacing: 6) {
                             Image(systemName: effect.type.icon)
-                                .font(.system(size: 26, weight: .light))
+                                .font(.system(size: 26, weight: .medium))
                                 .symbolRenderingMode(.monochrome)
                                 .foregroundColor(getEffectEnabled() ? tileStyle.text : disabledText)
+                                .shadow(color: getEffectEnabled() ? Color.white.opacity(0.6) : .clear, radius: 8)
+                                .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.5) : .clear, radius: 16)
 
                             Text(effect.type.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .semibold))
-                                .tracking(0.8)
-                                .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.85))
+                                .font(.system(size: 10, weight: .semibold))
+                                .tracking(1.2)
+                                .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
+                                .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.4) : .clear, radius: 10)
                         }
                         .padding(.horizontal, 6)
                     }
-                    .frame(width: 92, height: 92)
+                    .frame(width: 110, height: 110)
                 }
 
             }
