@@ -244,6 +244,8 @@ class AudioEngine: ObservableObject {
     private var levelUpdateCounter = 0
     private let effectStateLock = NSLock()
     private var isReconfiguring = false
+    private var restartWorkItem: DispatchWorkItem?
+    private let restartDebounceInterval: TimeInterval = 0.25
 
     // Bass boost state
     private var bassBoostState: [BiquadState] = []
@@ -2774,11 +2776,17 @@ class AudioEngine: ObservableObject {
     }
 
     func stop() {
+        stopInternal(setReconfiguringFlag: false)
+    }
+
+    private func stopInternal(setReconfiguringFlag: Bool) {
         nightcoreRestartWorkItem?.cancel()
         nightcoreRestartWorkItem = nil
         resetEffectState()
 
-        isReconfiguring = true
+        if setReconfiguringFlag {
+            isReconfiguring = true
+        }
 
         // Stop AudioQueue first
         if let queue = outputQueue {
@@ -2798,18 +2806,42 @@ class AudioEngine: ObservableObject {
 
         // Stop AVAudioEngine
         engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+        engine.stop()
+        engine.reset()
         isRunning = false
-        isReconfiguring = false
+        if !setReconfiguringFlag {
+            isReconfiguring = false
+        }
         print("⏸️ Audio engine stopped")
     }
 
     private func reconfigureAudio() {
-        isReconfiguring = true
-        stop()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.start()
+        scheduleRestart(reason: "output device change")
+    }
+
+    private func scheduleRestart(reason: String) {
+        if isReconfiguring {
+            return
         }
+        isReconfiguring = true
+        restartWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.stopInternal(setReconfiguringFlag: true)
+            self.requestMicrophonePermission { [weak self] granted in
+                guard let self = self else { return }
+                if granted {
+                    self.startAudioEngine()
+                } else {
+                    self.errorMessage = "Microphone permission denied. Please enable in System Settings > Privacy & Security > Microphone"
+                    self.isRunning = false
+                    self.isReconfiguring = false
+                }
+            }
+        }
+        restartWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + restartDebounceInterval, execute: workItem)
+        print("🔄 Scheduling audio restart (\(reason))")
     }
 
     // MARK: - Notifications
@@ -2828,12 +2860,7 @@ class AudioEngine: ObservableObject {
 
         // If engine was running, attempt to restart
         if isRunning {
-            stop()
-
-            // Small delay to let hardware settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.start()
-            }
+            scheduleRestart(reason: "engine configuration change")
         }
     }
 
