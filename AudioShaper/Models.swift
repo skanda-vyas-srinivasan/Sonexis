@@ -21,6 +21,7 @@ enum EffectType: String, Codable, CaseIterable {
     case flanger = "Flanger"
     case bitcrusher = "Bitcrusher"
     case tapeSaturation = "Tape Saturation"
+    case resampling = "Resampling"
 
     var description: String {
         switch self {
@@ -58,6 +59,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "Retro digital grit and crunch"
         case .tapeSaturation:
             return "Warm, smooth analog saturation"
+        case .resampling:
+            return "Pitch and speed shift by resampling"
         }
     }
 
@@ -97,6 +100,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "square.grid.3x3"
         case .tapeSaturation:
             return "record.circle"
+        case .resampling:
+            return "arrow.triangle.2.circlepath"
         }
     }
 }
@@ -157,6 +162,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["bitDepth": 8.0, "downsample": 4.0, "mix": 60.0]
         case .tapeSaturation:
             return ["drive": 35.0, "mix": 50.0]
+        case .resampling:
+            return ["rate": 1.0]
         }
     }
 }
@@ -224,6 +231,79 @@ struct NodeEffectParameters: Codable, Equatable {
     var bitcrusherMix: Double
     var tapeSaturationDrive: Double
     var tapeSaturationMix: Double
+    var resampleRate: Double
+
+    init(
+        bassBoostAmount: Double,
+        nightcoreIntensity: Double,
+        clarityAmount: Double,
+        deMudStrength: Double,
+        eqBass: Double,
+        eqMids: Double,
+        eqTreble: Double,
+        tenBandGains: [Double],
+        compressorStrength: Double,
+        reverbMix: Double,
+        reverbSize: Double,
+        stereoWidthAmount: Double,
+        delayTime: Double,
+        delayFeedback: Double,
+        delayMix: Double,
+        distortionDrive: Double,
+        distortionMix: Double,
+        tremoloRate: Double,
+        tremoloDepth: Double,
+        chorusRate: Double,
+        chorusDepth: Double,
+        chorusMix: Double,
+        phaserRate: Double,
+        phaserDepth: Double,
+        flangerRate: Double,
+        flangerDepth: Double,
+        flangerFeedback: Double,
+        flangerMix: Double,
+        bitcrusherBitDepth: Double,
+        bitcrusherDownsample: Double,
+        bitcrusherMix: Double,
+        tapeSaturationDrive: Double,
+        tapeSaturationMix: Double,
+        resampleRate: Double
+    ) {
+        self.bassBoostAmount = bassBoostAmount
+        self.nightcoreIntensity = nightcoreIntensity
+        self.clarityAmount = clarityAmount
+        self.deMudStrength = deMudStrength
+        self.eqBass = eqBass
+        self.eqMids = eqMids
+        self.eqTreble = eqTreble
+        self.tenBandGains = tenBandGains
+        self.compressorStrength = compressorStrength
+        self.reverbMix = reverbMix
+        self.reverbSize = reverbSize
+        self.stereoWidthAmount = stereoWidthAmount
+        self.delayTime = delayTime
+        self.delayFeedback = delayFeedback
+        self.delayMix = delayMix
+        self.distortionDrive = distortionDrive
+        self.distortionMix = distortionMix
+        self.tremoloRate = tremoloRate
+        self.tremoloDepth = tremoloDepth
+        self.chorusRate = chorusRate
+        self.chorusDepth = chorusDepth
+        self.chorusMix = chorusMix
+        self.phaserRate = phaserRate
+        self.phaserDepth = phaserDepth
+        self.flangerRate = flangerRate
+        self.flangerDepth = flangerDepth
+        self.flangerFeedback = flangerFeedback
+        self.flangerMix = flangerMix
+        self.bitcrusherBitDepth = bitcrusherBitDepth
+        self.bitcrusherDownsample = bitcrusherDownsample
+        self.bitcrusherMix = bitcrusherMix
+        self.tapeSaturationDrive = tapeSaturationDrive
+        self.tapeSaturationMix = tapeSaturationMix
+        self.resampleRate = resampleRate
+    }
 
     static func defaults() -> NodeEffectParameters {
         NodeEffectParameters(
@@ -259,8 +339,85 @@ struct NodeEffectParameters: Codable, Equatable {
             bitcrusherDownsample: 4,
             bitcrusherMix: 0.6,
             tapeSaturationDrive: 0.35,
-            tapeSaturationMix: 0.5
+            tapeSaturationMix: 0.5,
+            resampleRate: 1.0
         )
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case bassBoostAmount
+        case nightcoreIntensity
+        case clarityAmount
+        case deMudStrength
+        case eqBass
+        case eqMids
+        case eqTreble
+        case tenBandGains
+        case compressorStrength
+        case reverbMix
+        case reverbSize
+        case stereoWidthAmount
+        case delayTime
+        case delayFeedback
+        case delayMix
+        case distortionDrive
+        case distortionMix
+        case tremoloRate
+        case tremoloDepth
+        case chorusRate
+        case chorusDepth
+        case chorusMix
+        case phaserRate
+        case phaserDepth
+        case flangerRate
+        case flangerDepth
+        case flangerFeedback
+        case flangerMix
+        case bitcrusherBitDepth
+        case bitcrusherDownsample
+        case bitcrusherMix
+        case tapeSaturationDrive
+        case tapeSaturationMix
+        case resampleRate
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = NodeEffectParameters.defaults()
+        bassBoostAmount = try container.decodeIfPresent(Double.self, forKey: .bassBoostAmount) ?? defaults.bassBoostAmount
+        nightcoreIntensity = try container.decodeIfPresent(Double.self, forKey: .nightcoreIntensity) ?? defaults.nightcoreIntensity
+        clarityAmount = try container.decodeIfPresent(Double.self, forKey: .clarityAmount) ?? defaults.clarityAmount
+        deMudStrength = try container.decodeIfPresent(Double.self, forKey: .deMudStrength) ?? defaults.deMudStrength
+        eqBass = try container.decodeIfPresent(Double.self, forKey: .eqBass) ?? defaults.eqBass
+        eqMids = try container.decodeIfPresent(Double.self, forKey: .eqMids) ?? defaults.eqMids
+        eqTreble = try container.decodeIfPresent(Double.self, forKey: .eqTreble) ?? defaults.eqTreble
+        tenBandGains = try container.decodeIfPresent([Double].self, forKey: .tenBandGains) ?? defaults.tenBandGains
+        compressorStrength = try container.decodeIfPresent(Double.self, forKey: .compressorStrength) ?? defaults.compressorStrength
+        reverbMix = try container.decodeIfPresent(Double.self, forKey: .reverbMix) ?? defaults.reverbMix
+        reverbSize = try container.decodeIfPresent(Double.self, forKey: .reverbSize) ?? defaults.reverbSize
+        stereoWidthAmount = try container.decodeIfPresent(Double.self, forKey: .stereoWidthAmount) ?? defaults.stereoWidthAmount
+        delayTime = try container.decodeIfPresent(Double.self, forKey: .delayTime) ?? defaults.delayTime
+        delayFeedback = try container.decodeIfPresent(Double.self, forKey: .delayFeedback) ?? defaults.delayFeedback
+        delayMix = try container.decodeIfPresent(Double.self, forKey: .delayMix) ?? defaults.delayMix
+        distortionDrive = try container.decodeIfPresent(Double.self, forKey: .distortionDrive) ?? defaults.distortionDrive
+        distortionMix = try container.decodeIfPresent(Double.self, forKey: .distortionMix) ?? defaults.distortionMix
+        tremoloRate = try container.decodeIfPresent(Double.self, forKey: .tremoloRate) ?? defaults.tremoloRate
+        tremoloDepth = try container.decodeIfPresent(Double.self, forKey: .tremoloDepth) ?? defaults.tremoloDepth
+        chorusRate = try container.decodeIfPresent(Double.self, forKey: .chorusRate) ?? defaults.chorusRate
+        chorusDepth = try container.decodeIfPresent(Double.self, forKey: .chorusDepth) ?? defaults.chorusDepth
+        chorusMix = try container.decodeIfPresent(Double.self, forKey: .chorusMix) ?? defaults.chorusMix
+        phaserRate = try container.decodeIfPresent(Double.self, forKey: .phaserRate) ?? defaults.phaserRate
+        phaserDepth = try container.decodeIfPresent(Double.self, forKey: .phaserDepth) ?? defaults.phaserDepth
+        flangerRate = try container.decodeIfPresent(Double.self, forKey: .flangerRate) ?? defaults.flangerRate
+        flangerDepth = try container.decodeIfPresent(Double.self, forKey: .flangerDepth) ?? defaults.flangerDepth
+        flangerFeedback = try container.decodeIfPresent(Double.self, forKey: .flangerFeedback) ?? defaults.flangerFeedback
+        flangerMix = try container.decodeIfPresent(Double.self, forKey: .flangerMix) ?? defaults.flangerMix
+        bitcrusherBitDepth = try container.decodeIfPresent(Double.self, forKey: .bitcrusherBitDepth) ?? defaults.bitcrusherBitDepth
+        bitcrusherDownsample = try container.decodeIfPresent(Double.self, forKey: .bitcrusherDownsample) ?? defaults.bitcrusherDownsample
+        bitcrusherMix = try container.decodeIfPresent(Double.self, forKey: .bitcrusherMix) ?? defaults.bitcrusherMix
+        tapeSaturationDrive = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationDrive) ?? defaults.tapeSaturationDrive
+        tapeSaturationMix = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationMix) ?? defaults.tapeSaturationMix
+        resampleRate = try container.decodeIfPresent(Double.self, forKey: .resampleRate) ?? defaults.resampleRate
     }
 }
 

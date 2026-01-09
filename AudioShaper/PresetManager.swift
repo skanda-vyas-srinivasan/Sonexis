@@ -115,6 +115,8 @@ struct SavedPreset: Identifiable, Codable {
             break
         case .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation:
             break
+        case .resampling:
+            break
         }
         return params
     }

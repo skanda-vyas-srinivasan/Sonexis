@@ -700,8 +700,10 @@ struct BeginnerView: View {
 
     private func applyGraphSnapshot(_ snapshot: GraphSnapshot) {
         let nodes = snapshot.hasNodeParameters ? snapshot.nodes : migrateNodeParameters(snapshot.nodes)
-        effectChain = nodes
-        manualConnections = snapshot.connections
+        let removedIds = Set(nodes.filter { $0.type == .pitchShift }.map { $0.id })
+        let filteredNodes = nodes.filter { $0.type != .pitchShift }
+        effectChain = filteredNodes
+        manualConnections = snapshot.connections.filter { !removedIds.contains($0.fromNodeId) && !removedIds.contains($0.toNodeId) }
         startNodeID = snapshot.startNodeID
         endNodeID = snapshot.endNodeID
         leftStartNodeID = snapshot.leftStartNodeID ?? leftStartNodeID
@@ -784,6 +786,8 @@ struct BeginnerView: View {
             case .tapeSaturation:
                 params.tapeSaturationDrive = audioEngine.tapeSaturationDrive
                 params.tapeSaturationMix = audioEngine.tapeSaturationMix
+            case .resampling:
+                params.resampleRate = audioEngine.resampleRate
             }
             updated.parameters = params
             return updated
@@ -1517,9 +1521,9 @@ struct EffectPalette: View {
     let onEffectDragged: (EffectType) -> Void
 
     private let effects: [EffectType] = [
-        .bassBoost, .pitchShift, .clarity, .deMud,
+        .bassBoost, .clarity, .deMud,
         .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
-        .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation
+        .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation, .resampling
     ]
 
     var body: some View {
@@ -1952,7 +1956,7 @@ struct EffectParametersViewCompact: View {
                 CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, range: 0...1, format: .percent, onChange: onChange)
 
             case .pitchShift:
-                CompactSlider(label: "Intensity", value: $parameters.nightcoreIntensity, range: 0...1, format: .percent, onChange: onChange)
+                EmptyView()
 
             case .clarity:
                 CompactSlider(label: "Amount", value: $parameters.clarityAmount, range: 0...1, format: .percent, onChange: onChange)
@@ -2026,6 +2030,9 @@ struct EffectParametersViewCompact: View {
             case .tapeSaturation:
                 CompactSlider(label: "Drive", value: $parameters.tapeSaturationDrive, range: 0...1, format: .percent, onChange: onChange)
                 CompactSlider(label: "Mix", value: $parameters.tapeSaturationMix, range: 0...1, format: .percent, onChange: onChange)
+
+            case .resampling:
+                CompactSlider(label: "Rate", value: $parameters.resampleRate, range: 0.5...2.0, format: .ratio, onChange: onChange)
             }
         }
     }
@@ -2076,6 +2083,7 @@ struct CompactSlider: View {
         case ms
         case hz
         case integer
+        case ratio
     }
 
     var body: some View {
@@ -2114,6 +2122,8 @@ struct CompactSlider: View {
             return String(format: "%.1f Hz", value)
         case .integer:
             return String(format: "%.0f", value)
+        case .ratio:
+            return String(format: "%.2fx", value)
         }
     }
 }

@@ -187,6 +187,10 @@ class AudioEngine: ObservableObject {
     @Published var tapeSaturationDrive: Double = 0.35
     @Published var tapeSaturationMix: Double = 0.5
 
+    // Resampling effect (pitch+speed)
+    @Published var resampleEnabled = false
+    @Published var resampleRate: Double = 1.0
+
     @Published var processingEnabled = true {
         didSet {
             if !processingEnabled {
@@ -320,6 +324,14 @@ class AudioEngine: ObservableObject {
     private var phaserStatesByNode: [UUID: [[AllPassState]]] = [:]
     private var phaserPhase: Double = 0
     private var phaserPhaseByNode: [UUID: Double] = [:]
+
+    // Resampling state
+    private var resampleBuffer: [[Float]] = []
+    private var resampleWriteIndex = 0
+    private var resampleReadPhase: Double = 0
+    private var resampleBuffersByNode: [UUID: [[Float]]] = [:]
+    private var resampleWriteIndexByNode: [UUID: Int] = [:]
+    private var resampleReadPhaseByNode: [UUID: Double] = [:]
 
     // Bitcrusher state
     private var bitcrusherHoldCounters: [Int] = []
@@ -480,15 +492,10 @@ class AudioEngine: ObservableObject {
                 }
             }
 
-            // Install tap to capture audio and send to AudioQueue
-            var tapCallCount = 0
+            // Wire input -> timePitch -> mixer (mute mixer to avoid double output)
             engine.inputNode.removeTap(onBus: 0)
             engine.inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(bufferFrameCount), format: inputFormat) { [weak self] buffer, time in
                 guard let self = self, let queue = self.outputQueue else { return }
-
-                let frameLength = Int(buffer.frameLength)
-
-                tapCallCount += 1
 
                 let interleavedData = self.interleavedData(from: buffer)
 
@@ -1123,7 +1130,6 @@ class AudioEngine: ObservableObject {
     private var defaultEffectOrder: [EffectType] {
         [
             .bassBoost,
-            .pitchShift,
             .clarity,
             .deMud,
             .simpleEQ,
@@ -1138,6 +1144,7 @@ class AudioEngine: ObservableObject {
             .flanger,
             .bitcrusher,
             .tapeSaturation,
+            .resampling,
             .stereoWidth
         ]
     }
@@ -1236,41 +1243,10 @@ class AudioEngine: ObservableObject {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let intensity = nodeParams(for: nodeId)?.nightcoreIntensity ?? nightcoreIntensity
-            guard intensity > 0 else {
-                if let id = nodeId { levelSnapshot[id] = 0 }
-                return
-            }
-            let gainDb = min(max(intensity, 0), 1) * 12.0
-            let coefficients = BiquadCoefficients.highShelf(
-                sampleRate: sampleRate,
-                frequency: 3000,
-                gainDb: gainDb,
-                q: 0.7
-            )
-            var states: [BiquadState]
-            if let id = nodeId {
-                states = nightcoreStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
-            } else {
-                states = clarityState
-            }
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    var state = states[channel]
-                    let y = coefficients.process(x: processedAudio[channel][frame], state: &state)
-                    let nightcoreGain = 1.0 + Float(intensity) * 0.15
-                    processedAudio[channel][frame] = y * nightcoreGain
-                    states[channel] = state
-                }
-            }
-            if let id = nodeId {
-                nightcoreStatesByNode[id] = states
-            } else {
-                clarityState = states
-            }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
+            return
 
         case .clarity:
             if let id = nodeId, !nodeIsEnabled(id) {
@@ -1982,6 +1958,83 @@ class AudioEngine: ObservableObject {
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
+
+        case .resampling:
+            if let id = nodeId, !nodeIsEnabled(id) {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            guard nodeId == nil ? resampleEnabled : true else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let rateValue = nodeParams(for: nodeId)?.resampleRate ?? resampleRate
+            guard rateValue > 0 else {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+            let targetId = nodeId
+            var buffer = targetId.flatMap { resampleBuffersByNode[$0] } ?? resampleBuffer
+            var writeIndex = targetId.flatMap { resampleWriteIndexByNode[$0] } ?? resampleWriteIndex
+            var readPhase = targetId.flatMap { resampleReadPhaseByNode[$0] } ?? resampleReadPhase
+            var bufferReset = false
+            let bufferSize = max(frameLength * 4, 4096)
+            let safetyOffset = min(max(frameLength * 2, 1024), bufferSize - 1)
+
+            if buffer.count != channelCount || buffer.first?.count != bufferSize {
+                buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferSize), count: channelCount)
+                writeIndex = 0
+                readPhase = 0
+                bufferReset = true
+            }
+
+            // Write input into ring buffer
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    buffer[channel][writeIndex] = processedAudio[channel][frame]
+                }
+                writeIndex = (writeIndex + 1) % bufferSize
+            }
+
+            if bufferReset {
+                readPhase = Double((writeIndex - safetyOffset + bufferSize) % bufferSize)
+            }
+
+            let readIndex = Int(readPhase) % bufferSize
+            let distance = (writeIndex - readIndex + bufferSize) % bufferSize
+            if distance < safetyOffset {
+                readPhase = Double((writeIndex - safetyOffset + bufferSize) % bufferSize)
+            }
+
+            // Read resampled output using shared phase
+            for frame in 0..<frameLength {
+                let phaseIndex = readPhase
+                let index0 = Int(phaseIndex) % bufferSize
+                let index1 = (index0 + 1) % bufferSize
+                let frac = Float(phaseIndex - Double(index0))
+                for channel in 0..<channelCount {
+                    let s0 = buffer[channel][index0]
+                    let s1 = buffer[channel][index1]
+                    processedAudio[channel][frame] = s0 + (s1 - s0) * frac
+                }
+                readPhase += rateValue
+                if readPhase >= Double(bufferSize) {
+                    readPhase -= Double(bufferSize)
+                }
+            }
+
+            if let id = targetId {
+                resampleBuffersByNode[id] = buffer
+                resampleWriteIndexByNode[id] = writeIndex
+                resampleReadPhaseByNode[id] = readPhase
+            } else {
+                resampleBuffer = buffer
+                resampleWriteIndex = writeIndex
+                resampleReadPhase = readPhase
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
         }
     }
 
@@ -2317,6 +2370,9 @@ class AudioEngine: ObservableObject {
             phaserPhase = 0
             bitcrusherHoldCounters = bitcrusherHoldCounters.map { _ in 0 }
             bitcrusherHoldValues = bitcrusherHoldValues.map { _ in 0 }
+            resampleBuffer.removeAll()
+            resampleWriteIndex = 0
+            resampleReadPhase = 0
             bassBoostStatesByNode.removeAll()
             clarityStatesByNode.removeAll()
             nightcoreStatesByNode.removeAll()
@@ -2339,6 +2395,9 @@ class AudioEngine: ObservableObject {
             phaserStatesByNode.removeAll()
             bitcrusherHoldCountersByNode.removeAll()
             bitcrusherHoldValuesByNode.removeAll()
+            resampleBuffersByNode.removeAll()
+            resampleWriteIndexByNode.removeAll()
+            resampleReadPhaseByNode.removeAll()
         }
         DispatchQueue.main.async {
             self.effectLevels = [:]
@@ -2583,7 +2642,7 @@ class AudioEngine: ObservableObject {
 
         // Stop AVAudioEngine
         engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+            engine.stop()
         isRunning = false
         isReconfiguring = false
         print("⏸️ Audio engine stopped")
@@ -2703,6 +2762,7 @@ class AudioEngine: ObservableObject {
         flangerEnabled = false
         bitcrusherEnabled = false
         tapeSaturationEnabled = false
+        resampleEnabled = false
         resetTenBandValues()
 
         // Then apply each effect from the chain
@@ -2798,6 +2858,9 @@ class AudioEngine: ObservableObject {
 
             case .tapeSaturation:
                 tapeSaturationEnabled = effect.isEnabled
+
+            case .resampling:
+                resampleEnabled = effect.isEnabled
             }
         }
 
@@ -2831,6 +2894,7 @@ class AudioEngine: ObservableObject {
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
+        resampleEnabled = activeTypes.contains(.resampling)
 
         if !activeTypes.contains(.tenBandEQ) {
             resetTenBandValues()
@@ -2874,6 +2938,7 @@ class AudioEngine: ObservableObject {
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
+        resampleEnabled = activeTypes.contains(.resampling)
     }
 
     func updateEffectGraphSplit(
@@ -2918,6 +2983,7 @@ class AudioEngine: ObservableObject {
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
+        resampleEnabled = activeTypes.contains(.resampling)
     }
 
     func updateGraphSnapshot(_ snapshot: GraphSnapshot?) {
@@ -2955,7 +3021,11 @@ class AudioEngine: ObservableObject {
         phaserPhaseByNode = phaserPhaseByNode.filter { ids.contains($0.key) }
         bitcrusherHoldCountersByNode = bitcrusherHoldCountersByNode.filter { ids.contains($0.key) }
         bitcrusherHoldValuesByNode = bitcrusherHoldValuesByNode.filter { ids.contains($0.key) }
+        resampleBuffersByNode = resampleBuffersByNode.filter { ids.contains($0.key) }
+        resampleWriteIndexByNode = resampleWriteIndexByNode.filter { ids.contains($0.key) }
+        resampleReadPhaseByNode = resampleReadPhaseByNode.filter { ids.contains($0.key) }
     }
+
 }
 
 // MARK: - Audio Device Helper
