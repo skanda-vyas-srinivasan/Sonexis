@@ -8,6 +8,7 @@ struct BeginnerView: View {
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
     @State private var showSignalFlow = false
+    @State private var arrowFpsIndex = 1
     @State private var canvasSize: CGSize = .zero
     @State private var draggingNodeID: UUID?
     @State private var dragStartPosition: CGPoint = .zero
@@ -45,7 +46,9 @@ struct BeginnerView: View {
     @State private var isCanvasHovering = false
     @State private var isOptionHeld = false
     @State private var flagsMonitor: Any?
+    @State private var isWindowKey = true
     private let connectionSnapRadius: CGFloat = 120
+    private let arrowFpsOptions: [Double] = [12, 20, 24, 30, 40]
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
             fill: Color(hex: "#00F5FF"),
@@ -103,6 +106,7 @@ struct BeginnerView: View {
             ? Set((leftAutoPath + rightAutoPath).map { $0.id })
             : reachableNodeIDsFromStart()
         let isAnimating = audioEngine.isRunning && showSignalFlow && isAppActive
+        let arrowFps = arrowFpsOptions[arrowFpsIndex]
 
         HStack(spacing: 0) {
             EffectTray(
@@ -152,6 +156,17 @@ struct BeginnerView: View {
                         .onChange(of: wiringMode) { _ in
                             applyChainToEngine()
                         }
+                    }
+
+                    HStack(spacing: 6) {
+                        Text("Flow")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textMuted)
+                        Button("\(Int(arrowFps)) FPS") {
+                            arrowFpsIndex = (arrowFpsIndex + 1) % arrowFpsOptions.count
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(AppColors.textSecondary)
                     }
 
                     HStack(spacing: 6) {
@@ -253,7 +268,9 @@ struct BeginnerView: View {
                                 to: connection.to,
                                 isActive: isAnimating,
                                 level: levelForNode(connection.toNodeId),
-                                beatPulse: beatPulse
+                                beatPulse: beatPulse,
+                                fps: arrowFps,
+                                allowAnimation: isAppActive
                             )
                         }
                     } else {
@@ -267,7 +284,9 @@ struct BeginnerView: View {
                                 to: connection.to,
                                 isActive: isAnimating,
                                 level: levelForNode(connection.toNodeId),
-                                beatPulse: beatPulse
+                                beatPulse: beatPulse,
+                                fps: arrowFps,
+                                allowAnimation: isAppActive
                             )
                         }
                     }
@@ -561,6 +580,12 @@ struct BeginnerView: View {
                 .onChange(of: geometry.size) { newSize in
                     canvasSize = newSize
                 }
+                .background(WindowFocusReader { isKey in
+                    isWindowKey = isKey
+                    let active = scenePhase == .active && isWindowKey
+                    isAppActive = active
+                    showSignalFlow = active && audioEngine.isRunning
+                })
                 .contentShape(Rectangle())
                 .overlay(
                     ZStack {
@@ -623,13 +648,26 @@ struct BeginnerView: View {
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
         }
+        .onChange(of: scenePhase) { phase in
+            let active = phase == .active && isWindowKey
+            isAppActive = active
+            showSignalFlow = active && audioEngine.isRunning
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            isWindowKey = true
+            let active = scenePhase == .active
+            isAppActive = active && isWindowKey
+            showSignalFlow = isAppActive && audioEngine.isRunning
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            isWindowKey = false
+            isAppActive = false
+            showSignalFlow = false
+        }
         .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
             guard let snapshot else { return }
             applyGraphSnapshot(snapshot)
             audioEngine.pendingGraphSnapshot = nil
-        }
-        .onChange(of: scenePhase) { phase in
-            isAppActive = phase == .active
         }
         .onAppear {
             if flagsMonitor == nil {
@@ -2236,6 +2274,8 @@ struct FlowLine: View {
     let isActive: Bool
     let level: Float
     let beatPulse: CGFloat
+    let fps: Double
+    let allowAnimation: Bool
     @State private var bounce: CGFloat = 0
     @State private var cachedPath: Path?
 
@@ -2259,20 +2299,29 @@ struct FlowLine: View {
                         .shadow(color: AppColors.wireActive.opacity(0.45), radius: 28)
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
-                    TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { context in
-                        let time = context.date.timeIntervalSinceReferenceDate
-                        let dx = to.x - from.x
-                        let dy = to.y - from.y
-                        let length = max(sqrt(dx * dx + dy * dy), 1)
-                        let pixelsPerSecond: CGFloat = 90
-                        let phaseSpeed = pixelsPerSecond / length
-                        let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
+                    if allowAnimation {
+                        TimelineView(.periodic(from: .now, by: 1.0 / max(fps, 1.0))) { context in
+                            let time = context.date.timeIntervalSinceReferenceDate
+                            let dx = to.x - from.x
+                            let dy = to.y - from.y
+                            let length = max(sqrt(dx * dx + dy * dy), 1)
+                            let pixelsPerSecond: CGFloat = 90
+                            let phaseSpeed = pixelsPerSecond / length
+                            let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
 
+                            MovingArrowheads(
+                                from: from,
+                                to: to,
+                                color: AppColors.neonCyan.opacity(0.85),
+                                phase: phase
+                            )
+                        }
+                    } else {
                         MovingArrowheads(
                             from: from,
                             to: to,
-                            color: AppColors.neonCyan.opacity(0.85),
-                            phase: phase
+                            color: AppColors.neonCyan.opacity(0.35),
+                            phase: 0
                         )
                     }
                 }
@@ -2354,6 +2403,61 @@ fileprivate struct CustomContextMenu {
         let rowHeight: CGFloat = 24
         let height = CGFloat(items.count) * rowHeight + 16
         return CGSize(width: 180, height: height)
+    }
+}
+
+private struct WindowFocusReader: NSViewRepresentable {
+    let onFocusChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> FocusView {
+        let view = FocusView()
+        view.onFocusChange = onFocusChange
+        return view
+    }
+
+    func updateNSView(_ nsView: FocusView, context: Context) {
+        nsView.onFocusChange = onFocusChange
+        nsView.updateFocus()
+    }
+
+    final class FocusView: NSView {
+        var onFocusChange: ((Bool) -> Void)?
+        private var keyObserver: Any?
+        private var resignObserver: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            updateFocus()
+            if let window = window {
+                keyObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didBecomeKeyNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.onFocusChange?(true)
+                }
+                resignObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didResignKeyNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.onFocusChange?(false)
+                }
+            }
+        }
+
+        func updateFocus() {
+            onFocusChange?(window?.isKeyWindow ?? true)
+        }
+
+        deinit {
+            if let keyObserver {
+                NotificationCenter.default.removeObserver(keyObserver)
+            }
+            if let resignObserver {
+                NotificationCenter.default.removeObserver(resignObserver)
+            }
+        }
     }
 }
 

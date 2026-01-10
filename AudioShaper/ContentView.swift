@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @StateObject private var audioEngine = AudioEngine()
@@ -100,6 +101,7 @@ struct ContentView: View {
             showGlitch = true
             handleScreenChange(to: newValue)
         }
+        .animation(.easeOut(duration: 0.7), value: showSetupOverlay)
         .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
             _ = audioEngine.refreshSetupStatus()
         }
@@ -199,17 +201,21 @@ private struct OnboardingOverlay: View {
     @State private var outputDeviceName: String?
     @State private var hasVerified = false
     @State private var showSkipConfirm = false
+    @State private var backdropVisible = false
+    @State private var animateIn = false
+    @State private var flowPulse = false
 
     var body: some View {
         let inputIsBlackHole = inputDeviceName?.localizedCaseInsensitiveContains("BlackHole") == true
         let outputIsBlackHole = outputDeviceName?.localizedCaseInsensitiveContains("BlackHole") == true
         let ready = inputIsBlackHole && outputIsBlackHole
+        let blackHoleInstalled = audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
 
         ZStack {
-            Color.black.opacity(0.6)
+            Color.black.opacity(backdropVisible ? 0.6 : 0.0)
                 .ignoresSafeArea()
 
-            VStack(spacing: 18) {
+            VStack(spacing: 16) {
                 HStack {
                     Spacer()
                     Button {
@@ -225,21 +231,61 @@ private struct OnboardingOverlay: View {
                     .buttonStyle(.plain)
                 }
 
-                Text("Quick Setup")
+                Text("Hold On! Your input and output aren’t set up yet.")
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.textPrimary)
+                    .multilineTextAlignment(.center)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("1. Open System Settings → Sound")
-                    Text("2. Set Output to BlackHole 2ch")
-                    Text("3. Set Input to BlackHole 2ch")
-                    Text("4. Back in AudioShaper, pick your speakers in Output")
+                VStack(spacing: 12) {
+                    Text("Setup checklist")
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(spacing: 8) {
+                        setupStepCard(
+                            completeText: "BlackHole is installed",
+                            incompleteText: "Install BlackHole",
+                            isComplete: blackHoleInstalled,
+                            linkText: "Install",
+                            linkURL: "https://existential.audio/blackhole/"
+                        )
+                        setupStepCard(
+                            completeText: "System sound input is set to BlackHole",
+                            incompleteText: "Set system sound input to BlackHole",
+                            isComplete: inputIsBlackHole
+                        )
+                        setupStepCard(
+                            completeText: "System sound output is set to BlackHole",
+                            incompleteText: "Set system sound output to BlackHole",
+                            isComplete: outputIsBlackHole
+                        )
+                    }
                 }
-                .font(AppTypography.body)
-                .foregroundColor(AppColors.textSecondary)
-                .frame(maxWidth: 360, alignment: .leading)
+
+                signalFlowView(inputReady: inputIsBlackHole, outputReady: outputIsBlackHole)
+
+                VStack(spacing: 10) {
+                    Text("Current devices")
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 12) {
+                        deviceStatusCard(title: "Input", name: inputDeviceName, ok: inputIsBlackHole)
+                        deviceStatusCard(title: "Output", name: outputDeviceName, ok: outputIsBlackHole)
+                    }
+                }
 
                 VStack(spacing: 8) {
+                    Button("Open Sound Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppColors.neonPink)
+
                     Button("Verify Setup") {
                         inputDeviceName = audioEngine.systemDefaultInputDeviceName()
                         outputDeviceName = audioEngine.systemDefaultOutputDeviceName()
@@ -249,13 +295,6 @@ private struct OnboardingOverlay: View {
                     .buttonStyle(.bordered)
                     .tint(AppColors.neonCyan)
 
-                    if hasVerified {
-                        HStack(spacing: 10) {
-                            statusRow(title: "Input", name: inputDeviceName, ok: inputIsBlackHole)
-                            statusRow(title: "Output", name: outputDeviceName, ok: outputIsBlackHole)
-                        }
-                    }
-
                     Button("Start") {
                         onDone()
                     }
@@ -264,7 +303,7 @@ private struct OnboardingOverlay: View {
                     .tint(ready ? AppColors.neonCyan : AppColors.textSecondary)
                 }
             }
-            .padding(24)
+            .padding(22)
             .background(
                 RoundedRectangle(cornerRadius: 16)
                     .fill(AppColors.midPurple.opacity(0.95))
@@ -273,14 +312,27 @@ private struct OnboardingOverlay: View {
                             .stroke(AppColors.neonCyan.opacity(0.6), lineWidth: 1)
                     )
             )
+            .frame(maxWidth: 420)
             .shadow(color: Color.black.opacity(0.3), radius: 12, y: 6)
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : -30)
         }
-        .transition(.opacity)
+        .transition(.move(edge: .top).combined(with: .opacity))
         .onAppear {
             inputDeviceName = audioEngine.systemDefaultInputDeviceName()
             outputDeviceName = audioEngine.systemDefaultOutputDeviceName()
             _ = audioEngine.refreshSetupStatus()
             hasVerified = true
+            animateIn = false
+            withAnimation(.easeInOut(duration: 0.9)) {
+                backdropVisible = true
+            }
+            withAnimation(.easeOut(duration: 0.7)) {
+                animateIn = true
+            }
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                flowPulse = true
+            }
         }
         .alert("Skip setup?", isPresented: $showSkipConfirm) {
             Button("Skip", role: .destructive) {
@@ -290,22 +342,117 @@ private struct OnboardingOverlay: View {
         } message: {
             Text("AudioShaper won’t be functional without setting Input and Output to BlackHole. You won’t hear sound until you set it up.")
         }
+        .background(OverlayKeyCapture { event in
+            guard event.modifierFlags.contains(.command),
+                  event.charactersIgnoringModifiers?.lowercased() == "r" else { return }
+            animateIn = false
+            backdropVisible = false
+            flowPulse = false
+            withAnimation(.easeInOut(duration: 0.9)) {
+                backdropVisible = true
+            }
+            withAnimation(.easeOut(duration: 0.7)) {
+                animateIn = true
+            }
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                flowPulse = true
+            }
+        })
     }
 
-    private func statusRow(title: String, name: String?, ok: Bool) -> some View {
+    private func setupStepCard(
+        completeText: String,
+        incompleteText: String,
+        isComplete: Bool,
+        linkText: String? = nil,
+        linkURL: String? = nil
+    ) -> some View {
         HStack(spacing: 6) {
-            Text("\(title):")
-                .font(.caption)
-                .foregroundColor(AppColors.textMuted)
+            Text(isComplete ? completeText : incompleteText)
+                .font(AppTypography.caption)
+                .foregroundColor(isComplete ? AppColors.neonCyan : AppColors.neonPink)
+                .lineLimit(1)
+
+            if !isComplete, let linkText, let linkURL {
+                Button(linkText) {
+                    if let url = URL(string: linkURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(AppTypography.caption)
+                .foregroundColor(AppColors.neonCyan)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.deepBlack.opacity(0.55))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke((isComplete ? AppColors.neonCyan : AppColors.neonPink).opacity(0.4), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func deviceStatusCard(title: String, name: String?, ok: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(ok ? AppColors.neonCyan : AppColors.neonPink)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+            }
             Text(name ?? "Not detected")
-                .font(.caption)
-                .foregroundColor(ok ? AppColors.neonCyan : AppColors.neonPink)
+                .font(AppTypography.body)
+                .foregroundColor(ok ? AppColors.textPrimary : AppColors.neonPink)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.deepBlack.opacity(0.6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke((ok ? AppColors.neonCyan : AppColors.neonPink).opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func signalFlowView(inputReady: Bool, outputReady: Bool) -> some View {
+        let activeColor = AppColors.neonCyan
+        let inactiveColor = AppColors.textMuted.opacity(0.5)
+        let lineOpacity = flowPulse ? 0.9 : 0.6
+
+        return HStack(spacing: 10) {
+            flowNode(title: "Input", active: inputReady)
+            flowLine(active: inputReady, opacity: lineOpacity)
+            flowNode(title: "AudioShaper", active: inputReady && outputReady)
+            flowLine(active: outputReady, opacity: lineOpacity)
+            flowNode(title: "Output", active: outputReady)
+        }
         .padding(.vertical, 6)
-        .background(AppColors.deepBlack.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .foregroundColor(inputReady ? activeColor : inactiveColor)
+    }
+
+    private func flowNode(title: String, active: Bool) -> some View {
+        VStack(spacing: 4) {
+            Circle()
+                .fill(active ? AppColors.neonCyan : AppColors.textMuted.opacity(0.4))
+                .frame(width: 10, height: 10)
+                .shadow(color: active ? AppColors.neonCyan.opacity(0.6) : Color.clear, radius: 6)
+            Text(title)
+                .font(AppTypography.caption)
+                .foregroundColor(active ? AppColors.textSecondary : AppColors.textMuted)
+        }
+    }
+
+    private func flowLine(active: Bool, opacity: Double) -> some View {
+        Capsule()
+            .fill(active ? AppColors.neonCyan.opacity(opacity) : AppColors.textMuted.opacity(0.3))
+            .frame(width: 40, height: 2)
+            .shadow(color: active ? AppColors.neonCyan.opacity(0.5) : Color.clear, radius: 6)
     }
 }
 
@@ -500,6 +647,35 @@ struct NeonActionButton: View {
     }
 }
 
+private struct OverlayKeyCapture: NSViewRepresentable {
+    let onKeyDown: (NSEvent) -> Void
+
+    func makeNSView(context: Context) -> KeyView {
+        let view = KeyView()
+        view.onKeyDown = onKeyDown
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyView, context: Context) {
+        nsView.onKeyDown = onKeyDown
+    }
+
+    final class KeyView: NSView {
+        var onKeyDown: ((NSEvent) -> Void)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.makeFirstResponder(self)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            onKeyDown?(event)
+        }
+    }
+}
+
 struct AppTopBar: View {
     let title: String
     let onBack: () -> Void
@@ -579,6 +755,7 @@ struct HeaderView: View {
                 if audioEngine.isRunning {
                     audioEngine.stop()
                 } else {
+                    _ = audioEngine.refreshSetupStatus()
                     guard audioEngine.setupReady else {
                         audioEngine.errorMessage = "System Input/Output must be BlackHole 2ch to start."
                         return
