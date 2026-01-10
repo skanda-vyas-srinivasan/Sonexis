@@ -28,8 +28,14 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 if activeScreen == .home {
                     HomeView(
-                        onBuildFromScratch: { activeScreen = .beginner },
-                        onApplyPresets: { activeScreen = .presets },
+                        onBuildFromScratch: {
+                            tutorial.handleBuildClick()
+                            activeScreen = .beginner
+                        },
+                        onApplyPresets: {
+                            tutorial.handlePresetsClick()
+                            activeScreen = .presets
+                        },
                         onTutorial: { tutorial.startFromHelp() },
                         allowBuild: tutorial.allowBuildAction,
                         allowPresets: tutorial.allowPresetsAction
@@ -37,22 +43,31 @@ struct ContentView: View {
                 } else {
                     AppTopBar(
                         title: activeScreen == .beginner ? "Build" : "Presets",
-                        onBack: { activeScreen = .home }
+                        onBack: {
+                            tutorial.handleBackClick()
+                            activeScreen = .home
+                        },
+                        tutorialTarget: .backButton,
+                        allowBack: !tutorial.isActive || tutorial.allowBackAction
                     )
 
                     if activeScreen == .beginner {
                         HeaderView(
                             audioEngine: audioEngine,
                             onSave: {
+                                tutorial.advanceIf(.buildSave)
                                 saveCurrentPreset(overwrite: true)
                             },
                             onLoad: {
+                                tutorial.advanceIf(.buildLoad)
                                 showingLoadDialog = true
                             },
                             onSaveAs: {
                                 presetNameInput = ""
                                 showingSaveDialog = true
                             },
+                            allowSave: !tutorial.isActive || tutorial.step == .buildSave,
+                            allowLoad: !tutorial.isActive || tutorial.step == .buildLoad,
                             saveStatusText: $saveStatusText
                         )
                     }
@@ -70,10 +85,11 @@ struct ContentView: View {
                                     currentPresetID = preset.id
                                     skipRestoreOnEnter = true
                                     activeScreen = .beginner
-                                }
+                                },
+                                tutorial: tutorial
                             )
                         case .beginner:
-                            BeginnerView(audioEngine: audioEngine)
+                            BeginnerView(audioEngine: audioEngine, tutorial: tutorial)
                         case .home:
                             EmptyView()
                         }
@@ -98,7 +114,7 @@ struct ContentView: View {
                 }
             }
 
-            if tutorial.isActive && activeScreen == .home {
+            if tutorial.isActive {
                 TutorialOverlay(
                     step: tutorial.step,
                     targets: tutorialTargets,
@@ -795,6 +811,8 @@ private struct OverlayKeyCapture: NSViewRepresentable {
 struct AppTopBar: View {
     let title: String
     let onBack: () -> Void
+    let tutorialTarget: TutorialTarget?
+    let allowBack: Bool
 
     var body: some View {
         HStack(spacing: 12) {
@@ -804,6 +822,18 @@ struct AppTopBar: View {
             }
             .buttonStyle(.plain)
             .foregroundColor(AppColors.textSecondary)
+            .disabled(!allowBack)
+            .opacity(allowBack ? 1.0 : 0.35)
+            .background(
+                GeometryReader { proxy in
+                    if let tutorialTarget {
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [tutorialTarget: proxy.frame(in: .global)]
+                        )
+                    }
+                }
+            )
 
             Text(title)
                 .font(AppTypography.technical)
@@ -818,12 +848,20 @@ struct AppTopBar: View {
     }
 }
 
-private enum TutorialTarget: Hashable {
+enum TutorialTarget: Hashable {
     case buildButton
     case presetsButton
+    case backButton
+    case buildGraphMode
+    case buildWiringMode
+    case buildBassBoost
+    case buildCanvas
+    case buildSave
+    case buildLoad
+    case buildNode
 }
 
-private struct TutorialTargetPreferenceKey: PreferenceKey {
+struct TutorialTargetPreferenceKey: PreferenceKey {
     static var defaultValue: [TutorialTarget: CGRect] = [:]
 
     static func reduce(value: inout [TutorialTarget: CGRect], nextValue: () -> [TutorialTarget: CGRect]) {
@@ -831,14 +869,25 @@ private struct TutorialTargetPreferenceKey: PreferenceKey {
     }
 }
 
-private enum TutorialStep: Equatable {
+enum TutorialStep: Equatable {
     case inactive
     case welcome
     case homePresets
+    case presetsBack
     case homeBuild
+    case buildIntro
+    case buildAddBass
+    case buildDoubleClick
+    case buildRightClick
+    case buildWiringManual
+    case buildConnect
+    case buildGraphMode
+    case buildSave
+    case buildLoad
+    case buildFinish
 }
 
-private final class TutorialController: ObservableObject {
+final class TutorialController: ObservableObject {
     @Published var step: TutorialStep = .inactive
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
@@ -855,7 +904,34 @@ private final class TutorialController: ObservableObject {
 
     var allowPresetsAction: Bool {
         switch step {
-        case .inactive:
+        case .inactive, .homePresets:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var allowBackAction: Bool {
+        switch step {
+        case .presetsBack:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isBuildStep: Bool {
+        switch step {
+        case .buildIntro,
+             .buildAddBass,
+             .buildDoubleClick,
+             .buildRightClick,
+             .buildWiringManual,
+             .buildConnect,
+             .buildGraphMode,
+             .buildSave,
+             .buildLoad,
+             .buildFinish:
             return true
         default:
             return false
@@ -877,11 +953,57 @@ private final class TutorialController: ObservableObject {
         case .welcome:
             step = .homePresets
         case .homePresets:
+            step = .presetsBack
+        case .presetsBack:
             step = .homeBuild
         case .homeBuild:
+            step = .buildIntro
+        case .buildIntro:
+            step = .buildAddBass
+        case .buildAddBass:
+            step = .buildDoubleClick
+        case .buildDoubleClick:
+            step = .buildRightClick
+        case .buildRightClick:
+            step = .buildWiringManual
+        case .buildWiringManual:
+            step = .buildConnect
+        case .buildConnect:
+            step = .buildGraphMode
+        case .buildGraphMode:
+            step = .buildSave
+        case .buildSave:
+            step = .buildLoad
+        case .buildLoad:
+            step = .buildFinish
+        case .buildFinish:
             step = .inactive
         case .inactive:
             break
+        }
+    }
+
+    func handlePresetsClick() {
+        if step == .homePresets {
+            step = .presetsBack
+        }
+    }
+
+    func handleBuildClick() {
+        if step == .homeBuild {
+            step = .buildIntro
+        }
+    }
+
+    func handleBackClick() {
+        if step == .presetsBack {
+            step = .homeBuild
+        }
+    }
+
+    func advanceIf(_ expected: TutorialStep) {
+        if step == expected {
+            advance()
         }
     }
 
@@ -926,6 +1048,20 @@ private struct TutorialOverlay: View {
             return convertToLocal(rect: targets[.presetsButton], proxy: proxy)
         case .homeBuild:
             return convertToLocal(rect: targets[.buildButton], proxy: proxy)
+        case .presetsBack:
+            return convertToLocal(rect: targets[.backButton], proxy: proxy)
+        case .buildWiringManual:
+            return convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)
+        case .buildGraphMode:
+            return convertToLocal(rect: targets[.buildGraphMode], proxy: proxy)
+        case .buildAddBass:
+            return convertToLocal(rect: targets[.buildBassBoost], proxy: proxy)
+        case .buildDoubleClick:
+            return convertToLocal(rect: targets[.buildNode], proxy: proxy)
+        case .buildSave:
+            return convertToLocal(rect: targets[.buildSave], proxy: proxy)
+        case .buildLoad:
+            return convertToLocal(rect: targets[.buildLoad], proxy: proxy)
         default:
             return nil
         }
@@ -992,13 +1128,79 @@ private struct TutorialOverlay: View {
             return (
                 title: "Presets",
                 body: "Browse saved chains and load them instantly.",
-                showNext: true
+                showNext: false
+            )
+        case .presetsBack:
+            return (
+                title: "Back to Home",
+                body: "Click Home to head back.",
+                showNext: false
             )
         case .homeBuild:
             return (
                 title: "Build",
                 body: "Click Build from scratch to start crafting your chain.",
                 showNext: false
+            )
+        case .buildIntro:
+            return (
+                title: "Your canvas",
+                body: "This is where you build your chain. Let’s add your first block.",
+                showNext: true
+            )
+        case .buildAddBass:
+            return (
+                title: "Add Bass Boost",
+                body: "Click Bass Boost in the Effects tray.",
+                showNext: false
+            )
+        case .buildDoubleClick:
+            return (
+                title: "Edit a block",
+                body: "Double‑click the Bass Boost node to reveal its controls.",
+                showNext: false
+            )
+        case .buildRightClick:
+            return (
+                title: "Right‑click menu",
+                body: "Right‑click the node to see actions like duplicate and reset.",
+                showNext: false
+            )
+        case .buildWiringManual:
+            return (
+                title: "Manual wiring",
+                body: "Switch Wiring to Manual.",
+                showNext: false
+            )
+        case .buildConnect:
+            return (
+                title: "Connect nodes",
+                body: "Option‑drag from a node to another to connect them.",
+                showNext: false
+            )
+        case .buildGraphMode:
+            return (
+                title: "Stereo vs Dual Mono",
+                body: "Switch Graph Mode to Dual Mono (L/R).",
+                showNext: false
+            )
+        case .buildSave:
+            return (
+                title: "Save your chain",
+                body: "Click Save to store this preset.",
+                showNext: false
+            )
+        case .buildLoad:
+            return (
+                title: "Load presets",
+                body: "Click Load Preset to bring one back.",
+                showNext: false
+            )
+        case .buildFinish:
+            return (
+                title: "All set",
+                body: "That’s the basics. You’re ready to build.",
+                showNext: true
             )
         case .inactive:
             return nil
@@ -1088,6 +1290,8 @@ struct HeaderView: View {
     let onSave: () -> Void
     let onLoad: () -> Void
     let onSaveAs: () -> Void
+    let allowSave: Bool
+    let allowLoad: Bool
     @Binding var saveStatusText: String?
 
     var body: some View {
@@ -1202,6 +1406,16 @@ struct HeaderView: View {
                         .buttonStyle(.plain)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
+                        .disabled(!allowSave)
+                        .opacity(allowSave ? 1.0 : 0.4)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: TutorialTargetPreferenceKey.self,
+                                    value: [.buildSave: proxy.frame(in: .global)]
+                                )
+                            }
+                        )
 
                         Divider()
                             .frame(height: 16)
@@ -1224,6 +1438,8 @@ struct HeaderView: View {
                         }
                         .menuIndicator(.hidden)
                         .buttonStyle(.plain)
+                        .disabled(!allowSave)
+                        .opacity(allowSave ? 1.0 : 0.4)
                     }
                     .background(AppColors.neonCyan.opacity(0.18))
                     .overlay(
@@ -1237,6 +1453,16 @@ struct HeaderView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(AppColors.neonPink)
+                    .disabled(!allowLoad)
+                    .opacity(allowLoad ? 1.0 : 0.4)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: TutorialTargetPreferenceKey.self,
+                                value: [.buildLoad: proxy.frame(in: .global)]
+                            )
+                        }
+                    )
                 }
 
                 if let saveStatusText {
@@ -1258,6 +1484,7 @@ struct PresetView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var presetManager: PresetManager
     let onPresetApplied: (SavedPreset) -> Void
+    @ObservedObject var tutorial: TutorialController
     @State private var searchText = ""
 
     var body: some View {
@@ -1310,7 +1537,8 @@ struct PresetView: View {
                                 },
                                 onDelete: {
                                     presetManager.deletePreset(preset)
-                                }
+                                },
+                                isDisabled: tutorial.step == .presetsBack
                             )
                         }
                     }
@@ -1319,6 +1547,7 @@ struct PresetView: View {
                 }
             }
         }
+        .allowsHitTesting(!tutorial.isActive || tutorial.step != .presetsBack)
     }
 }
 
@@ -1326,6 +1555,7 @@ struct PresetCard: View {
     let preset: SavedPreset
     let onApply: () -> Void
     let onDelete: () -> Void
+    let isDisabled: Bool
     @State private var isHovered = false
 
     var body: some View {
@@ -1366,6 +1596,8 @@ struct PresetCard: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.4 : 1.0)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.2)) {
                 isHovered = hovering

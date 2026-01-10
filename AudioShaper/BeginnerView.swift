@@ -4,6 +4,7 @@ import SwiftUI
 
 struct BeginnerView: View {
     @ObservedObject var audioEngine: AudioEngine
+    @ObservedObject var tutorial: TutorialController
     @Environment(\.scenePhase) private var scenePhase
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
@@ -99,129 +100,152 @@ struct BeginnerView: View {
         case manual     // Pure manual wiring only
     }
 
-    var body: some View {
-        let leftAutoPath = graphMode == .split ? chainPath(for: .left) : chainPath(for: nil)
-        let rightAutoPath = graphMode == .split ? chainPath(for: .right) : []
-        let pathIDs = wiringMode == .automatic
-            ? Set((leftAutoPath + rightAutoPath).map { $0.id })
-            : reachableNodeIDsFromStart()
-        let isAnimating = audioEngine.isRunning && showSignalFlow && isAppActive
-        let arrowFps = arrowFpsOptions[arrowFpsIndex]
-
-        HStack(spacing: 0) {
-            EffectTray(
-                isCollapsed: $isTrayCollapsed,
-                previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
-                onSelect: { type in
-                    addEffectToChain(type)
-                },
-                onDrag: { type in
-                    draggedEffectType = type
+    @ViewBuilder
+    private var toolbarView: some View {
+        HStack(spacing: 18) {
+            HStack(spacing: 8) {
+                Text("Graph Mode")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+                Picker("", selection: $graphMode) {
+                    Text("Stereo").tag(GraphMode.single)
+                    Text("Dual Mono (L/R)").tag(GraphMode.split)
                 }
-            )
-
-            VStack(spacing: 0) {
-                HStack(spacing: 18) {
-                    HStack(spacing: 8) {
-                        Text("Graph Mode")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textMuted)
-                        Picker("", selection: $graphMode) {
-                            Text("Stereo").tag(GraphMode.single)
-                            Text("Dual Mono (L/R)").tag(GraphMode.split)
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .onChange(of: graphMode) { _ in
-                            if graphMode == .split {
-                                syncLanesForSplit()
-                            }
-                            applyChainToEngine()
-                        }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .disabled(tutorial.isBuildStep && tutorial.step != .buildGraphMode)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.buildGraphMode: proxy.frame(in: .global)]
+                        )
                     }
-
-                    HStack(spacing: 8) {
-                        Text("Wiring")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textMuted)
-                        Picker("", selection: $wiringMode) {
-                            Text("Automatic").tag(WiringMode.automatic)
-                            Text("Manual").tag(WiringMode.manual)
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .help(wiringMode == .automatic ?
-                              "Automatic: Effects flow left-to-right by position." :
-                              "Manual: Pure manual wiring. Option+drag to connect.")
-                        .onChange(of: wiringMode) { _ in
-                            if wiringMode == .automatic {
-                                activeConnectionFromID = nil
-                                activeConnectionPoint = .zero
-                                isOptionHeld = false
-                            }
-                            applyChainToEngine()
-                            updateCursor()
-                        }
+                )
+                .onChange(of: graphMode) { _ in
+                    if graphMode == .split {
+                        syncLanesForSplit()
                     }
-
-                    HStack(spacing: 6) {
-                        Text("Flow")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textMuted)
-                        Button(arrowFps == 0 ? "Flow Off" : "\(Int(arrowFps)) FPS") {
-                            arrowFpsIndex = (arrowFpsIndex + 1) % arrowFpsOptions.count
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(AppColors.textSecondary)
-                    }
-
-                    HStack(spacing: 6) {
-                        Button {
-                            undo()
-                        } label: {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(undoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
-                        .disabled(undoStack.isEmpty)
-
-                        Button {
-                            redo()
-                        } label: {
-                            Image(systemName: "arrow.uturn.forward")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(redoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
-                        .disabled(redoStack.isEmpty)
-                    }
-
-                    Spacer()
-
-                    Menu {
-                        Button("Clear Canvas") {
-                            clearCanvas()
-                        }
-                        Button("Reset Wiring") {
-                            resetWiring()
-                        }
-                        .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
-                    } label: {
-                        Text("Canvas")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textSecondary)
-                    }
+                    applyChainToEngine()
+                    tutorial.advanceIf(.buildGraphMode)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(AppColors.midPurple.opacity(0.9))
+            }
 
-                Divider()
-                    .background(AppColors.gridLines)
+            HStack(spacing: 8) {
+                Text("Wiring")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+                Picker("", selection: $wiringMode) {
+                    Text("Automatic").tag(WiringMode.automatic)
+                    Text("Manual").tag(WiringMode.manual)
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .disabled(tutorial.isBuildStep && tutorial.step != .buildWiringManual)
+                .help(wiringMode == .automatic ?
+                      "Automatic: Effects flow left-to-right by position." :
+                      "Manual: Pure manual wiring. Option+drag to connect.")
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.buildWiringMode: proxy.frame(in: .global)]
+                        )
+                    }
+                )
+                .onChange(of: wiringMode) { _ in
+                    if wiringMode == .automatic {
+                        activeConnectionFromID = nil
+                        activeConnectionPoint = .zero
+                        isOptionHeld = false
+                    }
+                    applyChainToEngine()
+                    updateCursor()
+                    tutorial.advanceIf(.buildWiringManual)
+                }
+            }
 
-                // Free-placement canvas
-                GeometryReader { geometry in
+            HStack(spacing: 6) {
+                Text("Flow")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+                Button(arrowFps == 0 ? "Flow Off" : "\(Int(arrowFps)) FPS") {
+                    arrowFpsIndex = (arrowFpsIndex + 1) % arrowFpsOptions.count
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(AppColors.textSecondary)
+                .disabled(tutorial.isBuildStep)
+            }
+
+            HStack(spacing: 6) {
+                Button {
+                    undo()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(undoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
+                .disabled(undoStack.isEmpty || tutorial.isBuildStep)
+
+                Button {
+                    redo()
+                } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(redoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
+                .disabled(redoStack.isEmpty || tutorial.isBuildStep)
+            }
+
+            Spacer()
+
+            Menu {
+                Button("Clear Canvas") {
+                    clearCanvas()
+                }
+                Button("Reset Wiring") {
+                    resetWiring()
+                }
+                .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
+            } label: {
+                Text("Canvas")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textSecondary)
+            }
+            .disabled(tutorial.isBuildStep)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(AppColors.midPurple.opacity(0.9))
+    }
+
+    private var leftAutoPath: [BeginnerNode] {
+        graphMode == .split ? chainPath(for: .left) : chainPath(for: nil)
+    }
+
+    private var rightAutoPath: [BeginnerNode] {
+        graphMode == .split ? chainPath(for: .right) : []
+    }
+
+    private var pathIDs: Set<UUID> {
+        if wiringMode == .automatic {
+            return Set((leftAutoPath + rightAutoPath).map { $0.id })
+        }
+        return reachableNodeIDsFromStart()
+    }
+
+    private var isAnimating: Bool {
+        audioEngine.isRunning && showSignalFlow && isAppActive
+    }
+
+    private var arrowFps: Double {
+        arrowFpsOptions[arrowFpsIndex]
+    }
+
+    @ViewBuilder
+    private func canvasContent(in geometry: GeometryProxy) -> some View {
                     ZStack {
                     AppGradients.background
                         .ignoresSafeArea()
@@ -239,6 +263,7 @@ struct BeginnerView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
+                                    guard !tutorial.isBuildStep else { return }
                                     guard !NSEvent.modifierFlags.contains(.option) else { return }
                                     guard draggingNodeID == nil else { return }
 
@@ -248,6 +273,11 @@ struct BeginnerView: View {
                                     lassoCurrent = value.location
                                 }
                                 .onEnded { _ in
+                                    guard !tutorial.isBuildStep else {
+                                        lassoStart = nil
+                                        lassoCurrent = nil
+                                        return
+                                    }
                                     guard let start = lassoStart, let current = lassoCurrent else {
                                         lassoStart = nil
                                         lassoCurrent = nil
@@ -363,7 +393,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             activeConnectionFromID = leftStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -373,7 +403,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -395,7 +425,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             activeConnectionFromID = rightStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -405,7 +435,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -427,7 +457,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             activeConnectionFromID = startNodeID
                                             activeConnectionPoint = CGPoint(
@@ -437,7 +467,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -454,15 +484,15 @@ struct BeginnerView: View {
                             .position(endNodePosition(in: geometry.size, lane: nil))
                     }
 
-                    ForEach(effectChain, id: \.id) { effect in
-                        let effectValue = effect
-                    let nodePos = displayNodePosition(effectValue, in: geometry.size)
+                    ForEach($effectChain) { effect in
+                        let effectValue = effect.wrappedValue
+                        let nodePos = displayNodePosition(effectValue, in: geometry.size)
                         let isWired = pathIDs.contains(effectValue.id)
                         let isSelected = selectedNodeIDs.contains(effectValue.id)
                         let isDropAnimating = dropAnimatedNodeIDs.contains(effectValue.id)
 
                         EffectBlockHorizontal(
-                            effect: bindingForEffect(effectValue.id),
+                            effect: effect,
                             isWired: isWired,
                             isSelected: isSelected,
                             isDropAnimating: isDropAnimating,
@@ -475,13 +505,30 @@ struct BeginnerView: View {
                             },
                             onUpdate: {
                                 applyChainToEngine()
-                            }
+                            },
+                            onExpanded: {
+                                tutorial.advanceIf(.buildDoubleClick)
+                            },
+                            allowExpand: !tutorial.isBuildStep || tutorial.step == .buildDoubleClick
                         )
                         .scaleEffect(nodeScale)
                         .position(nodePos)
+                        .background(
+                            GeometryReader { proxy in
+                                if effectValue.type == .bassBoost {
+                                    Color.clear.preference(
+                                        key: TutorialTargetPreferenceKey.self,
+                                        value: [.buildNode: proxy.frame(in: .global)]
+                                    )
+                                }
+                            }
+                        )
                         .simultaneousGesture(
                             TapGesture()
                                 .onEnded {
+                                    if tutorial.isBuildStep {
+                                        return
+                                    }
                                     guard wiringMode == .manual else { return }
                                     let isShift = NSEvent.modifierFlags.contains(.shift)
                                     if isShift {
@@ -494,7 +541,7 @@ struct BeginnerView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option)
+                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect)
                                     if hasOption {
                                         // Wiring mode
                                         activeConnectionFromID = effectValue.id
@@ -503,6 +550,9 @@ struct BeginnerView: View {
                                             y: nodePos.y + value.translation.height
                                         )
                                     } else {
+                                        if tutorial.isBuildStep {
+                                            return
+                                        }
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
                                             draggingNodeID = effectValue.id
@@ -541,7 +591,7 @@ struct BeginnerView: View {
                                     }
                                 }
                                 .onEnded { value in
-                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option)
+                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect)
                                     if hasOption {
                                         // Finalize wiring
                                         let dropPoint = CGPoint(
@@ -550,6 +600,11 @@ struct BeginnerView: View {
                                         )
                                         finalizeConnection(from: effectValue.id, dropPoint: dropPoint)
                                     } else {
+                                        if tutorial.isBuildStep {
+                                            activeConnectionFromID = nil
+                                            activeConnectionPoint = .zero
+                                            return
+                                        }
                                         activeConnectionFromID = nil
                                         activeConnectionPoint = .zero
                                         // Finalize move
@@ -576,6 +631,12 @@ struct BeginnerView: View {
                         }
                     }
                 }
+    }
+
+    @ViewBuilder
+    private var canvasView: some View {
+        GeometryReader { geometry in
+            canvasContent(in: geometry)
                 .onHover { hovering in
                     isCanvasHovering = hovering
                     updateCursor()
@@ -614,6 +675,12 @@ struct BeginnerView: View {
                         laneForPoint(point, in: geometry.size)
                     },
                     onAdd: { newNode in
+                        if tutorial.isBuildStep && tutorial.step != .buildAddBass {
+                            return
+                        }
+                        if tutorial.step == .buildAddBass && newNode.type != .bassBoost {
+                            return
+                        }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                             recordUndoSnapshot()
                             var node = newNode
@@ -622,21 +689,46 @@ struct BeginnerView: View {
                             effectChain.append(node)
                             triggerDropAnimation(for: node.id)
                             applyChainToEngine()
+                            tutorial.advanceIf(.buildAddBass)
                         }
                     }
                 ))
                 .gesture(
                     MagnificationGesture()
                         .onChanged { value in
-            let next = nodeStartScale * value
-            nodeScale = min(max(next, 0.4), 1.8)
-        }
-        .onEnded { _ in
-            nodeStartScale = nodeScale
-        }
+                            guard !tutorial.isBuildStep else { return }
+                            let next = nodeStartScale * value
+                            nodeScale = min(max(next, 0.4), 1.8)
+                        }
+                        .onEnded { _ in
+                            guard !tutorial.isBuildStep else { return }
+                            nodeStartScale = nodeScale
+                        }
                 )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            EffectTray(
+                isCollapsed: $isTrayCollapsed,
+                previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
+                onSelect: { type in
+                    addEffectToChain(type)
+                },
+                onDrag: { type in
+                    draggedEffectType = type
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            )
+
+            VStack(spacing: 0) {
+                toolbarView
+
+                Divider()
+                    .background(AppColors.gridLines)
+
+                canvasView
             }
         }
         .overlay(
@@ -650,6 +742,14 @@ struct BeginnerView: View {
         )
         .onAppear {
             showSignalFlow = audioEngine.isRunning
+        }
+        .onChange(of: tutorial.step) { step in
+            if step == .buildWiringManual && wiringMode == .manual {
+                tutorial.advance()
+            }
+            if step == .buildGraphMode && graphMode == .split {
+                tutorial.advance()
+            }
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
             showSignalFlow = isRunning
@@ -712,6 +812,12 @@ struct BeginnerView: View {
     }
 
     private func addEffectToChain(_ type: EffectType) {
+        if tutorial.isBuildStep && tutorial.step != .buildAddBass {
+            return
+        }
+        if tutorial.step == .buildAddBass && type != .bassBoost {
+            return
+        }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
             recordUndoSnapshot()
             let lane: GraphLane? = graphMode == .split ? .left : nil
@@ -726,6 +832,7 @@ struct BeginnerView: View {
             effectChain.append(newEffect)
             triggerDropAnimation(for: newEffect.id)
             applyChainToEngine()
+            tutorial.advanceIf(.buildAddBass)
         }
     }
 
@@ -1154,12 +1261,18 @@ struct BeginnerView: View {
     }
 
     private func handleRightClick(at point: CGPoint, in size: CGSize) {
+        if tutorial.isBuildStep && tutorial.step != .buildRightClick {
+            return
+        }
         // Check nodes
         let nodeRadius: CGFloat = 60 * nodeScale
         if let hitNode = effectChain.first(where: { node in
             let pos = displayNodePosition(node, in: size)
             return hypot(point.x - pos.x, point.y - pos.y) <= nodeRadius
         }) {
+            if tutorial.step == .buildRightClick && hitNode.type != .bassBoost {
+                return
+            }
             var items: [CustomContextMenu.Item] = [
                 CustomContextMenu.Item(
                     title: "Delete Node",
@@ -1190,6 +1303,7 @@ struct BeginnerView: View {
             let tint = accentPalette[hitNode.accentIndex % accentPalette.count].fill
             let menu = CustomContextMenu(anchor: displayNodePosition(hitNode, in: size), position: point, tint: tint, items: items)
             customContextMenu = menuAdjusted(menu)
+            tutorial.advanceIf(.buildRightClick)
             return
         }
 
@@ -1694,6 +1808,7 @@ struct BeginnerView: View {
         }
         print("   ✅ Connection created! Total connections: \(manualConnections.count)")
         applyChainToEngine()
+        tutorial.advanceIf(.buildConnect)
     }
 
     private func nearestConnectionTarget(from fromID: UUID, at point: CGPoint) -> UUID? {
@@ -2130,6 +2245,16 @@ fileprivate struct EffectPaletteButton: View {
                 .multilineTextAlignment(.center)
                 .frame(width: 70)
         }
+        .background(
+            GeometryReader { proxy in
+                if effectType == .bassBoost {
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildBassBoost: proxy.frame(in: .global)]
+                    )
+                }
+            }
+        )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
                 isHovered = hovering
@@ -2815,6 +2940,8 @@ struct EffectBlockHorizontal: View {
     let nodeScale: CGFloat
     let onRemove: () -> Void
     let onUpdate: () -> Void
+    let onExpanded: () -> Void
+    let allowExpand: Bool
     @State private var isHovered = false
     @State private var isExpanded = false
     @State private var dropScale: CGFloat = 1.0
@@ -2879,8 +3006,14 @@ struct EffectBlockHorizontal: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture(count: 2) {
+                if !allowExpand {
+                    return
+                }
                 withAnimation(.easeOut(duration: 0.25)) {
                     isExpanded.toggle()
+                    if isExpanded {
+                        onExpanded()
+                    }
                 }
             }
 
