@@ -11,6 +11,9 @@ struct ContentView: View {
     @State private var saveStatusText: String?
     @State private var saveStatusClearTask: DispatchWorkItem?
     @State private var showGlitch = false
+    @State private var lastGraphSnapshot: GraphSnapshot?
+    @State private var lastActiveScreen: AppScreen = .home
+    @State private var skipRestoreOnEnter = false
 
     var body: some View {
         ZStack {
@@ -57,6 +60,7 @@ struct ContentView: View {
                                 presetManager: presetManager,
                                 onPresetApplied: { preset in
                                     currentPresetID = preset.id
+                                    skipRestoreOnEnter = true
                                     activeScreen = .beginner
                                 }
                             )
@@ -76,8 +80,9 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: activeScreen) { _ in
+        .onChange(of: activeScreen) { newValue in
             showGlitch = true
+            handleScreenChange(to: newValue)
         }
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
@@ -117,6 +122,22 @@ struct ContentView: View {
         currentPresetID = preset.id
         showSaveStatus("Saved at \(formattedTime())")
         // Save succeeded.
+    }
+
+    private func handleScreenChange(to newScreen: AppScreen) {
+        if lastActiveScreen == .beginner {
+            lastGraphSnapshot = audioEngine.currentGraphSnapshot
+        }
+
+        if newScreen == .beginner {
+            if skipRestoreOnEnter {
+                skipRestoreOnEnter = false
+            } else if let snapshot = lastGraphSnapshot {
+                audioEngine.requestGraphLoad(snapshot)
+            }
+        }
+
+        lastActiveScreen = newScreen
     }
 
     private func saveCurrentPreset(overwrite: Bool = false) {

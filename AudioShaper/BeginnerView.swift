@@ -42,6 +42,9 @@ struct BeginnerView: View {
     @State private var redoStack: [GraphSnapshot] = []
     @State private var dragUndoSnapshot: GraphSnapshot?
     @State private var isRestoringSnapshot = false
+    @State private var isCanvasHovering = false
+    @State private var isOptionHeld = false
+    @State private var flagsMonitor: Any?
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
@@ -439,6 +442,7 @@ struct BeginnerView: View {
                             isSelected: isSelected,
                             isDropAnimating: isDropAnimating,
                             tileStyle: accentPalette[effectValue.accentIndex % accentPalette.count],
+                            nodeScale: nodeScale,
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     removeEffect(id: effectValue.id)
@@ -547,6 +551,10 @@ struct BeginnerView: View {
                         }
                     }
                 }
+                .onHover { hovering in
+                    isCanvasHovering = hovering
+                    updateCursor()
+                }
                 .onAppear {
                     canvasSize = geometry.size
                 }
@@ -622,6 +630,33 @@ struct BeginnerView: View {
         }
         .onChange(of: scenePhase) { phase in
             isAppActive = phase == .active
+        }
+        .onAppear {
+            if flagsMonitor == nil {
+                flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+                    isOptionHeld = event.modifierFlags.contains(.option)
+                    updateCursor()
+                    return event
+                }
+            }
+        }
+        .onDisappear {
+            if let monitor = flagsMonitor {
+                NSEvent.removeMonitor(monitor)
+                flagsMonitor = nil
+            }
+        }
+    }
+
+    private func updateCursor() {
+        guard isCanvasHovering else {
+            NSCursor.arrow.set()
+            return
+        }
+        if isOptionHeld {
+            NSCursor.crosshair.set()
+        } else {
+            NSCursor.arrow.set()
         }
     }
 
@@ -1884,8 +1919,6 @@ struct CanvasDropDelegate: DropDelegate {
 // MARK: - Insertion Indicator
 
 struct InsertionIndicator: View {
-    @State private var pulse = false
-
     var body: some View {
         Rectangle()
             .fill(
@@ -1897,12 +1930,7 @@ struct InsertionIndicator: View {
             )
             .frame(width: 4, height: 120)
             .cornerRadius(2)
-            .shadow(color: .blue.opacity(0.5), radius: pulse ? 12 : 6)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            }
+            .shadow(color: .blue.opacity(0.5), radius: 6)
     }
 }
 
@@ -2093,8 +2121,6 @@ fileprivate struct EffectDragPreview: View {
 // MARK: - Start/End Nodes
 
 struct StartNodeView: View {
-    @State private var pulse = false
-
     var body: some View {
         VStack(spacing: 8) {
             Circle()
@@ -2117,25 +2143,17 @@ struct StartNodeView: View {
                         .font(.system(size: 24))
                         .foregroundColor(.white)
                 )
-                .shadow(color: AppColors.neonCyan.opacity(0.25), radius: pulse ? 18 : 9)
-                .scaleEffect(pulse ? 1.05 : 1.0)
+                .shadow(color: AppColors.neonCyan.opacity(0.25), radius: 9)
 
             Text("Start")
                 .font(AppTypography.caption)
                 .foregroundColor(AppColors.textSecondary)
         }
         .frame(width: 80)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
     }
 }
 
 struct EndNodeView: View {
-    @State private var pulse = false
-
     var body: some View {
         VStack(spacing: 8) {
             Circle()
@@ -2158,19 +2176,13 @@ struct EndNodeView: View {
                         .font(.system(size: 24))
                         .foregroundColor(.white)
                 )
-                .shadow(color: AppColors.neonPink.opacity(0.25), radius: pulse ? 18 : 9)
-                .scaleEffect(pulse ? 1.05 : 1.0)
+                .shadow(color: AppColors.neonPink.opacity(0.25), radius: 9)
 
             Text("End")
                 .font(AppTypography.caption)
                 .foregroundColor(AppColors.textSecondary)
         }
         .frame(width: 80)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
     }
 }
 
@@ -2225,32 +2237,36 @@ struct FlowLine: View {
     let level: Float
     let beatPulse: CGFloat
     @State private var bounce: CGFloat = 0
+    @State private var cachedPath: Path?
 
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
         let thickness: CGFloat = 3.5
+        let path = cachedPath ?? makePath()
         Group {
             if isActive {
-                TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { context in
-                    let time = context.date.timeIntervalSinceReferenceDate
-                    let dx = to.x - from.x
-                    let dy = to.y - from.y
-                    let length = max(sqrt(dx * dx + dy * dy), 1)
-                    let pixelsPerSecond: CGFloat = 90
-                    let phaseSpeed = pixelsPerSecond / length
-                    let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
-
-                    ZStack {
-                        Path { path in
-                            path.move(to: from)
-                            path.addLine(to: to)
-                        }
+                ZStack {
+                    path
+                        .stroke(AppColors.wireActive.opacity(0.9), lineWidth: thickness + 2)
+                        .blur(radius: 6)
+                    path
+                        .stroke(Color(hex: "#FF5FBF").opacity(0.45), lineWidth: thickness + 6)
+                        .blur(radius: 14)
+                    path
                         .stroke(AppColors.wireActive.opacity(baseOpacity), lineWidth: thickness)
-                        .contentShape(Path { path in
-                            path.move(to: from)
-                            path.addLine(to: to)
-                        }.strokedPath(.init(lineWidth: thickness + 10)))
+                        .shadow(color: AppColors.wireActive.opacity(0.8), radius: 16)
+                        .shadow(color: AppColors.wireActive.opacity(0.45), radius: 28)
+                        .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
+
+                    TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { context in
+                        let time = context.date.timeIntervalSinceReferenceDate
+                        let dx = to.x - from.x
+                        let dy = to.y - from.y
+                        let length = max(sqrt(dx * dx + dy * dy), 1)
+                        let pixelsPerSecond: CGFloat = 90
+                        let phaseSpeed = pixelsPerSecond / length
+                        let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
 
                         MovingArrowheads(
                             from: from,
@@ -2261,43 +2277,44 @@ struct FlowLine: View {
                     }
                 }
             } else {
-                let dx = to.x - from.x
-                let dy = to.y - from.y
-                let length = max(sqrt(dx * dx + dy * dy), 1)
-                let pixelsPerSecond: CGFloat = 90
-                let phaseSpeed = pixelsPerSecond / length
-                let time = Date().timeIntervalSinceReferenceDate
-                let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
-
                 let inactiveOpacity = baseOpacity * 0.55
                 ZStack {
-                    Path { path in
-                        path.move(to: from)
-                        path.addLine(to: to)
-                    }
-                    .stroke(AppColors.wireActive.opacity(inactiveOpacity), lineWidth: thickness)
-                    .contentShape(Path { path in
-                        path.move(to: from)
-                        path.addLine(to: to)
-                    }.strokedPath(.init(lineWidth: thickness + 10)))
+                    path
+                        .stroke(AppColors.wireActive.opacity(0.4), lineWidth: thickness + 2)
+                        .blur(radius: 5)
+                    path
+                        .stroke(Color(hex: "#FF5FBF").opacity(0.2), lineWidth: thickness + 5)
+                        .blur(radius: 12)
+                    path
+                        .stroke(AppColors.wireActive.opacity(inactiveOpacity), lineWidth: thickness)
+                        .shadow(color: AppColors.wireActive.opacity(0.35), radius: 12)
+                        .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
                     MovingArrowheads(
                         from: from,
                         to: to,
                         color: AppColors.neonCyan.opacity(0.35),
-                        phase: phase
+                        phase: 0
                     )
                 }
             }
         }
-        .onAppear { }
+        .onAppear {
+            cachedPath = makePath()
+        }
+        .onChange(of: from) { _ in
+            cachedPath = makePath()
+        }
+        .onChange(of: to) { _ in
+            cachedPath = makePath()
+        }
     }
 
-    private func pointAlongLine(from: CGPoint, to: CGPoint, t: CGFloat) -> CGPoint {
-        CGPoint(
-            x: from.x + (to.x - from.x) * t,
-            y: from.y + (to.y - from.y) * t
-        )
+    private func makePath() -> Path {
+        Path { path in
+            path.move(to: from)
+            path.addLine(to: to)
+        }
     }
 }
 
@@ -2665,6 +2682,7 @@ struct EffectBlockHorizontal: View {
     let isSelected: Bool
     let isDropAnimating: Bool
     fileprivate let tileStyle: AccentStyle
+    let nodeScale: CGFloat
     let onRemove: () -> Void
     let onUpdate: () -> Void
     @State private var isHovered = false
@@ -2738,6 +2756,7 @@ struct EffectBlockHorizontal: View {
 
             // Expanded parameters
             if isExpanded {
+                let overlayScale = 1.0 / max(nodeScale, 0.4)
                 VStack(spacing: 12) {
                     EffectParametersViewCompact(
                         effectType: effect.type,
@@ -2781,6 +2800,7 @@ struct EffectBlockHorizontal: View {
                 .foregroundColor(tileStyle.fill)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .padding(.top, 8)
+                .scaleEffect(overlayScale, anchor: .top)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
