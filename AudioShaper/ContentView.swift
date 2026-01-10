@@ -554,6 +554,7 @@ struct HomeView: View {
     let onApplyPresets: () -> Void
     @State private var isVisible = false
     @AppStorage("homeHasAppeared") private var homeHasAppeared = false
+    @State private var floatTagline = false
 
     var body: some View {
         ZStack {
@@ -591,6 +592,12 @@ struct HomeView: View {
             }
 
             Spacer()
+
+            Text("Made by Skanda Vyas Srinivasan")
+                .font(AppTypography.caption)
+                .foregroundColor(AppColors.textMuted)
+                .offset(y: floatTagline ? -6 : 0)
+                .opacity(0.9)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -603,6 +610,9 @@ struct HomeView: View {
                 isVisible = true
             }
             homeHasAppeared = true
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                floatTagline = true
+            }
         }
     }
 }
