@@ -35,9 +35,13 @@ struct BeginnerView: View {
     @State private var isTrayCollapsed = false
     @State private var dropAnimatedNodeIDs: Set<UUID> = []
     @State private var beatPulse: CGFloat = 0
-    @State private var zoomScale: CGFloat = 1.0
-    @State private var zoomStartScale: CGFloat = 1.0
+    @State private var nodeScale: CGFloat = 1.0
+    @State private var nodeStartScale: CGFloat = 1.0
     @State private var customContextMenu: CustomContextMenu?
+    @State private var undoStack: [GraphSnapshot] = []
+    @State private var redoStack: [GraphSnapshot] = []
+    @State private var dragUndoSnapshot: GraphSnapshot?
+    @State private var isRestoringSnapshot = false
     private let connectionSnapRadius: CGFloat = 120
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
@@ -147,14 +151,43 @@ struct BeginnerView: View {
                         }
                     }
 
-                    Button("Reset Wiring") {
-                        manualConnections.removeAll()
-                        applyChainToEngine()
+                    HStack(spacing: 6) {
+                        Button {
+                            undo()
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(undoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
+                        .disabled(undoStack.isEmpty)
+
+                        Button {
+                            redo()
+                        } label: {
+                            Image(systemName: "arrow.uturn.forward")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(redoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
+                        .disabled(redoStack.isEmpty)
                     }
-                    .disabled(manualConnections.isEmpty)
-                    .foregroundColor(AppColors.textSecondary)
 
                     Spacer()
+
+                    Menu {
+                        Button("Clear Canvas") {
+                            clearCanvas()
+                        }
+                        Button("Reset Wiring") {
+                            resetWiring()
+                        }
+                        .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
+                    } label: {
+                        Text("Canvas")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textSecondary)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -182,7 +215,6 @@ struct BeginnerView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    guard wiringMode == .manual else { return }
                                     guard !NSEvent.modifierFlags.contains(.option) else { return }
                                     guard draggingNodeID == nil else { return }
 
@@ -192,7 +224,6 @@ struct BeginnerView: View {
                                     lassoCurrent = value.location
                                 }
                                 .onEnded { _ in
-                                    guard wiringMode == .manual else { return }
                                     guard let start = lassoStart, let current = lassoCurrent else {
                                         lassoStart = nil
                                         lassoCurrent = nil
@@ -417,8 +448,8 @@ struct BeginnerView: View {
                                 applyChainToEngine()
                             }
                         )
+                        .scaleEffect(nodeScale)
                         .position(nodePos)
-                        .scaleEffect(zoomScale)
                         .simultaneousGesture(
                             TapGesture()
                                 .onEnded {
@@ -446,6 +477,9 @@ struct BeginnerView: View {
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
                                             draggingNodeID = effectValue.id
+                                            if dragUndoSnapshot == nil {
+                                                dragUndoSnapshot = currentGraphSnapshot()
+                                            }
                                             dragStartPosition = nodePosition(effectValue, in: geometry.size)
                                             if wiringMode == .manual {
                                                 if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
@@ -458,9 +492,7 @@ struct BeginnerView: View {
                                                 }
                                             }
                                         }
-                                        let delta = unzoomedDelta(
-                                            CGSize(width: value.translation.width, height: value.translation.height)
-                                        )
+                                        let delta = CGSize(width: value.translation.width, height: value.translation.height)
                                         if wiringMode == .manual, !selectedNodeIDs.isEmpty {
                                             moveSelectedNodes(by: delta, in: geometry.size)
                                         } else {
@@ -494,6 +526,10 @@ struct BeginnerView: View {
                                         // Finalize move
                                         draggingNodeID = nil
                                         selectionDragStartPositions.removeAll()
+                                        if let snapshot = dragUndoSnapshot {
+                                            recordUndoSnapshot(snapshot)
+                                        }
+                                        dragUndoSnapshot = nil
                                         applyChainToEngine()
                                     }
                                 }
@@ -519,8 +555,14 @@ struct BeginnerView: View {
                 }
                 .contentShape(Rectangle())
                 .overlay(
-                    RightClickCapture { location in
-                        handleRightClick(at: location, in: geometry.size)
+                    ZStack {
+                        RightClickCapture { location in
+                            handleRightClick(at: location, in: geometry.size)
+                        }
+                        KeyEventCapture { event in
+                            handleKeyDown(event)
+                        }
+                        .allowsHitTesting(false)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 )
@@ -534,6 +576,7 @@ struct BeginnerView: View {
                     },
                     onAdd: { newNode in
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            recordUndoSnapshot()
                             var node = newNode
                             node.accentIndex = nextAccentIndex
                             nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
@@ -546,12 +589,12 @@ struct BeginnerView: View {
                 .gesture(
                     MagnificationGesture()
                         .onChanged { value in
-                            let next = zoomStartScale * value
-                            zoomScale = min(max(next, 0.6), 1.8)
-                        }
-                        .onEnded { _ in
-                            zoomStartScale = zoomScale
-                        }
+            let next = nodeStartScale * value
+            nodeScale = min(max(next, 0.4), 1.8)
+        }
+        .onEnded { _ in
+            nodeStartScale = nodeScale
+        }
                 )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -584,6 +627,7 @@ struct BeginnerView: View {
 
     private func addEffectToChain(_ type: EffectType) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            recordUndoSnapshot()
             let lane: GraphLane? = graphMode == .split ? .left : nil
             let position = defaultNodePosition(in: canvasSize, lane: lane)
             let newEffect = BeginnerNode(
@@ -608,6 +652,7 @@ struct BeginnerView: View {
 
 
     private func removeEffect(id: UUID) {
+        recordUndoSnapshot()
         effectChain.removeAll { $0.id == id }
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
         autoGainOverrides = autoGainOverrides.filter { $0.key.from != id && $0.key.to != id }
@@ -617,6 +662,7 @@ struct BeginnerView: View {
     }
 
     private func duplicateEffect(id: UUID) {
+        recordUndoSnapshot()
         guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
         let source = effectChain[index]
         var clone = BeginnerNode(
@@ -633,12 +679,14 @@ struct BeginnerView: View {
     }
 
     private func resetEffectParameters(id: UUID) {
+        recordUndoSnapshot()
         guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
         effectChain[index].parameters = NodeEffectParameters.defaults()
         applyChainToEngine()
     }
 
     private func removeEffects(ids: Set<UUID>) {
+        recordUndoSnapshot()
         effectChain.removeAll { ids.contains($0.id) }
         manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
         autoGainOverrides = autoGainOverrides.filter { !ids.contains($0.key.from) && !ids.contains($0.key.to) }
@@ -648,6 +696,7 @@ struct BeginnerView: View {
     }
 
     private func deleteWiresForSelected() {
+        recordUndoSnapshot()
         manualConnections.removeAll { selectedNodeIDs.contains($0.fromNodeId) || selectedNodeIDs.contains($0.toNodeId) }
         normalizeAllOutgoingGains()
         applyChainToEngine()
@@ -960,36 +1009,17 @@ struct BeginnerView: View {
     }
 
     private func displayNodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
-        let lane = graphMode == .split ? node.lane : nil
-        return zoomedPosition(nodePosition(node, in: size), in: size, lane: lane)
-    }
-
-    private func zoomAnchor(in size: CGSize, lane: GraphLane?) -> CGPoint {
-        let start = startNodePosition(in: size, lane: lane)
-        let end = endNodePosition(in: size, lane: lane)
-        return CGPoint(x: (start.x + end.x) * 0.5, y: (start.y + end.y) * 0.5)
-    }
-
-    private func zoomedPosition(_ point: CGPoint, in size: CGSize, lane: GraphLane?) -> CGPoint {
-        let anchor = zoomAnchor(in: size, lane: lane)
-        return CGPoint(
-            x: anchor.x + (point.x - anchor.x) * zoomScale,
-            y: anchor.y + (point.y - anchor.y) * zoomScale
-        )
-    }
-
-    private func unzoomedDelta(_ delta: CGSize) -> CGSize {
-        CGSize(width: delta.width / zoomScale, height: delta.height / zoomScale)
+        nodePosition(node, in: size)
     }
 
     private func zoomIn() {
-        zoomScale = min(zoomScale + 0.1, 1.8)
-        zoomStartScale = zoomScale
+        nodeScale = min(nodeScale + 0.1, 1.8)
+        nodeStartScale = nodeScale
     }
 
     private func zoomOut() {
-        zoomScale = max(zoomScale - 0.1, 0.6)
-        zoomStartScale = zoomScale
+        nodeScale = max(nodeScale - 0.1, 0.4)
+        nodeStartScale = nodeScale
     }
 
     private func selectionRect(from start: CGPoint, to end: CGPoint) -> CGRect {
@@ -1038,7 +1068,46 @@ struct BeginnerView: View {
     }
 
     private func handleRightClick(at point: CGPoint, in size: CGSize) {
-        // Wires (manual) - prioritize wire hits over nodes
+        // Check nodes
+        let nodeRadius: CGFloat = 60 * nodeScale
+        if let hitNode = effectChain.first(where: { node in
+            let pos = displayNodePosition(node, in: size)
+            return hypot(point.x - pos.x, point.y - pos.y) <= nodeRadius
+        }) {
+            var items: [CustomContextMenu.Item] = [
+                CustomContextMenu.Item(
+                    title: "Delete Node",
+                    role: .destructive,
+                    action: { removeEffect(id: hitNode.id) }
+                ),
+                CustomContextMenu.Item(
+                    title: "Duplicate Node",
+                    role: nil,
+                    action: { duplicateEffect(id: hitNode.id) }
+                ),
+                CustomContextMenu.Item(
+                    title: "Reset Node Params",
+                    role: nil,
+                    action: { resetEffectParameters(id: hitNode.id) }
+                )
+            ]
+            if wiringMode == .manual {
+                items.insert(
+                    CustomContextMenu.Item(
+                        title: "Delete Node Wires",
+                        role: nil,
+                        action: { removeWires(for: hitNode.id) }
+                    ),
+                    at: 1
+                )
+            }
+            let tint = accentPalette[hitNode.accentIndex % accentPalette.count].fill
+            let menu = CustomContextMenu(anchor: displayNodePosition(hitNode, in: size), position: point, tint: tint, items: items)
+            customContextMenu = menuAdjusted(menu)
+            return
+        }
+
+        // Wires (manual/auto) - after node hits
         if wiringMode == .manual {
             let connections = graphMode == .split
                 ? (visualManualConnections(in: size, lane: .left) + visualManualConnections(in: size, lane: .right))
@@ -1103,45 +1172,6 @@ struct BeginnerView: View {
             }
         }
 
-        // Check nodes
-        let nodeRadius: CGFloat = 60 * zoomScale
-        if let hitNode = effectChain.first(where: { node in
-            let pos = displayNodePosition(node, in: size)
-            return hypot(point.x - pos.x, point.y - pos.y) <= nodeRadius
-        }) {
-            var items: [CustomContextMenu.Item] = [
-                CustomContextMenu.Item(
-                    title: "Delete Node",
-                    role: .destructive,
-                    action: { removeEffect(id: hitNode.id) }
-                ),
-                CustomContextMenu.Item(
-                    title: "Duplicate Node",
-                    role: nil,
-                    action: { duplicateEffect(id: hitNode.id) }
-                ),
-                CustomContextMenu.Item(
-                    title: "Reset Node Params",
-                    role: nil,
-                    action: { resetEffectParameters(id: hitNode.id) }
-                )
-            ]
-            if wiringMode == .manual {
-                items.insert(
-                    CustomContextMenu.Item(
-                        title: "Delete Node Wires",
-                        role: nil,
-                        action: { removeWires(for: hitNode.id) }
-                    ),
-                    at: 1
-                )
-            }
-            let tint = accentPalette[hitNode.accentIndex % accentPalette.count].fill
-            let menu = CustomContextMenu(anchor: displayNodePosition(hitNode, in: size), position: point, tint: tint, items: items)
-            customContextMenu = menuAdjusted(menu)
-            return
-        }
-
         // Start/End nodes (manual wiring only)
         if wiringMode == .manual {
             let startPos = startNodePosition(in: size, lane: nil)
@@ -1201,17 +1231,92 @@ struct BeginnerView: View {
     }
 
     private func removeWires(for nodeID: UUID) {
+        recordUndoSnapshot()
         manualConnections.removeAll { $0.fromNodeId == nodeID || $0.toNodeId == nodeID }
         normalizeOutgoingGains(from: nodeID)
         applyChainToEngine()
     }
 
     private func deleteManualConnection(_ id: UUID) {
+        recordUndoSnapshot()
         if let connection = manualConnections.first(where: { $0.id == id }) {
             manualConnections.removeAll { $0.id == id }
             normalizeOutgoingGains(from: connection.fromNodeId)
         }
         applyChainToEngine()
+    }
+
+    private func handleKeyDown(_ event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "a" {
+            selectedNodeIDs = Set(effectChain.map { $0.id })
+            return
+        }
+
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "z" {
+            if event.modifierFlags.contains(.shift) {
+                redo()
+            } else {
+                undo()
+            }
+            return
+        }
+
+        if event.keyCode == 51 || event.keyCode == 117 {
+            guard !selectedNodeIDs.isEmpty else { return }
+            removeEffects(ids: selectedNodeIDs)
+        }
+    }
+
+    private func clearCanvas() {
+        recordUndoSnapshot()
+        effectChain.removeAll()
+        manualConnections.removeAll()
+        autoGainOverrides.removeAll()
+        selectedNodeIDs.removeAll()
+        selectedWireID = nil
+        selectedAutoWire = nil
+        nextAccentIndex = 0
+        applyChainToEngine()
+    }
+
+    private func resetWiring() {
+        recordUndoSnapshot()
+        manualConnections.removeAll()
+        autoGainOverrides.removeAll()
+        selectedWireID = nil
+        selectedAutoWire = nil
+        applyChainToEngine()
+    }
+
+    private func recordUndoSnapshot() {
+        recordUndoSnapshot(currentGraphSnapshot())
+    }
+
+    private func recordUndoSnapshot(_ snapshot: GraphSnapshot) {
+        guard !isRestoringSnapshot else { return }
+        undoStack.append(snapshot)
+        if undoStack.count > 50 {
+            undoStack.removeFirst()
+        }
+        redoStack.removeAll()
+    }
+
+    private func undo() {
+        guard let snapshot = undoStack.popLast() else { return }
+        isRestoringSnapshot = true
+        redoStack.append(currentGraphSnapshot())
+        applyGraphSnapshot(snapshot)
+        isRestoringSnapshot = false
+    }
+
+    private func redo() {
+        guard let snapshot = redoStack.popLast() else { return }
+        isRestoringSnapshot = true
+        undoStack.append(currentGraphSnapshot())
+        applyGraphSnapshot(snapshot)
+        isRestoringSnapshot = false
     }
 
     private func normalizeAllOutgoingGains() {
@@ -1459,6 +1564,7 @@ struct BeginnerView: View {
     }
 
     private func finalizeConnection(from fromID: UUID, dropPoint: CGPoint) {
+        recordUndoSnapshot()
         print("🔗 Attempting to finalize connection from \(fromID == startNodeID ? "START" : "node")")
         print("   Drop point: \(dropPoint)")
 
@@ -2478,6 +2584,33 @@ fileprivate struct NeonTile: View {
                 .blendMode(.screen)
                 .opacity(isEnabled ? 0.9 : 0)
                 .padding(10)
+        }
+    }
+}
+
+fileprivate struct KeyEventCapture: NSViewRepresentable {
+    let onKeyDown: (NSEvent) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyCaptureView()
+        view.onKeyDown = onKeyDown
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class KeyCaptureView: NSView {
+        var onKeyDown: ((NSEvent) -> Void)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.makeFirstResponder(self)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            onKeyDown?(event)
         }
     }
 }

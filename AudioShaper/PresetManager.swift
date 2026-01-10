@@ -207,7 +207,7 @@ class PresetManager: ObservableObject {
     @discardableResult
     func savePreset(name: String, graph: GraphSnapshot) -> SavedPreset {
         let preset = SavedPreset(name: name, graph: graph)
-        presets.append(preset)
+        presets.insert(preset, at: 0)
         persistPresets()
         return preset
     }
@@ -246,6 +246,7 @@ class PresetManager: ObservableObject {
             let data = try Data(contentsOf: presetsFileURL)
             let decoder = JSONDecoder()
             presets = try decoder.decode([SavedPreset].self, from: data)
+            presets.sort { $0.createdDate > $1.createdDate }
             // Presets loaded.
         } catch {
             // Failed to load presets.

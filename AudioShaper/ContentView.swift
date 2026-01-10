@@ -259,7 +259,7 @@ struct HomeView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Text("HoldOn")
+                Text("AudioShaper")
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.neonPink)
                     .shadow(color: AppColors.neonPink.opacity(0.6), radius: 12)
