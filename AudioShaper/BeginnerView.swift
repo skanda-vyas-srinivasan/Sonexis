@@ -151,10 +151,16 @@ struct BeginnerView: View {
                         .pickerStyle(.menu)
                         .labelsHidden()
                         .help(wiringMode == .automatic ?
-                              "Automatic: Effects flow left-to-right by position. Option+drag to override." :
-                              "Manual: Pure manual wiring. Option+drag to connect everything.")
+                              "Automatic: Effects flow left-to-right by position." :
+                              "Manual: Pure manual wiring. Option+drag to connect.")
                         .onChange(of: wiringMode) { _ in
+                            if wiringMode == .automatic {
+                                activeConnectionFromID = nil
+                                activeConnectionPoint = .zero
+                                isOptionHeld = false
+                            }
                             applyChainToEngine()
+                            updateCursor()
                         }
                     }
 
@@ -357,7 +363,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             activeConnectionFromID = leftStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -367,7 +373,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -389,7 +395,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             activeConnectionFromID = rightStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -399,7 +405,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -421,7 +427,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             activeConnectionFromID = startNodeID
                                             activeConnectionPoint = CGPoint(
@@ -431,7 +437,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if NSEvent.modifierFlags.contains(.option) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -488,7 +494,7 @@ struct BeginnerView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    let hasOption = NSEvent.modifierFlags.contains(.option)
+                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option)
                                     if hasOption {
                                         // Wiring mode
                                         activeConnectionFromID = effectValue.id
@@ -535,7 +541,7 @@ struct BeginnerView: View {
                                     }
                                 }
                                 .onEnded { value in
-                                    let hasOption = NSEvent.modifierFlags.contains(.option)
+                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option)
                                     if hasOption {
                                         // Finalize wiring
                                         let dropPoint = CGPoint(
@@ -672,7 +678,7 @@ struct BeginnerView: View {
         .onAppear {
             if flagsMonitor == nil {
                 flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-                    isOptionHeld = event.modifierFlags.contains(.option)
+                    isOptionHeld = wiringMode == .manual && event.modifierFlags.contains(.option)
                     updateCursor()
                     return event
                 }
@@ -691,7 +697,7 @@ struct BeginnerView: View {
             NSCursor.arrow.set()
             return
         }
-        if isOptionHeld {
+        if isOptionHeld && wiringMode == .manual {
             NSCursor.crosshair.set()
         } else {
             NSCursor.arrow.set()
@@ -1686,29 +1692,42 @@ struct BeginnerView: View {
     private func nearestConnectionTarget(from fromID: UUID, at point: CGPoint) -> UUID? {
         var closest: (id: UUID, distance: CGFloat)?
         let fromLane = laneForNodeID(fromID)
+        let nodeSize: CGFloat = 110 * nodeScale
 
         for node in effectChain {
             if graphMode == .split, let fromLane, node.lane != fromLane {
                 continue
             }
             let nodePoint = displayNodePosition(node, in: canvasSize)
+            let rect = CGRect(
+                x: nodePoint.x - nodeSize * 0.5,
+                y: nodePoint.y - nodeSize * 0.5,
+                width: nodeSize,
+                height: nodeSize
+            )
+            guard rect.contains(point) else { continue }
             let dx = nodePoint.x - point.x
             let dy = nodePoint.y - point.y
             let distance = sqrt(dx * dx + dy * dy)
-            if distance <= connectionSnapRadius {
-                if closest == nil || distance < closest!.distance {
-                    closest = (node.id, distance)
-                }
+            if closest == nil || distance < closest!.distance {
+                closest = (node.id, distance)
             }
         }
 
         let endID = graphMode == .split ? endNodeID(for: fromLane) : endNodeID
         if fromID != endID {
             let endPoint = endNodePosition(in: canvasSize, lane: fromLane)
-            let dx = endPoint.x - point.x
-            let dy = endPoint.y - point.y
-            let distance = sqrt(dx * dx + dy * dy)
-            if distance <= connectionSnapRadius {
+            let endSize: CGFloat = 80
+            let rect = CGRect(
+                x: endPoint.x - endSize * 0.5,
+                y: endPoint.y - endSize * 0.5,
+                width: endSize,
+                height: endSize
+            )
+            if rect.contains(point) {
+                let dx = endPoint.x - point.x
+                let dy = endPoint.y - point.y
+                let distance = sqrt(dx * dx + dy * dy)
                 if closest == nil || distance < closest!.distance {
                     closest = (endID, distance)
                 }
