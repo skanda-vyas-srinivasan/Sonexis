@@ -4,6 +4,7 @@ import AppKit
 struct ContentView: View {
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
+    @StateObject private var tutorial = TutorialController()
     @State private var activeScreen: AppScreen = .home
     @State private var showingSaveDialog = false
     @State private var showingLoadDialog = false
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var lastGraphSnapshot: GraphSnapshot?
     @State private var lastActiveScreen: AppScreen = .home
     @State private var skipRestoreOnEnter = false
+    @State private var tutorialTargets: [TutorialTarget: CGRect] = [:]
 
     var body: some View {
         ZStack {
@@ -27,7 +29,10 @@ struct ContentView: View {
                 if activeScreen == .home {
                     HomeView(
                         onBuildFromScratch: { activeScreen = .beginner },
-                        onApplyPresets: { activeScreen = .presets }
+                        onApplyPresets: { activeScreen = .presets },
+                        onTutorial: { tutorial.startFromHelp() },
+                        allowBuild: tutorial.allowBuildAction,
+                        allowPresets: tutorial.allowPresetsAction
                     )
                 } else {
                     AppTopBar(
@@ -76,6 +81,10 @@ struct ContentView: View {
                 }
             }
             .frame(minWidth: 800, minHeight: 700)
+            .coordinateSpace(name: "tutorialRoot")
+            .onPreferenceChange(TutorialTargetPreferenceKey.self) { value in
+                tutorialTargets = value
+            }
 
             if showGlitch {
                 GlitchOverlay {
@@ -88,6 +97,15 @@ struct ContentView: View {
                     showSetupOverlay = false
                 }
             }
+
+            if tutorial.isActive && activeScreen == .home {
+                TutorialOverlay(
+                    step: tutorial.step,
+                    targets: tutorialTargets,
+                    onNext: { tutorial.advance() },
+                    onSkip: { tutorial.endTutorial() }
+                )
+            }
         }
         .onAppear {
             guard !hasShownSetupThisSession else { return }
@@ -96,10 +114,16 @@ struct ContentView: View {
             if !ready {
                 showSetupOverlay = true
             }
+            tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
         }
         .onChange(of: activeScreen) { newValue in
             showGlitch = true
             handleScreenChange(to: newValue)
+        }
+        .onChange(of: showSetupOverlay) { isVisible in
+            if !isVisible {
+                tutorial.startIfNeeded(isSetupVisible: false)
+            }
         }
         .animation(.easeOut(duration: 0.7), value: showSetupOverlay)
         .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
@@ -602,6 +626,9 @@ enum AppScreen {
 struct HomeView: View {
     let onBuildFromScratch: () -> Void
     let onApplyPresets: () -> Void
+    let onTutorial: () -> Void
+    let allowBuild: Bool
+    let allowPresets: Bool
     @State private var isVisible = false
     @AppStorage("homeHasAppeared") private var homeHasAppeared = false
     @State private var floatTagline = false
@@ -631,6 +658,16 @@ struct HomeView: View {
                     accent: AppColors.neonCyan,
                     action: onBuildFromScratch
                 )
+                .disabled(!allowBuild)
+                .opacity(allowBuild ? 1.0 : 0.35)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.buildButton: proxy.frame(in: .global)]
+                        )
+                    }
+                )
 
                 NeonActionButton(
                     title: "Browse presets",
@@ -638,6 +675,16 @@ struct HomeView: View {
                     icon: "tray.full",
                     accent: AppColors.neonPink,
                     action: onApplyPresets
+                )
+                .disabled(!allowPresets)
+                .opacity(allowPresets ? 1.0 : 0.35)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.presetsButton: proxy.frame(in: .global)]
+                        )
+                    }
                 )
             }
 
@@ -663,6 +710,15 @@ struct HomeView: View {
             withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
                 floatTagline = true
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button(action: onTutorial) {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 16))
+                    .foregroundColor(AppColors.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .padding(16)
         }
     }
 }
@@ -759,6 +815,232 @@ struct AppTopBar: View {
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(AppColors.deepBlack.opacity(0.7))
+    }
+}
+
+private enum TutorialTarget: Hashable {
+    case buildButton
+    case presetsButton
+}
+
+private struct TutorialTargetPreferenceKey: PreferenceKey {
+    static var defaultValue: [TutorialTarget: CGRect] = [:]
+
+    static func reduce(value: inout [TutorialTarget: CGRect], nextValue: () -> [TutorialTarget: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private enum TutorialStep: Equatable {
+    case inactive
+    case welcome
+    case homePresets
+    case homeBuild
+}
+
+private final class TutorialController: ObservableObject {
+    @Published var step: TutorialStep = .inactive
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+
+    var isActive: Bool { step != .inactive }
+
+    var allowBuildAction: Bool {
+        switch step {
+        case .inactive, .homeBuild:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var allowPresetsAction: Bool {
+        switch step {
+        case .inactive:
+            return true
+        default:
+            return false
+        }
+    }
+
+    func startIfNeeded(isSetupVisible: Bool) {
+        guard !hasSeenTutorial, !isSetupVisible else { return }
+        step = .welcome
+        hasSeenTutorial = true
+    }
+
+    func startFromHelp() {
+        step = .welcome
+    }
+
+    func advance() {
+        switch step {
+        case .welcome:
+            step = .homePresets
+        case .homePresets:
+            step = .homeBuild
+        case .homeBuild:
+            step = .inactive
+        case .inactive:
+            break
+        }
+    }
+
+    func endTutorial() {
+        step = .inactive
+    }
+}
+
+private struct TutorialOverlay: View {
+    let step: TutorialStep
+    let targets: [TutorialTarget: CGRect]
+    let onNext: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let highlightRect = highlightFrame(in: size, proxy: proxy)
+
+            ZStack {
+                dimmingLayer(size: size, highlight: highlightRect)
+                    .allowsHitTesting(false)
+
+                if let rect = highlightRect {
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(AppColors.neonCyan.opacity(0.9), lineWidth: 2)
+                        .shadow(color: AppColors.neonCyan.opacity(0.6), radius: 14)
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .allowsHitTesting(false)
+                }
+
+                calloutView(in: size, highlight: highlightRect)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func highlightFrame(in size: CGSize, proxy: GeometryProxy) -> CGRect? {
+        switch step {
+        case .homePresets:
+            return convertToLocal(rect: targets[.presetsButton], proxy: proxy)
+        case .homeBuild:
+            return convertToLocal(rect: targets[.buildButton], proxy: proxy)
+        default:
+            return nil
+        }
+    }
+
+    private func convertToLocal(rect: CGRect?, proxy: GeometryProxy) -> CGRect? {
+        guard let rect else { return nil }
+        let global = proxy.frame(in: .global)
+        return rect.offsetBy(dx: -global.minX, dy: -global.minY)
+    }
+
+    @ViewBuilder
+    private func dimmingLayer(size: CGSize, highlight: CGRect?) -> some View {
+        if let rect = highlight {
+            ZStack {
+                Color.black.opacity(0.55)
+                RoundedRectangle(cornerRadius: 16)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .blendMode(.destinationOut)
+            }
+            .compositingGroup()
+        } else {
+            Color.black.opacity(0.55)
+        }
+    }
+
+    @ViewBuilder
+    private func calloutView(in size: CGSize, highlight: CGRect?) -> some View {
+        if let content = tutorialContent() {
+            let card = tutorialCard(
+                title: content.title,
+                body: content.body,
+                showNext: content.showNext
+            )
+
+            if let rect = highlight {
+                let placeAbove = rect.minY > 140
+                card
+                    .frame(maxWidth: 360)
+                    .position(
+                        x: rect.midX,
+                        y: placeAbove ? rect.minY - 90 : rect.maxY + 110
+                    )
+            } else {
+                card
+                    .frame(maxWidth: 420)
+                    .position(x: size.width / 2, y: size.height * 0.22)
+            }
+        } else {
+            EmptyView()
+        }
+    }
+
+    private func tutorialContent() -> (title: String, body: String, showNext: Bool)? {
+        switch step {
+        case .welcome:
+            return (
+                title: "Welcome",
+                body: "Hey, welcome to AudioShaper. Since it’s your first time here, let me show you around.",
+                showNext: true
+            )
+        case .homePresets:
+            return (
+                title: "Presets",
+                body: "Browse saved chains and load them instantly.",
+                showNext: true
+            )
+        case .homeBuild:
+            return (
+                title: "Build",
+                body: "Click Build from scratch to start crafting your chain.",
+                showNext: false
+            )
+        case .inactive:
+            return nil
+        }
+    }
+
+    private func tutorialCard(title: String, body: String, showNext: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(AppTypography.heading)
+                    .foregroundColor(AppColors.textPrimary)
+                Spacer()
+                Button("Skip") {
+                    onSkip()
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(AppColors.textMuted)
+            }
+            Text(body)
+                .font(AppTypography.body)
+                .foregroundColor(AppColors.textSecondary)
+
+            if showNext {
+                Button("Next") {
+                    onNext()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppColors.neonCyan)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppColors.midPurple.opacity(0.95))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(AppColors.neonCyan.opacity(0.5), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.4), radius: 14, y: 8)
     }
 }
 
