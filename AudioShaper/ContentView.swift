@@ -815,8 +815,8 @@ struct HeaderView: View {
                     .foregroundColor(AppColors.textSecondary)
             }
 
-            // Output device picker
-            VStack(alignment: .leading, spacing: 2) {
+            // Output device picker + volume
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Output")
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textMuted)
@@ -826,7 +826,17 @@ struct HeaderView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 200)
+                .frame(width: 220)
+
+                Slider(
+                    value: Binding(
+                        get: { Double(audioEngine.outputVolume) },
+                        set: { audioEngine.outputVolume = Float($0) }
+                    ),
+                    in: 0...1
+                )
+                .tint(AppColors.neonCyan)
+                .frame(width: 220)
             }
 
             Spacer()

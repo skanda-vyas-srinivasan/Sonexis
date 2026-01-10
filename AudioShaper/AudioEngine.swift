@@ -210,10 +210,20 @@ class AudioEngine: ObservableObject {
     @Published var selectedOutputDeviceID: AudioDeviceID? {
         didSet {
             if let deviceID = selectedOutputDeviceID {
-                setOutputDeviceVolume(deviceID: deviceID, volume: 1.0)
+                setOutputDeviceVolume(deviceID: deviceID, volume: outputVolume)
             }
             if isRunning {
                 reconfigureAudio()
+            }
+        }
+    }
+    @Published var outputVolume: Float = 1.0 {
+        didSet {
+            if let deviceID = selectedOutputDeviceID ?? outputDeviceID {
+                setOutputDeviceVolume(deviceID: deviceID, volume: outputVolume)
+            }
+            if let queue = outputQueue {
+                AudioQueueSetParameter(queue, kAudioQueueParam_Volume, outputVolume)
             }
         }
     }
@@ -439,7 +449,7 @@ class AudioEngine: ObservableObject {
                 throw NSError(domain: "AudioEngine", code: 3, userInfo: [NSLocalizedDescriptionKey: "No output device configured"])
             }
 
-            setOutputDeviceVolume(deviceID: speakerDeviceID, volume: 1.0)
+            setOutputDeviceVolume(deviceID: speakerDeviceID, volume: outputVolume)
 
             // Create AudioQueue for output to speakers
             let inputFormat = engine.inputNode.inputFormat(forBus: 0)
@@ -498,7 +508,7 @@ class AudioEngine: ObservableObject {
             }
 
             // Ensure output volume is audible
-            AudioQueueSetParameter(outputQueue, kAudioQueueParam_Volume, 1.0)
+            AudioQueueSetParameter(outputQueue, kAudioQueueParam_Volume, outputVolume)
 
             // Allocate buffers for the queue (match tap buffer size to avoid truncation)
             let bufferFrameCount = max(UInt32(4096), UInt32(inputFormat.sampleRate / 10.0))
