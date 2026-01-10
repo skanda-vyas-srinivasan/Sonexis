@@ -48,7 +48,7 @@ struct BeginnerView: View {
     @State private var flagsMonitor: Any?
     @State private var isWindowKey = true
     private let connectionSnapRadius: CGFloat = 120
-    private let arrowFpsOptions: [Double] = [12, 20, 24, 30, 40]
+    private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
             fill: Color(hex: "#00F5FF"),
@@ -168,7 +168,7 @@ struct BeginnerView: View {
                         Text("Flow")
                             .font(AppTypography.caption)
                             .foregroundColor(AppColors.textMuted)
-                        Button("\(Int(arrowFps)) FPS") {
+                        Button(arrowFps == 0 ? "Flow Off" : "\(Int(arrowFps)) FPS") {
                             arrowFpsIndex = (arrowFpsIndex + 1) % arrowFpsOptions.count
                         }
                         .buttonStyle(.plain)
@@ -676,7 +676,11 @@ struct BeginnerView: View {
             audioEngine.pendingGraphSnapshot = nil
         }
         .onReceive(audioEngine.$signalFlowToken) { _ in
-            showSignalFlow = isAppActive && audioEngine.isRunning
+            let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
+            isWindowKey = keyWindow
+            let active = scenePhase == .active && isWindowKey
+            isAppActive = active
+            showSignalFlow = active && audioEngine.isRunning
         }
         .onAppear {
             if flagsMonitor == nil {
@@ -2321,7 +2325,7 @@ struct FlowLine: View {
                         .shadow(color: AppColors.wireActive.opacity(0.45), radius: 28)
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
-                    if allowAnimation {
+                    if allowAnimation && fps > 0 {
                         TimelineView(.periodic(from: .now, by: 1.0 / max(fps, 1.0))) { context in
                             let time = context.date.timeIntervalSinceReferenceDate
                             let dx = to.x - from.x
