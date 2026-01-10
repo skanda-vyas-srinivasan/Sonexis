@@ -9,6 +9,7 @@ class AudioEngine: ObservableObject {
     @Published var errorMessage: String?
     @Published var inputDeviceName: String = "Searching..."
     @Published var outputDeviceName: String = "Searching..."
+    @Published var signalFlowToken: Int = 0
 
     // Pitch Shift effect (Nightcore) - now uses AVAudioUnitTimePitch
     @Published var nightcoreEnabled = false {
@@ -512,6 +513,11 @@ class AudioEngine: ObservableObject {
 
             // Allocate buffers for the queue (match tap buffer size to avoid truncation)
             let bufferFrameCount = max(UInt32(4096), UInt32(inputFormat.sampleRate / 10.0))
+            let frameLength = Int(bufferFrameCount)
+            let channelCount = Int(inputFormat.channelCount)
+            initializeRingBuffer(frameSize: frameLength * channelCount, capacity: maxRingBufferSize)
+            ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
+
             let bufferSize: UInt32 = bufferFrameCount * UInt32(MemoryLayout<Float>.size) * UInt32(inputFormat.channelCount)
             for i in 0..<3 {
                 var bufferRef: AudioQueueBufferRef?
@@ -549,6 +555,9 @@ class AudioEngine: ObservableObject {
 
             isRunning = true
             errorMessage = nil
+            DispatchQueue.main.async {
+                self.signalFlowToken += 1
+            }
             startSetupMonitor()
             // Debug output removed.
             startChainLogTimer()
@@ -985,49 +994,68 @@ class AudioEngine: ObservableObject {
         frameLength: Int,
         channelCount: Int
     ) -> [Float] {
-        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for frame in 0..<frameLength {
             for channel in 0..<channelCount {
-                interleaved[frame * channelCount + channel] = channelData[channel][frame]
+                interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
             }
         }
-        return interleaved
+        return interleavedOutputBuffer
     }
 
     private func interleaveBuffer(_ buffer: [[Float]], frameLength: Int, channelCount: Int) -> [Float] {
-        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for frame in 0..<frameLength {
             for channel in 0..<channelCount {
-                interleaved[frame * channelCount + channel] = buffer[channel][frame]
+                interleavedOutputBuffer[frame * channelCount + channel] = buffer[channel][frame]
             }
         }
-        return interleaved
+        return interleavedOutputBuffer
     }
 
-    // Ring buffer for audio data
-    private var audioRingBuffer: [[Float]] = []
+    // Pre-allocated buffers
+    private var interleavedOutputBuffer: [Float] = []
+    private var interleavedOutputCapacity: Int = 0
+
+    // Ring buffer for audio data (interleaved frames)
+    private var ringBuffer: UnsafeMutablePointer<Float>?
+    private var ringBufferFrameSize: Int = 0
+    private var ringBufferCapacity: Int = 0
+    private var ringWriteIndex: Int = 0
+    private var ringReadIndex: Int = 0
     private let ringBufferLock = NSLock()
     private let maxRingBufferSize = 10
 
     private func enqueueAudioData(_ data: [Float], queue: AudioQueueRef) {
-        ringBufferLock.lock()
-        audioRingBuffer.append(data)
-
-        // Keep buffer from growing too large
-        if audioRingBuffer.count > maxRingBufferSize {
-            audioRingBuffer.removeFirst()
-        }
-        ringBufferLock.unlock()
-    }
-
-    fileprivate func getAudioDataForOutput() -> [Float]? {
+        guard let buffer = ringBuffer else { return }
         ringBufferLock.lock()
         defer { ringBufferLock.unlock() }
 
-        if audioRingBuffer.isEmpty {
-            return nil
+        let available = (ringReadIndex - ringWriteIndex - 1 + ringBufferCapacity) % ringBufferCapacity
+        if available <= 0 {
+            ringReadIndex = (ringReadIndex + 1) % ringBufferCapacity
         }
-        return audioRingBuffer.removeFirst()
+
+        let offset = ringWriteIndex * ringBufferFrameSize
+        data.withUnsafeBufferPointer { src in
+            guard let base = src.baseAddress else { return }
+            buffer.advanced(by: offset).assign(from: base, count: min(data.count, ringBufferFrameSize))
+        }
+
+        ringWriteIndex = (ringWriteIndex + 1) % ringBufferCapacity
+    }
+
+    fileprivate func getAudioDataForOutput(into destination: UnsafeMutablePointer<Float>, count: Int) -> Bool {
+        guard let buffer = ringBuffer else { return false }
+        ringBufferLock.lock()
+        defer { ringBufferLock.unlock() }
+
+        guard ringReadIndex != ringWriteIndex else { return false }
+
+        let offset = ringReadIndex * ringBufferFrameSize
+        destination.assign(from: buffer.advanced(by: offset), count: min(count, ringBufferFrameSize))
+        ringReadIndex = (ringReadIndex + 1) % ringBufferCapacity
+        return true
     }
 
     private func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
@@ -1041,23 +1069,23 @@ class AudioEngine: ObservableObject {
         let sampleRate = buffer.format.sampleRate
 
         if isReconfiguring {
-            var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+            ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
-                    interleaved[frame * channelCount + channel] = channelData[channel][frame]
+                    interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
                 }
             }
-            return interleaved
+            return interleavedOutputBuffer
         }
 
         if !processingEnabled {
-            var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+            ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
-                    interleaved[frame * channelCount + channel] = channelData[channel][frame]
+                    interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
                 }
             }
-            return interleaved
+            return interleavedOutputBuffer
         }
 
         // Initialize effect states
@@ -1173,14 +1201,38 @@ class AudioEngine: ObservableObject {
         }
 
         // Convert to interleaved format
-        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
+        ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for frame in 0..<frameLength {
             for channel in 0..<channelCount {
-                interleaved[frame * channelCount + channel] = processedAudio[channel][frame]
+                interleavedOutputBuffer[frame * channelCount + channel] = processedAudio[channel][frame]
             }
         }
 
-        return interleaved
+        return interleavedOutputBuffer
+    }
+
+    private func ensureInterleavedCapacity(frameLength: Int, channelCount: Int) {
+        let required = frameLength * channelCount
+        if interleavedOutputCapacity < required {
+            interleavedOutputBuffer = [Float](repeating: 0, count: required)
+            interleavedOutputCapacity = required
+        }
+    }
+
+    private func initializeRingBuffer(frameSize: Int, capacity: Int = 10) {
+        ringBufferLock.lock()
+        defer { ringBufferLock.unlock() }
+
+        if let buffer = ringBuffer {
+            buffer.deallocate()
+        }
+        ringBufferFrameSize = frameSize
+        ringBufferCapacity = max(2, capacity)
+        let totalFloats = ringBufferFrameSize * ringBufferCapacity
+        ringBuffer = UnsafeMutablePointer<Float>.allocate(capacity: totalFloats)
+        ringBuffer?.initialize(repeating: 0, count: totalFloats)
+        ringWriteIndex = 0
+        ringReadIndex = 0
     }
 
     private var defaultEffectOrder: [EffectType] {
@@ -2922,7 +2974,14 @@ class AudioEngine: ObservableObject {
 
         // Clear ring buffer
         ringBufferLock.lock()
-        audioRingBuffer.removeAll()
+        if let buffer = ringBuffer {
+            buffer.deallocate()
+        }
+        ringBuffer = nil
+        ringBufferFrameSize = 0
+        ringBufferCapacity = 0
+        ringWriteIndex = 0
+        ringReadIndex = 0
         ringBufferLock.unlock()
 
         // Stop AVAudioEngine
@@ -3562,34 +3621,18 @@ private func audioQueueOutputCallback(
     }
     DebugCounter.callbackCount += 1
 
-    // Get audio data from ring buffer
-    if let audioData = audioEngine.getAudioDataForOutput() {
-        let byteCount = audioData.count * MemoryLayout<Float>.size
-        let bufferSize = Int(inBuffer.pointee.mAudioDataBytesCapacity)
+    let floatBuffer = inBuffer.pointee.mAudioData.assumingMemoryBound(to: Float.self)
+    let floatCount = Int(inBuffer.pointee.mAudioDataBytesCapacity) / MemoryLayout<Float>.size
+    let bufferSize = Int(inBuffer.pointee.mAudioDataBytesCapacity)
 
-        if byteCount <= bufferSize {
-            // Copy audio data to buffer
-            audioData.withUnsafeBytes { rawBufferPointer in
-                if let baseAddress = rawBufferPointer.baseAddress {
-                    inBuffer.pointee.mAudioData.copyMemory(from: baseAddress, byteCount: byteCount)
-                }
-            }
-            inBuffer.pointee.mAudioDataByteSize = UInt32(byteCount)
-        } else {
-            // Buffer too small, fill with silence
-            memset(inBuffer.pointee.mAudioData, 0, bufferSize)
-            inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
-        }
-    } else {
-        // No audio data available, output silence
-        let bufferSize = Int(inBuffer.pointee.mAudioDataBytesCapacity)
+    if !audioEngine.getAudioDataForOutput(into: floatBuffer, count: floatCount) {
         memset(inBuffer.pointee.mAudioData, 0, bufferSize)
-        inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
         DebugCounter.emptyCount += 1
         if DebugCounter.emptyCount % 50 == 0 {
             // Debug output removed.
         }
     }
+    inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
 
     // Re-enqueue the buffer
     AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nil)

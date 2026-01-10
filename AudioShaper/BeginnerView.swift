@@ -675,6 +675,9 @@ struct BeginnerView: View {
             applyGraphSnapshot(snapshot)
             audioEngine.pendingGraphSnapshot = nil
         }
+        .onReceive(audioEngine.$signalFlowToken) { _ in
+            showSignalFlow = isAppActive && audioEngine.isRunning
+        }
         .onAppear {
             if flagsMonitor == nil {
                 flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
