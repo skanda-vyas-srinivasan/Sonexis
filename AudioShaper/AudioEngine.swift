@@ -217,6 +217,7 @@ class AudioEngine: ObservableObject {
             }
         }
     }
+    @Published var setupReady = true
     @Published var pendingGraphSnapshot: GraphSnapshot?
 
     private(set) var currentGraphSnapshot: GraphSnapshot?
@@ -226,6 +227,7 @@ class AudioEngine: ObservableObject {
     private var outputQueueStarted = false
     private let outputQueueStartLock = NSLock()
     private var chainLogTimer: DispatchSourceTimer?
+    private var setupMonitorTimer: DispatchSourceTimer?
     private var nightcoreRestartWorkItem: DispatchWorkItem?
     private var effectChainOrder: [BeginnerNode] = []
     private var manualGraphNodes: [BeginnerNode] = []
@@ -382,6 +384,11 @@ class AudioEngine: ObservableObject {
 
     func start() {
         // First, request microphone permission
+        if !refreshSetupStatus() {
+            errorMessage = "System Input/Output must be set to BlackHole 2ch to start."
+            isRunning = false
+            return
+        }
         requestMicrophonePermission { [weak self] granted in
             guard let self = self else { return }
 
@@ -532,6 +539,7 @@ class AudioEngine: ObservableObject {
 
             isRunning = true
             errorMessage = nil
+            startSetupMonitor()
             // Debug output removed.
             startChainLogTimer()
             isReconfiguring = false
@@ -2651,6 +2659,81 @@ class AudioEngine: ObservableObject {
         // DON'T change system defaults - we'll handle device routing in the audio pipeline
     }
 
+    func systemDefaultInputDeviceName() -> String? {
+        guard let deviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultInputDevice),
+              let device = AudioDevice(id: deviceID) else {
+            return nil
+        }
+        return device.name
+    }
+
+    func systemDefaultOutputDeviceName() -> String? {
+        guard let deviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice),
+              let device = AudioDevice(id: deviceID) else {
+            return nil
+        }
+        return device.name
+    }
+
+    private func systemDefaultDeviceID(selector: AudioObjectPropertySelector) -> AudioDeviceID? {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var deviceID = AudioDeviceID(0)
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+
+        guard status == noErr else { return nil }
+        return deviceID
+    }
+
+    @discardableResult
+    func refreshSetupStatus() -> Bool {
+        let inputName = systemDefaultInputDeviceName()
+        let outputName = systemDefaultOutputDeviceName()
+        let ready = (inputName?.localizedCaseInsensitiveContains("BlackHole") == true) &&
+            (outputName?.localizedCaseInsensitiveContains("BlackHole") == true)
+        if setupReady != ready {
+            DispatchQueue.main.async {
+                self.setupReady = ready
+            }
+        }
+        return ready
+    }
+
+    private func startSetupMonitor() {
+        guard setupMonitorTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            let ready = self.refreshSetupStatus()
+            if !ready && self.isRunning {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Input or output changed. Set System Input/Output to BlackHole 2ch to resume."
+                    self.stop()
+                }
+            }
+        }
+        setupMonitorTimer = timer
+        timer.resume()
+    }
+
+    private func stopSetupMonitor() {
+        setupMonitorTimer?.cancel()
+        setupMonitorTimer = nil
+    }
+
     private func findDevice(matching name: String) -> AudioDevice? {
         let devices = getAllAudioDevices()
         return devices.first { $0.name.contains(name) }
@@ -2836,6 +2919,7 @@ class AudioEngine: ObservableObject {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         engine.reset()
+        stopSetupMonitor()
         isRunning = false
         if !setReconfiguringFlag {
             isReconfiguring = false

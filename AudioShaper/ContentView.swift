@@ -11,6 +11,8 @@ struct ContentView: View {
     @State private var saveStatusText: String?
     @State private var saveStatusClearTask: DispatchWorkItem?
     @State private var showGlitch = false
+    @State private var showSetupOverlay = false
+    @State private var hasShownSetupThisSession = false
     @State private var lastGraphSnapshot: GraphSnapshot?
     @State private var lastActiveScreen: AppScreen = .home
     @State private var skipRestoreOnEnter = false
@@ -79,10 +81,27 @@ struct ContentView: View {
                     showGlitch = false
                 }
             }
+
+            if showSetupOverlay {
+                OnboardingOverlay(audioEngine: audioEngine) {
+                    showSetupOverlay = false
+                }
+            }
+        }
+        .onAppear {
+            guard !hasShownSetupThisSession else { return }
+            hasShownSetupThisSession = true
+            let ready = audioEngine.refreshSetupStatus()
+            if !ready {
+                showSetupOverlay = true
+            }
         }
         .onChange(of: activeScreen) { newValue in
             showGlitch = true
             handleScreenChange(to: newValue)
+        }
+        .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
+            _ = audioEngine.refreshSetupStatus()
         }
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
@@ -170,6 +189,123 @@ struct ContentView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: Date())
+    }
+}
+
+private struct OnboardingOverlay: View {
+    let audioEngine: AudioEngine
+    let onDone: () -> Void
+    @State private var inputDeviceName: String?
+    @State private var outputDeviceName: String?
+    @State private var hasVerified = false
+    @State private var showSkipConfirm = false
+
+    var body: some View {
+        let inputIsBlackHole = inputDeviceName?.localizedCaseInsensitiveContains("BlackHole") == true
+        let outputIsBlackHole = outputDeviceName?.localizedCaseInsensitiveContains("BlackHole") == true
+        let ready = inputIsBlackHole && outputIsBlackHole
+
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                HStack {
+                    Spacer()
+                    Button {
+                        showSkipConfirm = true
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(AppColors.textSecondary)
+                            .padding(6)
+                            .background(AppColors.deepBlack.opacity(0.6))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text("Quick Setup")
+                    .font(AppTypography.title)
+                    .foregroundColor(AppColors.textPrimary)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("1. Open System Settings → Sound")
+                    Text("2. Set Output to BlackHole 2ch")
+                    Text("3. Set Input to BlackHole 2ch")
+                    Text("4. Back in AudioShaper, pick your speakers in Output")
+                }
+                .font(AppTypography.body)
+                .foregroundColor(AppColors.textSecondary)
+                .frame(maxWidth: 360, alignment: .leading)
+
+                VStack(spacing: 8) {
+                    Button("Verify Setup") {
+                        inputDeviceName = audioEngine.systemDefaultInputDeviceName()
+                        outputDeviceName = audioEngine.systemDefaultOutputDeviceName()
+                        _ = audioEngine.refreshSetupStatus()
+                        hasVerified = true
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppColors.neonCyan)
+
+                    if hasVerified {
+                        HStack(spacing: 10) {
+                            statusRow(title: "Input", name: inputDeviceName, ok: inputIsBlackHole)
+                            statusRow(title: "Output", name: outputDeviceName, ok: outputIsBlackHole)
+                        }
+                    }
+
+                    Button("Start") {
+                        onDone()
+                    }
+                    .disabled(!ready)
+                    .buttonStyle(.borderedProminent)
+                    .tint(ready ? AppColors.neonCyan : AppColors.textSecondary)
+                }
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppColors.midPurple.opacity(0.95))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(AppColors.neonCyan.opacity(0.6), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.3), radius: 12, y: 6)
+        }
+        .transition(.opacity)
+        .onAppear {
+            inputDeviceName = audioEngine.systemDefaultInputDeviceName()
+            outputDeviceName = audioEngine.systemDefaultOutputDeviceName()
+            _ = audioEngine.refreshSetupStatus()
+            hasVerified = true
+        }
+        .alert("Skip setup?", isPresented: $showSkipConfirm) {
+            Button("Skip", role: .destructive) {
+                onDone()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("AudioShaper won’t be functional without setting Input and Output to BlackHole. You won’t hear sound until you set it up.")
+        }
+    }
+
+    private func statusRow(title: String, name: String?, ok: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text("\(title):")
+                .font(.caption)
+                .foregroundColor(AppColors.textMuted)
+            Text(name ?? "Not detected")
+                .font(.caption)
+                .foregroundColor(ok ? AppColors.neonCyan : AppColors.neonPink)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(AppColors.deepBlack.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -443,6 +579,10 @@ struct HeaderView: View {
                 if audioEngine.isRunning {
                     audioEngine.stop()
                 } else {
+                    guard audioEngine.setupReady else {
+                        audioEngine.errorMessage = "System Input/Output must be BlackHole 2ch to start."
+                        return
+                    }
                     audioEngine.start()
                 }
             }) {
@@ -451,7 +591,8 @@ struct HeaderView: View {
                     .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
             }
             .buttonStyle(.plain)
-            .help(audioEngine.isRunning ? "Stop Processing" : "Start Processing")
+            .opacity(audioEngine.setupReady ? 1.0 : 0.5)
+            .help(audioEngine.isRunning ? "Stop Processing" : (audioEngine.setupReady ? "Start Processing" : "Set System Input/Output to BlackHole 2ch to start"))
 
             Divider()
                 .frame(height: 30)
