@@ -517,6 +517,7 @@ class AudioEngine: ObservableObject {
             let channelCount = Int(inputFormat.channelCount)
             initializeRingBuffer(frameSize: frameLength * channelCount, capacity: maxRingBufferSize)
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
+            ensureProcessingCapacity(frameLength: frameLength, channelCount: channelCount)
 
             let bufferSize: UInt32 = bufferFrameCount * UInt32(MemoryLayout<Float>.size) * UInt32(inputFormat.channelCount)
             for i in 0..<3 {
@@ -1016,6 +1017,8 @@ class AudioEngine: ObservableObject {
     // Pre-allocated buffers
     private var interleavedOutputBuffer: [Float] = []
     private var interleavedOutputCapacity: Int = 0
+    private var processingBuffer: [[Float]] = []
+    private var processingFrameCapacity: Int = 0
 
     // Ring buffer for audio data (interleaved frames)
     private var ringBuffer: UnsafeMutablePointer<Float>?
@@ -1160,8 +1163,9 @@ class AudioEngine: ObservableObject {
             )
         }
 
-        // Process audio through effect chain
-        var processedAudio = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+        // Process audio through effect chain (reused buffer)
+        ensureProcessingCapacity(frameLength: frameLength, channelCount: channelCount)
+        var processedAudio = processingBuffer
 
         // Copy input to processed audio
         for channel in 0..<channelCount {
@@ -1216,6 +1220,16 @@ class AudioEngine: ObservableObject {
         if interleavedOutputCapacity < required {
             interleavedOutputBuffer = [Float](repeating: 0, count: required)
             interleavedOutputCapacity = required
+        }
+    }
+
+    private func ensureProcessingCapacity(frameLength: Int, channelCount: Int) {
+        if processingFrameCapacity != frameLength || processingBuffer.count != channelCount {
+            processingBuffer = [[Float]](
+                repeating: [Float](repeating: 0, count: frameLength),
+                count: channelCount
+            )
+            processingFrameCapacity = frameLength
         }
     }
 
