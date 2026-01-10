@@ -55,8 +55,8 @@ struct ContentView: View {
                         HeaderView(
                             audioEngine: audioEngine,
                             onSave: {
-                                tutorial.advanceIf(.buildSave)
                                 saveCurrentPreset(overwrite: true)
+                                tutorial.advanceIf(.buildSave)
                             },
                             onLoad: {
                                 tutorial.advanceIf(.buildLoad)
@@ -169,6 +169,11 @@ struct ContentView: View {
                     showingLoadDialog = false
                 }
             )
+        }
+        .onChange(of: showingLoadDialog) { isShowing in
+            if !isShowing, tutorial.step == .buildCloseLoad {
+                tutorial.advance()
+            }
         }
     }
 
@@ -873,17 +878,22 @@ enum TutorialStep: Equatable {
     case inactive
     case welcome
     case homePresets
+    case presetsExplore
     case presetsBack
     case homeBuild
     case buildIntro
     case buildAddBass
     case buildDoubleClick
+    case buildCloseOverlay
     case buildRightClick
+    case buildCloseContextMenu
     case buildWiringManual
     case buildConnect
     case buildGraphMode
     case buildSave
+    case buildSaveConfirm
     case buildLoad
+    case buildCloseLoad
     case buildFinish
 }
 
@@ -925,12 +935,16 @@ final class TutorialController: ObservableObject {
         case .buildIntro,
              .buildAddBass,
              .buildDoubleClick,
+             .buildCloseOverlay,
              .buildRightClick,
+             .buildCloseContextMenu,
              .buildWiringManual,
              .buildConnect,
              .buildGraphMode,
              .buildSave,
+             .buildSaveConfirm,
              .buildLoad,
+             .buildCloseLoad,
              .buildFinish:
             return true
         default:
@@ -953,6 +967,8 @@ final class TutorialController: ObservableObject {
         case .welcome:
             step = .homePresets
         case .homePresets:
+            step = .presetsExplore
+        case .presetsExplore:
             step = .presetsBack
         case .presetsBack:
             step = .homeBuild
@@ -963,8 +979,12 @@ final class TutorialController: ObservableObject {
         case .buildAddBass:
             step = .buildDoubleClick
         case .buildDoubleClick:
+            step = .buildCloseOverlay
+        case .buildCloseOverlay:
             step = .buildRightClick
         case .buildRightClick:
+            step = .buildCloseContextMenu
+        case .buildCloseContextMenu:
             step = .buildWiringManual
         case .buildWiringManual:
             step = .buildConnect
@@ -973,8 +993,12 @@ final class TutorialController: ObservableObject {
         case .buildGraphMode:
             step = .buildSave
         case .buildSave:
+            step = .buildSaveConfirm
+        case .buildSaveConfirm:
             step = .buildLoad
         case .buildLoad:
+            step = .buildCloseLoad
+        case .buildCloseLoad:
             step = .buildFinish
         case .buildFinish:
             step = .inactive
@@ -985,7 +1009,7 @@ final class TutorialController: ObservableObject {
 
     func handlePresetsClick() {
         if step == .homePresets {
-            step = .presetsBack
+            step = .presetsExplore
         }
     }
 
@@ -1018,16 +1042,19 @@ private struct TutorialOverlay: View {
     let onNext: () -> Void
     let onSkip: () -> Void
 
+    @State private var measuredCardSize: CGSize = .zero
+
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            let highlightRect = highlightFrame(in: size, proxy: proxy)
+            let highlightRects = highlightFrames(in: size, proxy: proxy)
+            let primaryHighlight = highlightRects.first
 
             ZStack {
-                dimmingLayer(size: size, highlight: highlightRect)
+                dimmingLayer(size: size, highlights: highlightRects)
                     .allowsHitTesting(false)
 
-                if let rect = highlightRect {
+                ForEach(Array(highlightRects.enumerated()), id: \.offset) { _, rect in
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(AppColors.neonCyan.opacity(0.9), lineWidth: 2)
                         .shadow(color: AppColors.neonCyan.opacity(0.6), radius: 14)
@@ -1036,34 +1063,59 @@ private struct TutorialOverlay: View {
                         .allowsHitTesting(false)
                 }
 
-                calloutView(in: size, highlight: highlightRect)
+                calloutView(in: size, highlight: primaryHighlight)
             }
         }
         .ignoresSafeArea()
     }
 
-    private func highlightFrame(in size: CGSize, proxy: GeometryProxy) -> CGRect? {
+    private struct TutorialCardSizePreferenceKey: PreferenceKey {
+        static var defaultValue: CGSize = .zero
+        static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+            let next = nextValue()
+            if next != .zero {
+                value = next
+            }
+        }
+    }
+
+    private func highlightFrames(in size: CGSize, proxy: GeometryProxy) -> [CGRect] {
         switch step {
         case .homePresets:
-            return convertToLocal(rect: targets[.presetsButton], proxy: proxy)
+            return [convertToLocal(rect: targets[.presetsButton], proxy: proxy)].compactMap { $0 }
+        case .presetsExplore:
+            return []
         case .homeBuild:
-            return convertToLocal(rect: targets[.buildButton], proxy: proxy)
+            return [convertToLocal(rect: targets[.buildButton], proxy: proxy)].compactMap { $0 }
         case .presetsBack:
-            return convertToLocal(rect: targets[.backButton], proxy: proxy)
+            return [convertToLocal(rect: targets[.backButton], proxy: proxy)].compactMap { $0 }
         case .buildWiringManual:
-            return convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)
+            return [convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)].compactMap { $0 }
         case .buildGraphMode:
-            return convertToLocal(rect: targets[.buildGraphMode], proxy: proxy)
+            return [convertToLocal(rect: targets[.buildGraphMode], proxy: proxy)].compactMap { $0 }
         case .buildAddBass:
-            return convertToLocal(rect: targets[.buildBassBoost], proxy: proxy)
+            return [
+                convertToLocal(rect: targets[.buildBassBoost], proxy: proxy),
+                convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
+            ].compactMap { $0 }
         case .buildDoubleClick:
-            return convertToLocal(rect: targets[.buildNode], proxy: proxy)
+            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
+        case .buildCloseOverlay:
+            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
         case .buildSave:
-            return convertToLocal(rect: targets[.buildSave], proxy: proxy)
+            return [convertToLocal(rect: targets[.buildSave], proxy: proxy)].compactMap { $0 }
+        case .buildSaveConfirm:
+            return []
         case .buildLoad:
-            return convertToLocal(rect: targets[.buildLoad], proxy: proxy)
+            return [convertToLocal(rect: targets[.buildLoad], proxy: proxy)].compactMap { $0 }
+        case .buildCloseLoad:
+            return []
+        case .buildRightClick:
+            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
+        case .buildCloseContextMenu:
+            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
         default:
-            return nil
+            return []
         }
     }
 
@@ -1074,46 +1126,137 @@ private struct TutorialOverlay: View {
     }
 
     @ViewBuilder
-    private func dimmingLayer(size: CGSize, highlight: CGRect?) -> some View {
-        if let rect = highlight {
-            ZStack {
+    private func dimmingLayer(size: CGSize, highlights: [CGRect]) -> some View {
+        if shouldDimBackground {
+            if !highlights.isEmpty {
+                ZStack {
+                    Color.black.opacity(0.55)
+                    ForEach(Array(highlights.enumerated()), id: \.offset) { _, rect in
+                        RoundedRectangle(cornerRadius: 16)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                            .blendMode(.destinationOut)
+                    }
+                }
+                .compositingGroup()
+            } else {
                 Color.black.opacity(0.55)
-                RoundedRectangle(cornerRadius: 16)
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .blendMode(.destinationOut)
             }
-            .compositingGroup()
         } else {
-            Color.black.opacity(0.55)
+            Color.clear
+        }
+    }
+
+    private var shouldDimBackground: Bool {
+        switch step {
+        case .presetsExplore:
+            return false
+        case .buildAddBass:
+            // Keep the canvas visible while the user drags.
+            return true
+        case .buildConnect:
+            // User needs to see the whole canvas to wire.
+            return false
+        case .buildSaveConfirm:
+            return false
+        case .buildCloseLoad:
+            return false
+        default:
+            return true
         }
     }
 
     @ViewBuilder
     private func calloutView(in size: CGSize, highlight: CGRect?) -> some View {
         if let content = tutorialContent() {
-            let card = tutorialCard(
+            let cardBase = tutorialCard(
                 title: content.title,
                 body: content.body,
                 showNext: content.showNext
             )
 
+            let card = cardBase
+                .frame(maxWidth: highlight == nil ? 420 : 360)
+                .background(
+                    GeometryReader { cardProxy in
+                        Color.clear.preference(
+                            key: TutorialCardSizePreferenceKey.self,
+                            value: cardProxy.size
+                        )
+                    }
+                )
+                .onPreferenceChange(TutorialCardSizePreferenceKey.self) { newSize in
+                    measuredCardSize = newSize
+                }
+
             if let rect = highlight {
-                let placeAbove = rect.minY > 140
-                card
-                    .frame(maxWidth: 360)
-                    .position(
-                        x: rect.midX,
-                        y: placeAbove ? rect.minY - 90 : rect.maxY + 110
-                    )
+                let position = bestCalloutPosition(
+                    screen: size,
+                    target: rect,
+                    cardSize: measuredCardSize == .zero ? CGSize(width: 360, height: 140) : measuredCardSize
+                )
+                card.position(position)
             } else {
-                card
-                    .frame(maxWidth: 420)
-                    .position(x: size.width / 2, y: size.height * 0.22)
+                let fallbackSize = measuredCardSize == .zero ? CGSize(width: 420, height: 140) : measuredCardSize
+                let position = clamp(
+                    CGPoint(x: size.width / 2, y: size.height * 0.22),
+                    screen: size,
+                    cardSize: fallbackSize
+                )
+                card.position(position)
             }
         } else {
             EmptyView()
         }
+    }
+
+    private func bestCalloutPosition(screen: CGSize, target: CGRect, cardSize: CGSize) -> CGPoint {
+        let padding: CGFloat = 16
+        let avoidPad: CGFloat = 10
+
+        let candidates: [CGPoint] = [
+            CGPoint(x: target.maxX + padding + cardSize.width / 2, y: target.midY), // right
+            CGPoint(x: target.minX - padding - cardSize.width / 2, y: target.midY), // left
+            CGPoint(x: target.midX, y: target.maxY + padding + cardSize.height / 2), // below
+            CGPoint(x: target.midX, y: target.minY - padding - cardSize.height / 2)  // above
+        ]
+
+        let inflatedTarget = target.insetBy(dx: -avoidPad, dy: -avoidPad)
+        for candidate in candidates {
+            let rect = cardRect(center: candidate, cardSize: cardSize)
+            if isRectOnScreen(rect, screen: screen, padding: padding),
+               !rect.intersects(inflatedTarget) {
+                return candidate
+            }
+        }
+
+        // Fallback: prefer below, but clamp so it always stays visible.
+        return clamp(candidates[2], screen: screen, cardSize: cardSize)
+    }
+
+    private func clamp(_ center: CGPoint, screen: CGSize, cardSize: CGSize) -> CGPoint {
+        let padding: CGFloat = 14
+        let halfW = cardSize.width / 2
+        let halfH = cardSize.height / 2
+        let x = min(max(center.x, padding + halfW), screen.width - padding - halfW)
+        let y = min(max(center.y, padding + halfH), screen.height - padding - halfH)
+        return CGPoint(x: x, y: y)
+    }
+
+    private func cardRect(center: CGPoint, cardSize: CGSize) -> CGRect {
+        CGRect(
+            x: center.x - cardSize.width / 2,
+            y: center.y - cardSize.height / 2,
+            width: cardSize.width,
+            height: cardSize.height
+        )
+    }
+
+    private func isRectOnScreen(_ rect: CGRect, screen: CGSize, padding: CGFloat) -> Bool {
+        rect.minX >= padding &&
+        rect.minY >= padding &&
+        rect.maxX <= screen.width - padding &&
+        rect.maxY <= screen.height - padding
     }
 
     private func tutorialContent() -> (title: String, body: String, showNext: Bool)? {
@@ -1121,85 +1264,115 @@ private struct TutorialOverlay: View {
         case .welcome:
             return (
                 title: "Welcome",
-                body: "Hey, welcome to AudioShaper. Since it’s your first time here, let me show you around.",
+                body: "Hey, welcome to AudioShaper. Since it’s your first time here, let me walk you through the key screens.",
                 showNext: true
             )
         case .homePresets:
             return (
                 title: "Presets",
-                body: "Browse saved chains and load them instantly.",
+                body: "This page houses your saved chains. Tap Presets to browse them before heading back.",
                 showNext: false
+            )
+        case .presetsExplore:
+            return (
+                title: "Browse presets",
+                body: "Once you start saving chains, they’ll show up here. Take a quick look around, then press Next to continue.",
+                showNext: true
             )
         case .presetsBack:
             return (
                 title: "Back to Home",
-                body: "Click Home to head back.",
+                body: "Tap Home to return once you’ve reviewed a preset.",
                 showNext: false
             )
         case .homeBuild:
             return (
                 title: "Build",
-                body: "Click Build from scratch to start crafting your chain.",
+                body: "Build opens a fresh canvas for crafting blocks. Tap it when you’re ready.",
                 showNext: false
             )
         case .buildIntro:
             return (
-                title: "Your canvas",
-                body: "This is where you build your chain. Let’s add your first block.",
+                title: "Canvas",
+                body: "This is where signal flow happens. Drag effects from the tray into this space.",
                 showNext: true
             )
         case .buildAddBass:
             return (
                 title: "Add Bass Boost",
-                body: "Click Bass Boost in the Effects tray.",
+                body: "Bass Boost fattens the lows. Drag Bass Boost from the Effects tray onto the canvas.",
                 showNext: false
             )
         case .buildDoubleClick:
             return (
-                title: "Edit a block",
-                body: "Double‑click the Bass Boost node to reveal its controls.",
+                title: "Open controls",
+                body: "Double-click the Bass Boost node to open its controls.",
+                showNext: false
+            )
+        case .buildCloseOverlay:
+            return (
+                title: "Close controls",
+                body: "Nice. Now close the panel (double-click the node again) so we can continue.",
                 showNext: false
             )
         case .buildRightClick:
             return (
-                title: "Right‑click menu",
-                body: "Right‑click the node to see actions like duplicate and reset.",
+                title: "Right-click menu",
+                body: "Right-click the Bass Boost node to open the action menu.",
+                showNext: false
+            )
+        case .buildCloseContextMenu:
+            return (
+                title: "Close the menu",
+                body: "Click anywhere outside the menu to close it.",
                 showNext: false
             )
         case .buildWiringManual:
             return (
                 title: "Manual wiring",
-                body: "Switch Wiring to Manual.",
+                body: "Switch Wiring to Manual so you can route each block yourself.",
                 showNext: false
             )
         case .buildConnect:
             return (
                 title: "Connect nodes",
-                body: "Option‑drag from a node to another to connect them.",
+                body: "Option-drag from Start → Bass Boost, then Bass Boost → End.",
                 showNext: false
             )
         case .buildGraphMode:
             return (
-                title: "Stereo vs Dual Mono",
-                body: "Switch Graph Mode to Dual Mono (L/R).",
+                title: "Graph Mode",
+                body: "Dual Mono (L/R) separates the channels—switch to it to keep left and right processing paths independent.",
                 showNext: false
             )
         case .buildSave:
             return (
                 title: "Save your chain",
-                body: "Click Save to store this preset.",
+                body: "Save locks this chain into a preset you can reload later.",
                 showNext: false
+            )
+        case .buildSaveConfirm:
+            return (
+                title: "Saved",
+                body: "Nice. Your chain is saved — next we’ll load a preset.",
+                showNext: true
             )
         case .buildLoad:
             return (
                 title: "Load presets",
-                body: "Click Load Preset to bring one back.",
+                body: "Load brings a saved chain back onto the canvas for more tweaking.",
+                showNext: false
+            )
+        case .buildCloseLoad:
+            return (
+                title: "Close Load",
+                body: "Close the Load window to finish the tutorial.",
                 showNext: false
             )
         case .buildFinish:
             return (
                 title: "All set",
-                body: "That’s the basics. You’re ready to build.",
+                body: "That’s the loop—build, tweak, save, load. You’re ready to bend audio.",
                 showNext: true
             )
         case .inactive:
@@ -1208,41 +1381,13 @@ private struct TutorialOverlay: View {
     }
 
     private func tutorialCard(title: String, body: String, showNext: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                    .font(AppTypography.heading)
-                    .foregroundColor(AppColors.textPrimary)
-                Spacer()
-                Button("Skip") {
-                    onSkip()
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(AppColors.textMuted)
-            }
-            Text(body)
-                .font(AppTypography.body)
-                .foregroundColor(AppColors.textSecondary)
-
-            if showNext {
-                Button("Next") {
-                    onNext()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppColors.neonCyan)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppColors.midPurple.opacity(0.95))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(AppColors.neonCyan.opacity(0.5), lineWidth: 1)
-                )
+        TutorialCardView(
+            title: title,
+            message: body,
+            showNext: showNext,
+            onNext: onNext,
+            onSkip: onSkip
         )
-        .shadow(color: Color.black.opacity(0.4), radius: 14, y: 8)
     }
 }
 

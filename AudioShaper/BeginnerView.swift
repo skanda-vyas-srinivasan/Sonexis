@@ -366,10 +366,14 @@ struct BeginnerView: View {
                     if let menu = customContextMenu {
                         Color.black.opacity(0.001)
                             .ignoresSafeArea()
-                            .onTapGesture { customContextMenu = nil }
+                            .onTapGesture {
+                                customContextMenu = nil
+                                tutorial.advanceIf(.buildCloseContextMenu)
+                            }
 
                         CustomContextMenuView(menu: menu) {
                             customContextMenu = nil
+                            tutorial.advanceIf(.buildCloseContextMenu)
                         }
                         .zIndex(10)
                     }
@@ -509,7 +513,11 @@ struct BeginnerView: View {
                             onExpanded: {
                                 tutorial.advanceIf(.buildDoubleClick)
                             },
-                            allowExpand: !tutorial.isBuildStep || tutorial.step == .buildDoubleClick
+                            onCollapsed: {
+                                tutorial.advanceIf(.buildCloseOverlay)
+                            },
+                            allowExpand: !tutorial.isBuildStep || tutorial.step == .buildDoubleClick,
+                            tutorialStep: tutorial.step
                         )
                         .scaleEffect(nodeScale)
                         .position(nodePos)
@@ -637,6 +645,14 @@ struct BeginnerView: View {
     private var canvasView: some View {
         GeometryReader { geometry in
             canvasContent(in: geometry)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.buildCanvas: proxy.frame(in: .global)]
+                        )
+                    }
+                )
                 .onHover { hovering in
                     isCanvasHovering = hovering
                     updateCursor()
@@ -719,7 +735,8 @@ struct BeginnerView: View {
                 },
                 onDrag: { type in
                     draggedEffectType = type
-                }
+                },
+                allowTapToAdd: !tutorial.isBuildStep || tutorial.step != .buildAddBass
             )
 
             VStack(spacing: 0) {
@@ -1261,7 +1278,7 @@ struct BeginnerView: View {
     }
 
     private func handleRightClick(at point: CGPoint, in size: CGSize) {
-        if tutorial.isBuildStep && tutorial.step != .buildRightClick {
+        if tutorial.isBuildStep && tutorial.step != .buildRightClick && tutorial.step != .buildCloseContextMenu {
             return
         }
         // Check nodes
@@ -1808,7 +1825,21 @@ struct BeginnerView: View {
         }
         print("   ✅ Connection created! Total connections: \(manualConnections.count)")
         applyChainToEngine()
-        tutorial.advanceIf(.buildConnect)
+        if tutorial.step == .buildConnect {
+            if shouldAdvanceConnectTutorial() {
+                tutorial.advance()
+            }
+        } else {
+            tutorial.advanceIf(.buildConnect)
+        }
+    }
+
+    private func shouldAdvanceConnectTutorial() -> Bool {
+        // Tutorial expectation: Start → Bass Boost → End (stereo graph, manual wiring).
+        guard let bassNode = effectChain.first(where: { $0.type == .bassBoost }) else { return false }
+        let hasStartToBass = manualConnections.contains { $0.fromNodeId == startNodeID && $0.toNodeId == bassNode.id }
+        let hasBassToEnd = manualConnections.contains { $0.fromNodeId == bassNode.id && $0.toNodeId == endNodeID }
+        return hasStartToBass && hasBassToEnd
     }
 
     private func nearestConnectionTarget(from fromID: UUID, at point: CGPoint) -> UUID? {
@@ -2120,6 +2151,7 @@ fileprivate struct EffectTray: View {
     let previewStyle: AccentStyle
     let onSelect: (EffectType) -> Void
     let onDrag: (EffectType) -> Void
+    let allowTapToAdd: Bool
     @State private var searchText = ""
 
     private let effects: [EffectType] = [
@@ -2173,7 +2205,9 @@ fileprivate struct EffectTray: View {
                                     effectType: effectType,
                                     previewStyle: previewStyle,
                                     onTap: {
-                                        onSelect(effectType)
+                                        if allowTapToAdd {
+                                            onSelect(effectType)
+                                        }
                                     },
                                     onDragStart: {
                                         onDrag(effectType)
@@ -2941,7 +2975,9 @@ struct EffectBlockHorizontal: View {
     let onRemove: () -> Void
     let onUpdate: () -> Void
     let onExpanded: () -> Void
+    let onCollapsed: () -> Void
     let allowExpand: Bool
+    let tutorialStep: TutorialStep
     @State private var isHovered = false
     @State private var isExpanded = false
     @State private var dropScale: CGFloat = 1.0
@@ -3006,13 +3042,15 @@ struct EffectBlockHorizontal: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture(count: 2) {
-                if !allowExpand {
-                    return
-                }
+                let canToggle = allowExpand || isExpanded
+                guard canToggle else { return }
+                let wasExpanded = isExpanded
                 withAnimation(.easeOut(duration: 0.25)) {
                     isExpanded.toggle()
                     if isExpanded {
                         onExpanded()
+                    } else if wasExpanded {
+                        onCollapsed()
                     }
                 }
             }
@@ -3065,6 +3103,17 @@ struct EffectBlockHorizontal: View {
                 .padding(.top, 8)
                 .scaleEffect(overlayScale, anchor: .top)
                 .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .onChange(of: tutorialStep) { step in
+            // Keep the panel stable during the open/close tutorial steps.
+            if step == .buildDoubleClick || step == .buildCloseOverlay {
+                return
+            }
+            if isExpanded {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded = false
+                }
             }
         }
         .onChange(of: isDropAnimating) { triggered in
