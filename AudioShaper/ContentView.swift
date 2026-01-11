@@ -1275,6 +1275,7 @@ private struct TutorialOverlay: View {
     let onOpenSetup: () -> Void
 
     @State private var measuredCardSize: CGSize = .zero
+    @State private var showSkipConfirmation = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -1305,10 +1306,30 @@ private struct TutorialOverlay: View {
                         .allowsHitTesting(false)
                 }
 
-                calloutView(in: size, highlight: primaryHighlight)
+                if !showSkipConfirmation {
+                    calloutView(in: size, highlight: primaryHighlight)
+                }
             }
         }
         .ignoresSafeArea()
+        .overlay(
+            Group {
+                if showSkipConfirmation {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                showSkipConfirmation = false
+                            }
+                        
+                        SkipTutorialConfirm(
+                            onCancel: { showSkipConfirmation = false },
+                            onConfirm: onSkip
+                        )
+                    }
+                }
+            }
+        )
     }
 
     private struct TutorialCardSizePreferenceKey: PreferenceKey {
@@ -1824,10 +1845,54 @@ private struct TutorialOverlay: View {
             message: body,
             showNext: showNext,
             onNext: onNext,
-            onSkip: onSkip,
+            onSkip: { showSkipConfirmation = true },
             showSetupButtons: showSetupButtons,
             onOpenSetup: onOpenSetup
         )
+    }
+}
+
+private struct SkipTutorialConfirm: View {
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("Exit Tutorial?")
+                .font(AppTypography.heading)
+                .foregroundColor(AppColors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("You can always restart it from the Home screen.")
+                .font(AppTypography.body)
+                .foregroundColor(AppColors.textSecondary)
+
+            HStack(spacing: 10) {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+                .tint(AppColors.textSecondary)
+
+                Button("Exit") {
+                    onConfirm()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppColors.neonPink)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(AppColors.midPurple.opacity(0.95))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppColors.neonPink.opacity(0.6), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.35), radius: 10, y: 6)
+        .frame(maxWidth: 320)
     }
 }
 
