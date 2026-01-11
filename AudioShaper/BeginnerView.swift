@@ -281,7 +281,11 @@ struct BeginnerView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    guard !tutorial.isBuildStep else { return }
+                                    // Allow lasso selection during connection steps for better UX
+                                    let allowLassoDuringTutorial = tutorial.step == .buildConnect ||
+                                                                   tutorial.step == .buildParallelConnect ||
+                                                                   tutorial.step == .buildDualMonoConnect
+                                    guard !tutorial.isBuildStep || allowLassoDuringTutorial else { return }
                                     guard !NSEvent.modifierFlags.contains(.option) else { return }
                                     guard draggingNodeID == nil else { return }
 
@@ -291,7 +295,10 @@ struct BeginnerView: View {
                                     lassoCurrent = value.location
                                 }
                                 .onEnded { _ in
-                                    guard !tutorial.isBuildStep else {
+                                    let allowLassoDuringTutorial = tutorial.step == .buildConnect ||
+                                                                   tutorial.step == .buildParallelConnect ||
+                                                                   tutorial.step == .buildDualMonoConnect
+                                    guard !tutorial.isBuildStep || allowLassoDuringTutorial else {
                                         lassoStart = nil
                                         lassoCurrent = nil
                                         return
@@ -586,7 +593,12 @@ struct BeginnerView: View {
                                             y: nodePos.y + value.translation.height
                                         )
                                     } else {
-                                        if tutorial.isBuildStep && tutorial.step != .buildAutoReorder {
+                                        // Allow node movement during reorder and connection steps
+                                        let allowMoveDuringTutorial = tutorial.step == .buildAutoReorder ||
+                                                                      tutorial.step == .buildConnect ||
+                                                                      tutorial.step == .buildParallelConnect ||
+                                                                      tutorial.step == .buildDualMonoConnect
+                                        if tutorial.isBuildStep && !allowMoveDuringTutorial {
                                             return
                                         }
                                         // Move mode
@@ -636,7 +648,12 @@ struct BeginnerView: View {
                                         )
                                         finalizeConnection(from: effectValue.id, dropPoint: dropPoint)
                                     } else {
-                                        if tutorial.isBuildStep && tutorial.step != .buildAutoReorder {
+                                        // Allow node movement during reorder and connection steps
+                                        let allowMoveDuringTutorial = tutorial.step == .buildAutoReorder ||
+                                                                      tutorial.step == .buildConnect ||
+                                                                      tutorial.step == .buildParallelConnect ||
+                                                                      tutorial.step == .buildDualMonoConnect
+                                        if tutorial.isBuildStep && !allowMoveDuringTutorial {
                                             activeConnectionFromID = nil
                                             activeConnectionPoint = .zero
                                             return

@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var lastActiveScreen: AppScreen = .home
     @State private var skipRestoreOnEnter = false
     @State private var tutorialTargets: [TutorialTarget: CGRect] = [:]
+    @State private var tutorialRestoreSnapshot: GraphSnapshot?
+    @State private var tutorialRestorePresetID: UUID?
 
     var body: some View {
         ZStack {
@@ -133,6 +135,47 @@ struct ContentView: View {
         .onChange(of: activeScreen) { newValue in
             showGlitch = true
             handleScreenChange(to: newValue)
+        }
+        .onChange(of: tutorial.step) { newStep in
+            if newStep == .welcome {
+                // Save current state for restoration when tutorial ends
+                if tutorialRestoreSnapshot == nil {
+                    tutorialRestoreSnapshot = audioEngine.currentGraphSnapshot
+                    tutorialRestorePresetID = currentPresetID
+                }
+
+                // Start the tutorial from a clean, predictable state:
+                // - Empty canvas (no nodes/connections)
+                // - Stereo mode (not dual-mono)
+                // - Automatic wiring (not manual)
+                let resetSnapshot = GraphSnapshot(
+                    graphMode: .single,
+                    wiringMode: .automatic,
+                    nodes: [],
+                    connections: [],
+                    autoGainOverrides: [],
+                    startNodeID: UUID(),
+                    endNodeID: UUID(),
+                    leftStartNodeID: UUID(),
+                    leftEndNodeID: UUID(),
+                    rightStartNodeID: UUID(),
+                    rightEndNodeID: UUID(),
+                    hasNodeParameters: true
+                )
+
+                // Clear any previous graph state
+                lastGraphSnapshot = nil
+                currentPresetID = nil
+                skipRestoreOnEnter = true
+                audioEngine.requestGraphLoad(resetSnapshot)
+            } else if newStep == .inactive, let snapshot = tutorialRestoreSnapshot {
+                // Restore the user's graph when the tutorial ends.
+                audioEngine.requestGraphLoad(snapshot)
+                lastGraphSnapshot = snapshot
+                currentPresetID = tutorialRestorePresetID
+                tutorialRestoreSnapshot = nil
+                tutorialRestorePresetID = nil
+            }
         }
         .onChange(of: showSetupOverlay) { isVisible in
             if !isVisible {
@@ -1359,6 +1402,15 @@ private struct TutorialOverlay: View {
     private func bestCalloutPosition(screen: CGSize, target: CGRect, cardSize: CGSize) -> CGPoint {
         let padding: CGFloat = 16
         let avoidPad: CGFloat = 10
+
+        // Special case: For back button, force center-lower position to avoid blocking
+        if step == .presetsBack {
+            return clamp(
+                CGPoint(x: screen.width / 2, y: screen.height * 0.65),
+                screen: screen,
+                cardSize: cardSize
+            )
+        }
 
         let candidates: [CGPoint]
         if step == .buildReturnStereoAuto {
