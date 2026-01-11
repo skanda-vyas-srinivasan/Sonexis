@@ -168,6 +168,7 @@ struct BeginnerView: View {
                     }
                 )
                 .onChange(of: wiringMode) { newMode in
+                    guard !isRestoringSnapshot else { return }
                     if newMode == .automatic {
                         activeConnectionFromID = nil
                         activeConnectionPoint = .zero
@@ -914,7 +915,11 @@ struct BeginnerView: View {
         }
         .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
             guard let snapshot else { return }
+            isRestoringSnapshot = true
             applyGraphSnapshot(snapshot)
+            DispatchQueue.main.async {
+                isRestoringSnapshot = false
+            }
             audioEngine.pendingGraphSnapshot = nil
         }
         .onReceive(audioEngine.$signalFlowToken) { _ in
