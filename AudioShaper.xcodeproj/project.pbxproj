@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */; };
+		16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */ = {isa = PBXBuildFile; fileRef = 16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */; };
+		23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */; };
+		5047C507DB83004AA57728BE /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C769F79DC65143B6C5646AB /* Accelerate.framework */; };
 		AA0000010000000000000001 /* AudioShaperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* AudioShaperApp.swift */; };
 		AA0000030000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000040000000000000001 /* ContentView.swift */; };
 		AA0000050000000000000001 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000060000000000000001 /* AudioEngine.swift */; };
@@ -15,25 +19,12 @@
 		AA0000110000000000000004 /* BeginnerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000120000000000000004 /* BeginnerView.swift */; };
 		AA0000130000000000000005 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000140000000000000005 /* DesignSystem.swift */; };
 		AA0000150000000000000006 /* TutorialCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000160000000000000006 /* TutorialCardView.swift */; };
-		C63C1A55CF461A7F36555808 /* AAFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA149691A4DB6F418DAE1A1F /* AAFilter.cpp */; };
-		33E91E763C33D8F31218F30C /* BPMDetect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6C0D51379D3A56F7AD89238B /* BPMDetect.cpp */; };
-		0D1D4C1D996B66D89EBE87F7 /* FIFOSampleBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FA38020639AF6FF651CEE58 /* FIFOSampleBuffer.cpp */; };
-		2B6969E0CCA40548822B228A /* FIRFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DEF4F2DF93798AF2432F15BF /* FIRFilter.cpp */; };
-		3A31265293541F378C39EC66 /* InterpolateCubic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C59AC4BB2A4A907F39124C2C /* InterpolateCubic.cpp */; };
-		BB7E1D1FDDDE8BA8539E3FD1 /* InterpolateLinear.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7660C77BBD7B4D2EDE1288E2 /* InterpolateLinear.cpp */; };
-		AA611E9E927E52DEB29C1178 /* InterpolateShannon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6CB91814587C80C2BA22B5CA /* InterpolateShannon.cpp */; };
-		5D4BE39A81BFE31746FBA0F7 /* PeakFinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AD9421F1847720CE2283E52A /* PeakFinder.cpp */; };
-		40A0E9E7DF3FEDB0F7179F4A /* RateTransposer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B2CDF09CD090FE118C112DB7 /* RateTransposer.cpp */; };
-		E5A2ABADD48DB35CC3F84248 /* TDStretch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9EA47853E5A12AC1DFE8A0BD /* TDStretch.cpp */; };
-		77753FC865064A1776FD6795 /* cpu_detect_x86.cpp in Sources */ = {isa = PBXBuildFile; fileRef = FE10C6BB4D86F20AA3E181AD /* cpu_detect_x86.cpp */; };
-		8AF346CAF9255E2D67C78319 /* mmx_optimized.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 954DED8DC5D1D9B487EF9BB5 /* mmx_optimized.cpp */; };
-		F57DFFBCD7B8835E53DCE8BE /* sse_optimized.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8DFFE05F9C48334F037EE380 /* sse_optimized.cpp */; };
-		23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */; };
-		0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */; };
-		5047C507DB83004AA57728BE /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C769F79DC65143B6C5646AB /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BlackHole2ch-0.6.1 (1).pkg"; sourceTree = "<group>"; };
+		5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RubberBandWrapper.mm; sourceTree = "<group>"; };
+		7C769F79DC65143B6C5646AB /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		AA0000010000000000000002 /* AudioShaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioShaper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000020000000000000001 /* AudioShaperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioShaperApp.swift; sourceTree = "<group>"; };
 		AA0000040000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -45,24 +36,9 @@
 		AA0000120000000000000004 /* BeginnerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeginnerView.swift; sourceTree = "<group>"; };
 		AA0000140000000000000005 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		AA0000160000000000000006 /* TutorialCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialCardView.swift; sourceTree = "<group>"; };
-		E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AudioShaper-Bridging-Header.h"; sourceTree = "<group>"; };
 		D9C93DEA747BFDF98A24E5A1 /* RubberBandWrapper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RubberBandWrapper.h; sourceTree = "<group>"; };
-		5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RubberBandWrapper.mm; sourceTree = "<group>"; };
+		E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AudioShaper-Bridging-Header.h"; sourceTree = "<group>"; };
 		F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RubberBandSingle.cpp; sourceTree = "<group>"; };
-		7C769F79DC65143B6C5646AB /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
-		AA149691A4DB6F418DAE1A1F /* AAFilter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AAFilter.cpp; sourceTree = "<group>"; };
-		6C0D51379D3A56F7AD89238B /* BPMDetect.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BPMDetect.cpp; sourceTree = "<group>"; };
-		1FA38020639AF6FF651CEE58 /* FIFOSampleBuffer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FIFOSampleBuffer.cpp; sourceTree = "<group>"; };
-		DEF4F2DF93798AF2432F15BF /* FIRFilter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FIRFilter.cpp; sourceTree = "<group>"; };
-		C59AC4BB2A4A907F39124C2C /* InterpolateCubic.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = InterpolateCubic.cpp; sourceTree = "<group>"; };
-		7660C77BBD7B4D2EDE1288E2 /* InterpolateLinear.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = InterpolateLinear.cpp; sourceTree = "<group>"; };
-		6CB91814587C80C2BA22B5CA /* InterpolateShannon.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = InterpolateShannon.cpp; sourceTree = "<group>"; };
-		AD9421F1847720CE2283E52A /* PeakFinder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PeakFinder.cpp; sourceTree = "<group>"; };
-		B2CDF09CD090FE118C112DB7 /* RateTransposer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RateTransposer.cpp; sourceTree = "<group>"; };
-		9EA47853E5A12AC1DFE8A0BD /* TDStretch.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TDStretch.cpp; sourceTree = "<group>"; };
-		FE10C6BB4D86F20AA3E181AD /* cpu_detect_x86.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = cpu_detect_x86.cpp; sourceTree = "<group>"; };
-		954DED8DC5D1D9B487EF9BB5 /* mmx_optimized.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mmx_optimized.cpp; sourceTree = "<group>"; };
-		8DFFE05F9C48334F037EE380 /* sse_optimized.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = sse_optimized.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,18 +53,44 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		16F077052F1454B10088C4AF /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				7C769F79DC65143B6C5646AB /* Accelerate.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		1F7A3B1AC7A1465FD2C6FA42 /* ThirdParty */ = {
+			isa = PBXGroup;
+			children = (
+				A783C7BC4BD2E924BA1E782C /* rubberband/single */,
+			);
+			path = ThirdParty;
+			sourceTree = "<group>";
+		};
+		A783C7BC4BD2E924BA1E782C /* rubberband/single */ = {
+			isa = PBXGroup;
+			children = (
+				F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */,
+			);
+			path = rubberband/single;
+			sourceTree = "<group>";
+		};
 		AA0000010000000000000004 = {
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000002 /* AudioShaper */,
 				1F7A3B1AC7A1465FD2C6FA42 /* ThirdParty */,
 				AA0000030000000000000002 /* Products */,
+				16F077052F1454B10088C4AF /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
 		AA0000020000000000000002 /* AudioShaper */ = {
 			isa = PBXGroup;
 			children = (
+				16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */,
 				AA0000020000000000000001 /* AudioShaperApp.swift */,
 				AA0000040000000000000001 /* ContentView.swift */,
 				AA0000160000000000000006 /* TutorialCardView.swift */,
@@ -104,22 +106,6 @@
 				AA0000080000000000000001 /* AudioShaper.entitlements */,
 			);
 			path = AudioShaper;
-			sourceTree = "<group>";
-		};
-		1F7A3B1AC7A1465FD2C6FA42 /* ThirdParty */ = {
-			isa = PBXGroup;
-			children = (
-				A783C7BC4BD2E924BA1E782C /* RubberBand */,
-			);
-			path = ThirdParty;
-			sourceTree = "<group>";
-		};
-		A783C7BC4BD2E924BA1E782C /* RubberBand */ = {
-			isa = PBXGroup;
-			children = (
-				F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */,
-			);
-			path = rubberband/single;
 			sourceTree = "<group>";
 		};
 		AA0000030000000000000002 /* Products */ = {
@@ -188,6 +174,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -344,14 +331,14 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AudioShaper/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/ThirdParty/rubberband/rubberband",
 					"$(PROJECT_DIR)/ThirdParty/rubberband",
 				);
+				INFOPLIST_FILE = AudioShaper/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -359,8 +346,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.audioshaper.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = AudioShaper/AudioShaper-Bridging-Header.h;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "AudioShaper/AudioShaper-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -377,14 +364,14 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AudioShaper/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/ThirdParty/rubberband/rubberband",
 					"$(PROJECT_DIR)/ThirdParty/rubberband",
 				);
+				INFOPLIST_FILE = AudioShaper/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -392,8 +379,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.audioshaper.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = AudioShaper/AudioShaper-Bridging-Header.h;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "AudioShaper/AudioShaper-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

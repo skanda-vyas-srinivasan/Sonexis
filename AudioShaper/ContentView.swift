@@ -374,7 +374,9 @@ private struct OnboardingOverlay: View {
                             incompleteText: "Install BlackHole",
                             isComplete: blackHoleInstalled,
                             linkText: "Install",
-                            linkURL: "https://existential.audio/blackhole/"
+                            onLinkTapped: {
+                                downloadAndOpenBlackHole()
+                            }
                         )
                         setupStepCard(
                             completeText: "System sound input is set to BlackHole",
@@ -492,12 +494,23 @@ private struct OnboardingOverlay: View {
         })
     }
 
+    private func downloadAndOpenBlackHole() {
+        // Look for bundled BlackHole installer in app resources
+        guard let installerURL = Bundle.main.url(forResource: "BlackHole2ch-0.6.1 (1)", withExtension: "pkg") else {
+            print("BlackHole installer not found in app bundle")
+            return
+        }
+
+        // Open the installer directly from the app bundle
+        NSWorkspace.shared.open(installerURL)
+    }
+
     private func setupStepCard(
         completeText: String,
         incompleteText: String,
         isComplete: Bool,
         linkText: String? = nil,
-        linkURL: String? = nil
+        onLinkTapped: (() -> Void)? = nil
     ) -> some View {
         HStack(spacing: 6) {
             Text(isComplete ? completeText : incompleteText)
@@ -505,11 +518,9 @@ private struct OnboardingOverlay: View {
                 .foregroundColor(isComplete ? AppColors.neonCyan : AppColors.neonPink)
                 .lineLimit(1)
 
-            if !isComplete, let linkText, let linkURL {
+            if !isComplete, let linkText, let onLinkTapped {
                 Button(linkText) {
-                    if let url = URL(string: linkURL) {
-                        NSWorkspace.shared.open(url)
-                    }
+                    onLinkTapped()
                 }
                 .buttonStyle(.plain)
                 .font(AppTypography.caption)
