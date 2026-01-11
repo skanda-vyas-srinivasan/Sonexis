@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var tutorialTargets: [TutorialTarget: CGRect] = [:]
     @State private var tutorialRestoreSnapshot: GraphSnapshot?
     @State private var tutorialRestorePresetID: UUID?
+    @State private var showEngineStoppedAlert = false
+    @State private var hasEngineBeenOnDuringTutorial = false
 
     var body: some View {
         ZStack {
@@ -56,6 +58,7 @@ struct ContentView: View {
                     if activeScreen == .beginner {
                         HeaderView(
                             audioEngine: audioEngine,
+                            tutorial: tutorial,
                             onSave: {
                                 saveCurrentPreset(overwrite: true)
                             },
@@ -108,19 +111,32 @@ struct ContentView: View {
                 }
             }
 
-            if showSetupOverlay {
-                OnboardingOverlay(audioEngine: audioEngine) {
-                    showSetupOverlay = false
-                }
-            }
-
             if tutorial.isActive {
                 TutorialOverlay(
                     step: tutorial.step,
                     targets: tutorialTargets,
+                    isSetupReady: audioEngine.setupReady,
                     onNext: { tutorial.advance() },
-                    onSkip: { tutorial.endTutorial() }
+                    onSkip: { tutorial.endTutorial() },
+                    onOpenSetup: { showSetupOverlay = true }
                 )
+            }
+
+            // OnboardingOverlay must be last to appear above tutorial overlay
+            if showSetupOverlay {
+                OnboardingOverlay(audioEngine: audioEngine) {
+                    showSetupOverlay = false
+                    // User will manually click power button to advance from buildPower
+                }
+            }
+
+            // Engine stopped alert - must be above everything
+            if showEngineStoppedAlert {
+                EngineStoppedAlert(onDismiss: {
+                    showEngineStoppedAlert = false
+                    hasEngineBeenOnDuringTutorial = false
+                    tutorial.endTutorial()
+                })
             }
         }
         .onAppear {
@@ -143,6 +159,9 @@ struct ContentView: View {
                     tutorialRestoreSnapshot = audioEngine.currentGraphSnapshot
                     tutorialRestorePresetID = currentPresetID
                 }
+
+                // Reset engine tracking for new tutorial
+                hasEngineBeenOnDuringTutorial = false
 
                 // Start the tutorial from a clean, predictable state:
                 // - Empty canvas (no nodes/connections)
@@ -175,11 +194,23 @@ struct ContentView: View {
                 currentPresetID = tutorialRestorePresetID
                 tutorialRestoreSnapshot = nil
                 tutorialRestorePresetID = nil
+                hasEngineBeenOnDuringTutorial = false
             }
         }
         .onChange(of: showSetupOverlay) { isVisible in
             if !isVisible {
                 tutorial.startIfNeeded(isSetupVisible: false)
+            }
+        }
+        .onChange(of: audioEngine.isRunning) { isRunning in
+            // Track if engine has been on during tutorial
+            if tutorial.isActive && isRunning && tutorial.step != .buildPower {
+                hasEngineBeenOnDuringTutorial = true
+            }
+
+            // If engine stops unexpectedly after being on during tutorial
+            if tutorial.isActive && !isRunning && hasEngineBeenOnDuringTutorial {
+                showEngineStoppedAlert = true
             }
         }
         .animation(.easeOut(duration: 0.7), value: showSetupOverlay)
@@ -599,6 +630,58 @@ private struct SkipSetupConfirm: View {
     }
 }
 
+private struct EngineStoppedAlert: View {
+    let onDismiss: () -> Void
+    @State private var backdropVisible = false
+    @State private var animateIn = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(backdropVisible ? 0.7 : 0.0)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Text("Audio Engine Stopped")
+                    .font(AppTypography.heading)
+                    .foregroundColor(AppColors.neonPink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("Oops, looks like something happened with your input and output and the engine turned off. We have to stop the tutorial here.")
+                    .font(AppTypography.body)
+                    .foregroundColor(AppColors.textSecondary)
+
+                Button("Exit Tutorial") {
+                    onDismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppColors.neonPink)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppColors.midPurple.opacity(0.95))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(AppColors.neonPink.opacity(0.6), lineWidth: 1)
+                    )
+            )
+            .frame(maxWidth: 420)
+            .shadow(color: Color.black.opacity(0.3), radius: 12, y: 6)
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : -30)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.6)) {
+                backdropVisible = true
+            }
+            withAnimation(.easeOut(duration: 0.5)) {
+                animateIn = true
+            }
+        }
+    }
+}
+
 struct LoadPresetDialog: View {
     @ObservedObject var presetManager: PresetManager
     let tutorialStep: TutorialStep
@@ -940,6 +1023,9 @@ enum TutorialTarget: Hashable {
     case buildBassNode
     case buildClarityNode
     case buildReverbNode
+    case buildPower
+    case buildShield
+    case buildOutput
 }
 
 struct TutorialTargetPreferenceKey: PreferenceKey {
@@ -958,6 +1044,10 @@ enum TutorialStep: Equatable {
     case presetsBack
     case homeBuild
     case buildIntro
+    case buildHeaderIntro
+    case buildPower
+    case buildShield
+    case buildOutput
     case buildAddBass
     case buildAutoExplain
     case buildAutoAddClarity
@@ -1021,6 +1111,10 @@ final class TutorialController: ObservableObject {
     var isBuildStep: Bool {
         switch step {
         case .buildIntro,
+             .buildHeaderIntro,
+             .buildPower,
+             .buildShield,
+             .buildOutput,
              .buildAddBass,
              .buildAutoExplain,
              .buildAutoAddClarity,
@@ -1072,6 +1166,14 @@ final class TutorialController: ObservableObject {
         case .homeBuild:
             step = .buildIntro
         case .buildIntro:
+            step = .buildHeaderIntro
+        case .buildHeaderIntro:
+            step = .buildPower
+        case .buildPower:
+            step = .buildShield
+        case .buildShield:
+            step = .buildOutput
+        case .buildOutput:
             step = .buildAddBass
         case .buildAddBass:
             step = .buildAutoExplain
@@ -1160,8 +1262,10 @@ final class TutorialController: ObservableObject {
 private struct TutorialOverlay: View {
     let step: TutorialStep
     let targets: [TutorialTarget: CGRect]
+    let isSetupReady: Bool
     let onNext: () -> Void
     let onSkip: () -> Void
+    let onOpenSetup: () -> Void
 
     @State private var measuredCardSize: CGSize = .zero
 
@@ -1243,6 +1347,12 @@ private struct TutorialOverlay: View {
                 convertToLocal(rect: targets[.buildGraphMode], proxy: proxy),
                 convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)
             ].compactMap { $0 }
+        case .buildPower:
+            return [convertToLocal(rect: targets[.buildPower], proxy: proxy)].compactMap { $0 }
+        case .buildShield:
+            return [convertToLocal(rect: targets[.buildShield], proxy: proxy)].compactMap { $0 }
+        case .buildOutput:
+            return [convertToLocal(rect: targets[.buildOutput], proxy: proxy)].compactMap { $0 }
         case .buildAddBass:
             return [
                 convertToLocal(rect: targets[.buildBassBoost], proxy: proxy),
@@ -1505,6 +1615,38 @@ private struct TutorialOverlay: View {
                 body: "This is where signal flow happens. Drag effects from the tray into this space.",
                 showNext: true
             )
+        case .buildHeaderIntro:
+            return (
+                title: "Header Controls",
+                body: "Up top you'll find controls for power, processing, limiter, and output device. Let's walk through them.",
+                showNext: true
+            )
+        case .buildPower:
+            if !isSetupReady {
+                return (
+                    title: "Setup Required",
+                    body: "Seems like you aren't set up yet. To continue this tutorial you must:\n\n• Install BlackHole 2ch\n• Set system input to BlackHole\n• Set system output to BlackHole\n\nThen you can turn on the power button.",
+                    showNext: false
+                )
+            } else {
+                return (
+                    title: "Turn It On",
+                    body: "Click the power button to start processing audio. Feel free to play some music - this is when you'll hear AudioShaper in action!",
+                    showNext: false
+                )
+            }
+        case .buildShield:
+            return (
+                title: "Limiter (Shield)",
+                body: "The shield button enables a limiter to prevent clipping. It's on by default to protect your ears.",
+                showNext: true
+            )
+        case .buildOutput:
+            return (
+                title: "Output Device",
+                body: "Choose where you want to hear the processed audio. Select your headphones or speakers from the Output dropdown.",
+                showNext: true
+            )
         case .buildAddBass:
             return (
                 title: "Add Bass Boost",
@@ -1661,12 +1803,15 @@ private struct TutorialOverlay: View {
     }
 
     private func tutorialCard(title: String, body: String, showNext: Bool) -> some View {
-        TutorialCardView(
+        let showSetupButtons = step == .buildPower && !isSetupReady
+        return TutorialCardView(
             title: title,
             message: body,
             showNext: showNext,
             onNext: onNext,
-            onSkip: onSkip
+            onSkip: onSkip,
+            showSetupButtons: showSetupButtons,
+            onOpenSetup: onOpenSetup
         )
     }
 }
@@ -1712,6 +1857,7 @@ struct SavePresetDialog: View {
 
 struct HeaderView: View {
     @ObservedObject var audioEngine: AudioEngine
+    @ObservedObject var tutorial: TutorialController
     let onSave: () -> Void
     let onLoad: () -> Void
     let onSaveAs: () -> Void
@@ -1732,6 +1878,7 @@ struct HeaderView: View {
                         return
                     }
                     audioEngine.start()
+                    tutorial.advanceIf(.buildPower)
                 }
             }) {
                 Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
@@ -1741,6 +1888,14 @@ struct HeaderView: View {
             .buttonStyle(.plain)
             .opacity(audioEngine.setupReady ? 1.0 : 0.5)
             .help(audioEngine.isRunning ? "Stop Processing" : (audioEngine.setupReady ? "Start Processing" : "Set System Input/Output to BlackHole 2ch to start"))
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildPower: proxy.frame(in: .global)]
+                    )
+                }
+            )
 
             Divider()
                 .frame(height: 30)
@@ -1771,6 +1926,14 @@ struct HeaderView: View {
             }
             .buttonStyle(.plain)
             .help(audioEngine.limiterEnabled ? "Limiter On" : "Limiter Off")
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildShield: proxy.frame(in: .global)]
+                    )
+                }
+            )
 
             Divider()
                 .frame(height: 30)
@@ -1809,6 +1972,14 @@ struct HeaderView: View {
                 .tint(AppColors.neonCyan)
                 .frame(width: 220)
             }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildOutput: proxy.frame(in: .global)]
+                    )
+                }
+            )
 
             Spacer()
 
@@ -1963,7 +2134,7 @@ struct PresetView: View {
                                 onDelete: {
                                     presetManager.deletePreset(preset)
                                 },
-                                isDisabled: tutorial.step == .presetsBack
+                                isDisabled: tutorial.step == .presetsExplore || tutorial.step == .presetsBack
                             )
                         }
                     }
@@ -1972,7 +2143,7 @@ struct PresetView: View {
                 }
             }
         }
-        .allowsHitTesting(!tutorial.isActive || tutorial.step != .presetsBack)
+        .allowsHitTesting(!tutorial.isActive || (tutorial.step != .presetsExplore && tutorial.step != .presetsBack))
     }
 }
 

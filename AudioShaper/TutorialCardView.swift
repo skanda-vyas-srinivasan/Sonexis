@@ -6,8 +6,28 @@ struct TutorialCardView: View {
     let showNext: Bool
     let onNext: () -> Void
     let onSkip: () -> Void
+    let showSetupButtons: Bool
+    let onOpenSetup: (() -> Void)?
 
     @State private var glowPulse = false
+
+    init(
+        title: String,
+        message: String,
+        showNext: Bool,
+        onNext: @escaping () -> Void,
+        onSkip: @escaping () -> Void,
+        showSetupButtons: Bool = false,
+        onOpenSetup: (() -> Void)? = nil
+    ) {
+        self.title = title
+        self.message = message
+        self.showNext = showNext
+        self.onNext = onNext
+        self.onSkip = onSkip
+        self.showSetupButtons = showSetupButtons
+        self.onOpenSetup = onOpenSetup
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -37,7 +57,40 @@ struct TutorialCardView: View {
                 .foregroundColor(AppColors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if showNext {
+            if showSetupButtons {
+                HStack(spacing: 12) {
+                    Button("Exit Tutorial") {
+                        onSkip()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.neonPink)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .stroke(AppColors.neonPink, lineWidth: 1.5)
+                    )
+
+                    Button("Open Setup") {
+                        onOpenSetup?()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.textPrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [AppColors.neonCyan, AppColors.neonPink],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    )
+                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 12)
+                }
+            } else if showNext {
                 Button(action: onNext) {
                     HStack(spacing: 6) {
                         Text("Next")
