@@ -17,6 +17,7 @@ struct BeginnerView: View {
     @State private var activeConnectionFromID: UUID?
     @State private var activeConnectionPoint: CGPoint = .zero
     @State private var wiringMode: WiringMode = .automatic
+    @State private var autoConnectEnd: Bool = false
     @State private var selectedNodeIDs: Set<UUID> = []
     @State private var lassoStart: CGPoint?
     @State private var lassoCurrent: CGPoint?
@@ -133,6 +134,14 @@ struct BeginnerView: View {
                        wiringMode == .automatic {
                         tutorial.advance()
                     }
+                    // Ensure animations continue after picker interaction
+                    DispatchQueue.main.async {
+                        let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
+                        if keyWindow && scenePhase == .active {
+                            isAppActive = true
+                            showSignalFlow = audioEngine.isRunning
+                        }
+                    }
                 }
             }
 
@@ -158,11 +167,14 @@ struct BeginnerView: View {
                         )
                     }
                 )
-                .onChange(of: wiringMode) { _ in
-                    if wiringMode == .automatic {
+                .onChange(of: wiringMode) { newMode in
+                    if newMode == .automatic {
                         activeConnectionFromID = nil
                         activeConnectionPoint = .zero
                         isOptionHeld = false
+                    } else if newMode == .manual {
+                        // Clear all wiring when switching to manual
+                        manualConnections.removeAll()
                     }
                     applyChainToEngine()
                     updateCursor()
@@ -172,7 +184,50 @@ struct BeginnerView: View {
                        wiringMode == .automatic {
                         tutorial.advance()
                     }
+                    // Ensure animations continue after picker interaction
+                    DispatchQueue.main.async {
+                        let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
+                        if keyWindow && scenePhase == .active {
+                            isAppActive = true
+                            showSignalFlow = audioEngine.isRunning
+                        }
+                    }
                 }
+            }
+
+            HStack(spacing: 8) {
+                Text("Auto-connect End")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+                Toggle("", isOn: $autoConnectEnd)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(wiringMode == .automatic || (tutorial.isBuildStep && tutorial.step != .buildAutoConnectEnd))
+                    .opacity(wiringMode == .automatic ? 0.4 : 1.0)
+                    .help(wiringMode == .automatic ?
+                          "Automatic mode handles all connections." :
+                          (autoConnectEnd ?
+                           "Auto-connect End: On - Last nodes auto-connect to End." :
+                           "Auto-connect End: Off - Manually connect to End."))
+                    .onChange(of: autoConnectEnd) { _ in
+                        applyChainToEngine()
+                        // Ensure animations continue after toggle interaction
+                        DispatchQueue.main.async {
+                            let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
+                            if keyWindow && scenePhase == .active {
+                                isAppActive = true
+                                showSignalFlow = audioEngine.isRunning
+                            }
+                        }
+                    }
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: TutorialTargetPreferenceKey.self,
+                                value: [.buildAutoConnectEnd: proxy.frame(in: .global)]
+                            )
+                        }
+                    )
             }
 
             HStack(spacing: 6) {
@@ -1005,7 +1060,8 @@ struct BeginnerView: View {
                 rightNodes: rightNodes,
                 rightConnections: rightConnections,
                 rightStartID: rightStartNodeID,
-                rightEndID: rightEndNodeID
+                rightEndID: rightEndNodeID,
+                autoConnectEnd: autoConnectEnd
             )
             // Debug overlay removed.
         } else {
@@ -1021,7 +1077,8 @@ struct BeginnerView: View {
                     nodes: effectChain,
                     connections: manualConnections,
                     startID: startNodeID,
-                    endID: endNodeID
+                    endID: endNodeID,
+                    autoConnectEnd: autoConnectEnd
                 )
                 // Debug overlay removed.
             } else {
@@ -1076,6 +1133,7 @@ struct BeginnerView: View {
         rightEndNodeID = snapshot.rightEndNodeID ?? rightEndNodeID
         graphMode = snapshot.graphMode
         wiringMode = snapshot.wiringMode == .manual ? .manual : .automatic
+        autoConnectEnd = snapshot.autoConnectEnd
         if graphMode == .split {
             manualConnections.removeAll { laneForConnection($0) == nil }
         }
@@ -1168,6 +1226,7 @@ struct BeginnerView: View {
         GraphSnapshot(
             graphMode: graphMode,
             wiringMode: wiringMode == .manual ? .manual : .automatic,
+            autoConnectEnd: autoConnectEnd,
             nodes: effectChain,
             connections: manualConnections,
             autoGainOverrides: autoGainOverrides.map {
@@ -2196,7 +2255,7 @@ struct BeginnerView: View {
     }
 
     private func implicitEndNodes(lane: GraphLane?) -> [UUID] {
-        guard wiringMode == .manual else { return [] }
+        guard wiringMode == .manual && autoConnectEnd else { return [] }
         let reachable = reachableNodeIDs(from: lane)
         var outEdges: [UUID: [UUID]] = [:]
         for connection in manualConnections {

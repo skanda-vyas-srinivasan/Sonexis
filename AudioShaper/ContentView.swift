@@ -167,9 +167,11 @@ struct ContentView: View {
                 // - Empty canvas (no nodes/connections)
                 // - Stereo mode (not dual-mono)
                 // - Automatic wiring (not manual)
+                // - Auto-connect End OFF
                 let resetSnapshot = GraphSnapshot(
                     graphMode: .single,
                     wiringMode: .automatic,
+                    autoConnectEnd: false,
                     nodes: [],
                     connections: [],
                     autoGainOverrides: [],
@@ -1013,6 +1015,7 @@ enum TutorialTarget: Hashable {
     case backButton
     case buildGraphMode
     case buildWiringMode
+    case buildAutoConnectEnd
     case buildCanvasMenu
     case buildBassBoost
     case buildClarity
@@ -1059,6 +1062,7 @@ enum TutorialStep: Equatable {
     case buildCloseContextMenu
     case buildWiringManual
     case buildConnect
+    case buildAutoConnectEnd
     case buildResetWiringForParallel
     case buildParallelExplain
     case buildParallelAddReverb
@@ -1126,6 +1130,7 @@ final class TutorialController: ObservableObject {
              .buildCloseContextMenu,
              .buildWiringManual,
              .buildConnect,
+             .buildAutoConnectEnd,
              .buildParallelExplain,
              .buildParallelAddReverb,
              .buildParallelConnect,
@@ -1196,6 +1201,8 @@ final class TutorialController: ObservableObject {
         case .buildWiringManual:
             step = .buildConnect
         case .buildConnect:
+            step = .buildAutoConnectEnd
+        case .buildAutoConnectEnd:
             step = .buildDoubleClick
         case .buildResetWiringForParallel:
             step = .buildParallelExplain
@@ -1336,6 +1343,8 @@ private struct TutorialOverlay: View {
             ].compactMap { $0 }
         case .buildWiringManual:
             return [convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)].compactMap { $0 }
+        case .buildAutoConnectEnd:
+            return [convertToLocal(rect: targets[.buildAutoConnectEnd], proxy: proxy)].compactMap { $0 }
         case .buildResetWiringForParallel:
             return [convertToLocal(rect: targets[.buildCanvasMenu], proxy: proxy)].compactMap { $0 }
         case .buildClearCanvasForDualMono:
@@ -1712,6 +1721,12 @@ private struct TutorialOverlay: View {
                 title: "Connect nodes",
                 body: "Hold Option, then drag from Start to Bass Boost. Then drag from Bass Boost to End.",
                 showNext: false
+            )
+        case .buildAutoConnectEnd:
+            return (
+                title: "Auto-connect End",
+                body: "In manual mode, you wire to End yourself. But you can toggle Auto-connect End ON to automatically wire the last node to End.",
+                showNext: true
             )
         case .buildResetWiringForParallel:
             return (

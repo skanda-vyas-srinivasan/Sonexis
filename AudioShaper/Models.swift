@@ -530,6 +530,7 @@ enum GraphMode: String, Codable {
 struct GraphSnapshot: Codable {
     var graphMode: GraphMode
     var wiringMode: GraphWiringMode
+    var autoConnectEnd: Bool
     var nodes: [BeginnerNode]
     var connections: [BeginnerConnection]
     var autoGainOverrides: [BeginnerConnection]
@@ -544,6 +545,7 @@ struct GraphSnapshot: Codable {
     init(
         graphMode: GraphMode,
         wiringMode: GraphWiringMode,
+        autoConnectEnd: Bool = false,
         nodes: [BeginnerNode],
         connections: [BeginnerConnection],
         autoGainOverrides: [BeginnerConnection] = [],
@@ -557,6 +559,7 @@ struct GraphSnapshot: Codable {
     ) {
         self.graphMode = graphMode
         self.wiringMode = wiringMode
+        self.autoConnectEnd = autoConnectEnd
         self.nodes = nodes
         self.connections = connections
         self.autoGainOverrides = autoGainOverrides
@@ -572,6 +575,7 @@ struct GraphSnapshot: Codable {
     enum CodingKeys: String, CodingKey {
         case graphMode
         case wiringMode
+        case autoConnectEnd
         case nodes
         case connections
         case autoGainOverrides
@@ -588,6 +592,7 @@ struct GraphSnapshot: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.graphMode = try container.decodeIfPresent(GraphMode.self, forKey: .graphMode) ?? .single
         self.wiringMode = try container.decodeIfPresent(GraphWiringMode.self, forKey: .wiringMode) ?? .automatic
+        self.autoConnectEnd = try container.decodeIfPresent(Bool.self, forKey: .autoConnectEnd) ?? false
         self.nodes = try container.decodeIfPresent([BeginnerNode].self, forKey: .nodes) ?? []
         self.connections = try container.decodeIfPresent([BeginnerConnection].self, forKey: .connections) ?? []
         self.autoGainOverrides = try container.decodeIfPresent([BeginnerConnection].self, forKey: .autoGainOverrides) ?? []

@@ -245,6 +245,7 @@ class AudioEngine: ObservableObject {
     private var manualGraphConnections: [BeginnerConnection] = []
     private var manualGraphStartID: UUID?
     private var manualGraphEndID: UUID?
+    private var manualGraphAutoConnectEnd: Bool = true
     private var useManualGraph = false
     private var splitLeftNodes: [BeginnerNode] = []
     private var splitLeftConnections: [BeginnerConnection] = []
@@ -254,6 +255,7 @@ class AudioEngine: ObservableObject {
     private var splitRightConnections: [BeginnerConnection] = []
     private var splitRightStartID: UUID?
     private var splitRightEndID: UUID?
+    private var splitAutoConnectEnd: Bool = true
     private var useSplitGraph = false
     private var nodeParameters: [UUID: NodeEffectParameters] = [:]
     private var nodeEnabled: [UUID: Bool] = [:]
@@ -731,6 +733,7 @@ class AudioEngine: ObservableObject {
         sampleRate: Double
     ) -> [Float] {
         let inputBuffer = deinterleavedInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
+        let autoConnect = manualGraphAutoConnectEnd
         let (processed, levelSnapshot) = processGraph(
             inputBuffer: inputBuffer,
             channelCount: channelCount,
@@ -738,7 +741,8 @@ class AudioEngine: ObservableObject {
             nodes: manualGraphNodes,
             connections: manualGraphConnections,
             startID: manualGraphStartID,
-            endID: manualGraphEndID
+            endID: manualGraphEndID,
+            autoConnectEnd: autoConnect
         )
         updateEffectLevelsIfNeeded(levelSnapshot)
         return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
@@ -751,7 +755,8 @@ class AudioEngine: ObservableObject {
         nodes: [BeginnerNode],
         connections: [BeginnerConnection],
         startID: UUID?,
-        endID: UUID?
+        endID: UUID?,
+        autoConnectEnd: Bool = true
     ) -> ([[Float]], [UUID: Float]) {
         guard let startID, let endID else {
             return (inputBuffer, [:])
@@ -766,19 +771,21 @@ class AudioEngine: ObservableObject {
 
         let reachable = reachableNodes(from: startID, outEdges: outEdges)
 
-        var sinkNodes: [UUID] = []
-        for nodeID in reachable where nodeID != startID && nodeID != endID {
-            let outs = outEdges[nodeID] ?? []
-            let hasReachableOut = outs.contains(where: { reachable.contains($0) && $0 != endID })
-            let hasEndOut = outs.contains(endID)
-            if !hasReachableOut && !hasEndOut {
-                sinkNodes.append(nodeID)
+        if autoConnectEnd {
+            var sinkNodes: [UUID] = []
+            for nodeID in reachable where nodeID != startID && nodeID != endID {
+                let outs = outEdges[nodeID] ?? []
+                let hasReachableOut = outs.contains(where: { reachable.contains($0) && $0 != endID })
+                let hasEndOut = outs.contains(endID)
+                if !hasReachableOut && !hasEndOut {
+                    sinkNodes.append(nodeID)
+                }
             }
-        }
 
-        for sink in sinkNodes {
-            outEdges[sink, default: []].append(endID)
-            inEdges[endID, default: []].append((sink, 1.0))
+            for sink in sinkNodes {
+                outEdges[sink, default: []].append(endID)
+                inEdges[endID, default: []].append((sink, 1.0))
+            }
         }
 
         var indegree: [UUID: Int] = [:]
@@ -1101,6 +1108,7 @@ class AudioEngine: ObservableObject {
                 channelCount: channelCount
             )
 
+            let autoConnect = splitAutoConnectEnd
             if channelCount < 2 {
                 let (processed, snapshot) = processGraph(
                     inputBuffer: inputBuffer,
@@ -1109,7 +1117,8 @@ class AudioEngine: ObservableObject {
                     nodes: splitLeftNodes,
                     connections: splitLeftConnections,
                     startID: splitLeftStartID,
-                    endID: splitLeftEndID
+                    endID: splitLeftEndID,
+                    autoConnectEnd: autoConnect
                 )
                 updateEffectLevelsIfNeeded(snapshot)
                 return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
@@ -1125,7 +1134,8 @@ class AudioEngine: ObservableObject {
                 nodes: splitLeftNodes,
                 connections: splitLeftConnections,
                 startID: splitLeftStartID,
-                endID: splitLeftEndID
+                endID: splitLeftEndID,
+                autoConnectEnd: autoConnect
             )
             let (rightProcessed, rightSnapshot) = processGraph(
                 inputBuffer: rightInput,
@@ -1134,7 +1144,8 @@ class AudioEngine: ObservableObject {
                 nodes: splitRightNodes,
                 connections: splitRightConnections,
                 startID: splitRightStartID,
-                endID: splitRightEndID
+                endID: splitRightEndID,
+                autoConnectEnd: autoConnect
             )
 
             var combined = inputBuffer
@@ -3307,12 +3318,13 @@ class AudioEngine: ObservableObject {
         // Debug output removed.
     }
 
-    func updateEffectGraph(nodes: [BeginnerNode], connections: [BeginnerConnection], startID: UUID, endID: UUID) {
+    func updateEffectGraph(nodes: [BeginnerNode], connections: [BeginnerConnection], startID: UUID, endID: UUID, autoConnectEnd: Bool = true) {
         withEffectStateLock {
             manualGraphNodes = nodes
             manualGraphConnections = connections
             manualGraphStartID = startID
             manualGraphEndID = endID
+            manualGraphAutoConnectEnd = autoConnectEnd
             useManualGraph = true
             useSplitGraph = false
             syncNodeState(nodes)
@@ -3348,7 +3360,8 @@ class AudioEngine: ObservableObject {
         rightNodes: [BeginnerNode],
         rightConnections: [BeginnerConnection],
         rightStartID: UUID,
-        rightEndID: UUID
+        rightEndID: UUID,
+        autoConnectEnd: Bool = true
     ) {
         withEffectStateLock {
             splitLeftNodes = leftNodes
@@ -3359,6 +3372,7 @@ class AudioEngine: ObservableObject {
             splitRightConnections = rightConnections
             splitRightStartID = rightStartID
             splitRightEndID = rightEndID
+            splitAutoConnectEnd = autoConnectEnd
             useSplitGraph = true
             useManualGraph = false
             syncNodeState(leftNodes + rightNodes)
