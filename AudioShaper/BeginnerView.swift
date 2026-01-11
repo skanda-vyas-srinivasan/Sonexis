@@ -113,7 +113,7 @@ struct BeginnerView: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .disabled(tutorial.isBuildStep && tutorial.step != .buildGraphMode)
+                .disabled(tutorial.isBuildStep && ![.buildGraphMode, .buildReturnStereoAuto].contains(tutorial.step))
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -128,6 +128,11 @@ struct BeginnerView: View {
                     }
                     applyChainToEngine()
                     tutorial.advanceIf(.buildGraphMode)
+                    if tutorial.step == .buildReturnStereoAuto,
+                       graphMode == .single,
+                       wiringMode == .automatic {
+                        tutorial.advance()
+                    }
                 }
             }
 
@@ -141,7 +146,7 @@ struct BeginnerView: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .disabled(tutorial.isBuildStep && tutorial.step != .buildWiringManual)
+                .disabled(tutorial.isBuildStep && ![.buildWiringManual, .buildReturnStereoAuto, .buildDualMonoConnect].contains(tutorial.step))
                 .help(wiringMode == .automatic ?
                       "Automatic: Effects flow left-to-right by position." :
                       "Manual: Pure manual wiring. Option+drag to connect.")
@@ -162,6 +167,11 @@ struct BeginnerView: View {
                     applyChainToEngine()
                     updateCursor()
                     tutorial.advanceIf(.buildWiringManual)
+                    if tutorial.step == .buildReturnStereoAuto,
+                       graphMode == .single,
+                       wiringMode == .automatic {
+                        tutorial.advance()
+                    }
                 }
             }
 
@@ -214,7 +224,15 @@ struct BeginnerView: View {
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textSecondary)
             }
-            .disabled(tutorial.isBuildStep)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildCanvasMenu: proxy.frame(in: .global)]
+                    )
+                }
+            )
+            .disabled(tutorial.isBuildStep && ![.buildResetWiringForParallel, .buildClearCanvasForDualMono].contains(tutorial.step))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -397,7 +415,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             activeConnectionFromID = leftStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -407,7 +425,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -429,7 +447,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             activeConnectionFromID = rightStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -439,7 +457,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -461,7 +479,7 @@ struct BeginnerView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             activeConnectionFromID = startNodeID
                                             activeConnectionPoint = CGPoint(
@@ -471,7 +489,7 @@ struct BeginnerView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect) {
+                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -516,7 +534,7 @@ struct BeginnerView: View {
                             onCollapsed: {
                                 tutorial.advanceIf(.buildCloseOverlay)
                             },
-                            allowExpand: !tutorial.isBuildStep || tutorial.step == .buildDoubleClick,
+                            allowExpand: !tutorial.isBuildStep || tutorial.step == .buildDoubleClick || tutorial.step == .buildCloseOverlay,
                             tutorialStep: tutorial.step
                         )
                         .scaleEffect(nodeScale)
@@ -526,7 +544,17 @@ struct BeginnerView: View {
                                 if effectValue.type == .bassBoost {
                                     Color.clear.preference(
                                         key: TutorialTargetPreferenceKey.self,
-                                        value: [.buildNode: proxy.frame(in: .global)]
+                                        value: [.buildBassNode: proxy.frame(in: .global)]
+                                    )
+                                } else if effectValue.type == .clarity {
+                                    Color.clear.preference(
+                                        key: TutorialTargetPreferenceKey.self,
+                                        value: [.buildClarityNode: proxy.frame(in: .global)]
+                                    )
+                                } else if effectValue.type == .reverb {
+                                    Color.clear.preference(
+                                        key: TutorialTargetPreferenceKey.self,
+                                        value: [.buildReverbNode: proxy.frame(in: .global)]
                                     )
                                 }
                             }
@@ -549,7 +577,7 @@ struct BeginnerView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect)
+                                        let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
                                     if hasOption {
                                         // Wiring mode
                                         activeConnectionFromID = effectValue.id
@@ -558,7 +586,7 @@ struct BeginnerView: View {
                                             y: nodePos.y + value.translation.height
                                         )
                                     } else {
-                                        if tutorial.isBuildStep {
+                                        if tutorial.isBuildStep && tutorial.step != .buildAutoReorder {
                                             return
                                         }
                                         // Move mode
@@ -599,7 +627,7 @@ struct BeginnerView: View {
                                     }
                                 }
                                 .onEnded { value in
-                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect)
+                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
                                     if hasOption {
                                         // Finalize wiring
                                         let dropPoint = CGPoint(
@@ -608,7 +636,7 @@ struct BeginnerView: View {
                                         )
                                         finalizeConnection(from: effectValue.id, dropPoint: dropPoint)
                                     } else {
-                                        if tutorial.isBuildStep {
+                                        if tutorial.isBuildStep && tutorial.step != .buildAutoReorder {
                                             activeConnectionFromID = nil
                                             activeConnectionPoint = .zero
                                             return
@@ -623,6 +651,9 @@ struct BeginnerView: View {
                                         }
                                         dragUndoSnapshot = nil
                                         applyChainToEngine()
+                                        if tutorial.step == .buildAutoReorder {
+                                            maybeAdvanceAutoReorderTutorial()
+                                        }
                                     }
                                 }
                         )
@@ -691,10 +722,24 @@ struct BeginnerView: View {
                         laneForPoint(point, in: geometry.size)
                     },
                     onAdd: { newNode in
-                        if tutorial.isBuildStep && tutorial.step != .buildAddBass {
+                        if tutorial.isBuildStep && ![
+                            TutorialStep.buildAddBass,
+                            .buildAutoAddClarity,
+                            .buildParallelAddReverb,
+                            .buildDualMonoAdd
+                        ].contains(tutorial.step) {
                             return
                         }
                         if tutorial.step == .buildAddBass && newNode.type != .bassBoost {
+                            return
+                        }
+                        if tutorial.step == .buildAutoAddClarity && newNode.type != .clarity {
+                            return
+                        }
+                        if tutorial.step == .buildParallelAddReverb && newNode.type != .reverb {
+                            return
+                        }
+                        if tutorial.step == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(newNode.type) {
                             return
                         }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -706,6 +751,9 @@ struct BeginnerView: View {
                             triggerDropAnimation(for: node.id)
                             applyChainToEngine()
                             tutorial.advanceIf(.buildAddBass)
+                            tutorial.advanceIf(.buildAutoAddClarity)
+                            tutorial.advanceIf(.buildParallelAddReverb)
+                            maybeAdvanceDualMonoTutorial()
                         }
                     }
                 ))
@@ -736,7 +784,12 @@ struct BeginnerView: View {
                 onDrag: { type in
                     draggedEffectType = type
                 },
-                allowTapToAdd: !tutorial.isBuildStep || tutorial.step != .buildAddBass
+                allowTapToAdd: !tutorial.isBuildStep || ![
+                    .buildAddBass,
+                    .buildAutoAddClarity,
+                    .buildParallelAddReverb,
+                    .buildDualMonoAdd
+                ].contains(tutorial.step)
             )
 
             VStack(spacing: 0) {
@@ -829,10 +882,13 @@ struct BeginnerView: View {
     }
 
     private func addEffectToChain(_ type: EffectType) {
-        if tutorial.isBuildStep && tutorial.step != .buildAddBass {
+        if tutorial.isBuildStep && ![TutorialStep.buildAddBass, .buildDualMonoAdd].contains(tutorial.step) {
             return
         }
         if tutorial.step == .buildAddBass && type != .bassBoost {
+            return
+        }
+        if tutorial.step == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(type) {
             return
         }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -850,6 +906,7 @@ struct BeginnerView: View {
             triggerDropAnimation(for: newEffect.id)
             applyChainToEngine()
             tutorial.advanceIf(.buildAddBass)
+            maybeAdvanceDualMonoTutorial()
         }
     }
 
@@ -1496,6 +1553,7 @@ struct BeginnerView: View {
         selectedAutoWire = nil
         nextAccentIndex = 0
         applyChainToEngine()
+        tutorial.advanceIf(.buildClearCanvasForDualMono)
     }
 
     private func resetWiring() {
@@ -1505,6 +1563,7 @@ struct BeginnerView: View {
         selectedWireID = nil
         selectedAutoWire = nil
         applyChainToEngine()
+        tutorial.advanceIf(.buildResetWiringForParallel)
     }
 
     private func recordUndoSnapshot() {
@@ -1808,6 +1867,11 @@ struct BeginnerView: View {
 
         print("   ✅ Found target: \(targetID == endNodeID ? "END" : "effect node")")
 
+        guard tutorialAllowsConnection(from: fromID, to: targetID) else {
+            print("   ❌ Blocked by tutorial step")
+            return
+        }
+
         guard !createsCycle(from: fromID, to: targetID) else {
             print("   ❌ Would create cycle")
             return
@@ -1825,12 +1889,12 @@ struct BeginnerView: View {
         }
         print("   ✅ Connection created! Total connections: \(manualConnections.count)")
         applyChainToEngine()
-        if tutorial.step == .buildConnect {
-            if shouldAdvanceConnectTutorial() {
-                tutorial.advance()
-            }
-        } else {
-            tutorial.advanceIf(.buildConnect)
+        if tutorial.step == .buildConnect, shouldAdvanceConnectTutorial() {
+            tutorial.advance()
+        } else if tutorial.step == .buildParallelConnect, shouldAdvanceParallelTutorial() {
+            tutorial.advance()
+        } else if tutorial.step == .buildDualMonoConnect, shouldAdvanceDualMonoConnectTutorial() {
+            tutorial.advance()
         }
     }
 
@@ -1840,6 +1904,122 @@ struct BeginnerView: View {
         let hasStartToBass = manualConnections.contains { $0.fromNodeId == startNodeID && $0.toNodeId == bassNode.id }
         let hasBassToEnd = manualConnections.contains { $0.fromNodeId == bassNode.id && $0.toNodeId == endNodeID }
         return hasStartToBass && hasBassToEnd
+    }
+
+    private struct TutorialEdge: Hashable {
+        let from: UUID
+        let to: UUID
+    }
+
+    private func tutorialAllowsConnection(from: UUID, to: UUID) -> Bool {
+        switch tutorial.step {
+        case .buildConnect:
+            guard let bassNode = effectChain.first(where: { $0.type == .bassBoost }) else { return false }
+            let allowed: Set<TutorialEdge> = [
+                TutorialEdge(from: startNodeID, to: bassNode.id),
+                TutorialEdge(from: bassNode.id, to: endNodeID)
+            ]
+            return allowed.contains(TutorialEdge(from: from, to: to))
+
+        case .buildParallelConnect:
+            guard
+                let bassNode = effectChain.first(where: { $0.type == .bassBoost }),
+                let clarityNode = effectChain.first(where: { $0.type == .clarity }),
+                let reverbNode = effectChain.first(where: { $0.type == .reverb })
+            else { return false }
+
+            let allowed: Set<TutorialEdge> = [
+                TutorialEdge(from: startNodeID, to: bassNode.id),
+                TutorialEdge(from: startNodeID, to: clarityNode.id),
+                TutorialEdge(from: bassNode.id, to: reverbNode.id),
+                TutorialEdge(from: clarityNode.id, to: reverbNode.id),
+                TutorialEdge(from: reverbNode.id, to: endNodeID)
+            ]
+            return allowed.contains(TutorialEdge(from: from, to: to))
+
+        case .buildDualMonoConnect:
+            guard
+                graphMode == .split,
+                let bassNode = effectChain.first(where: { $0.type == .bassBoost && $0.lane == .left }),
+                let clarityNode = effectChain.first(where: { $0.type == .clarity && $0.lane == .right })
+            else { return false }
+
+            let allowed: Set<TutorialEdge> = [
+                TutorialEdge(from: leftStartNodeID, to: bassNode.id),
+                TutorialEdge(from: bassNode.id, to: leftEndNodeID),
+                TutorialEdge(from: rightStartNodeID, to: clarityNode.id),
+                TutorialEdge(from: clarityNode.id, to: rightEndNodeID)
+            ]
+            return allowed.contains(TutorialEdge(from: from, to: to))
+
+        default:
+            return true
+        }
+    }
+
+    private func shouldAdvanceParallelTutorial() -> Bool {
+        guard
+            let bassNode = effectChain.first(where: { $0.type == .bassBoost }),
+            let clarityNode = effectChain.first(where: { $0.type == .clarity }),
+            let reverbNode = effectChain.first(where: { $0.type == .reverb })
+        else { return false }
+
+        let required: Set<TutorialEdge> = [
+            TutorialEdge(from: startNodeID, to: bassNode.id),
+            TutorialEdge(from: startNodeID, to: clarityNode.id),
+            TutorialEdge(from: bassNode.id, to: reverbNode.id),
+            TutorialEdge(from: clarityNode.id, to: reverbNode.id),
+            TutorialEdge(from: reverbNode.id, to: endNodeID)
+        ]
+
+        let existing = Set(manualConnections.map { TutorialEdge(from: $0.fromNodeId, to: $0.toNodeId) })
+        return required.isSubset(of: existing)
+    }
+
+    private func shouldAdvanceDualMonoConnectTutorial() -> Bool {
+        guard
+            graphMode == .split,
+            let bassNode = effectChain.first(where: { $0.type == .bassBoost && $0.lane == .left }),
+            let clarityNode = effectChain.first(where: { $0.type == .clarity && $0.lane == .right })
+        else { return false }
+
+        let required: Set<TutorialEdge> = [
+            TutorialEdge(from: leftStartNodeID, to: bassNode.id),
+            TutorialEdge(from: bassNode.id, to: leftEndNodeID),
+            TutorialEdge(from: rightStartNodeID, to: clarityNode.id),
+            TutorialEdge(from: clarityNode.id, to: rightEndNodeID)
+        ]
+
+        let existing = Set(manualConnections.map { TutorialEdge(from: $0.fromNodeId, to: $0.toNodeId) })
+        return required.isSubset(of: existing)
+    }
+
+    private func maybeAdvanceAutoReorderTutorial() {
+        guard tutorial.step == .buildAutoReorder else { return }
+        guard let bass = effectChain.first(where: { $0.type == .bassBoost }),
+              let clarity = effectChain.first(where: { $0.type == .clarity })
+        else { return }
+        let bassPos = displayNodePosition(bass, in: canvasSize)
+        let clarityPos = displayNodePosition(clarity, in: canvasSize)
+        if clarityPos.x < bassPos.x {
+            tutorial.advance()
+        }
+    }
+
+    private func maybeAdvanceDualMonoTutorial() {
+        guard tutorial.step == .buildDualMonoAdd else { return }
+        guard graphMode == .split else { return }
+
+        let hasLeftBass = effectChain.contains { node in
+            node.type == .bassBoost && node.lane == .left
+        }
+        let hasRightClarity = effectChain.contains { node in
+            node.type == .clarity && node.lane == .right
+        }
+
+        if hasLeftBass && hasRightClarity {
+            tutorial.advance()
+        }
     }
 
     private func nearestConnectionTarget(from fromID: UUID, at point: CGPoint) -> UUID? {
@@ -2213,6 +2393,7 @@ fileprivate struct EffectTray: View {
                                         onDrag(effectType)
                                     }
                                 )
+                                .opacity(allowTapToAdd ? 1.0 : 0.95)
                             }
                         }
                         .padding(.vertical, 12)
@@ -2281,11 +2462,24 @@ fileprivate struct EffectPaletteButton: View {
         }
         .background(
             GeometryReader { proxy in
-                if effectType == .bassBoost {
+                switch effectType {
+                case .bassBoost:
                     Color.clear.preference(
                         key: TutorialTargetPreferenceKey.self,
                         value: [.buildBassBoost: proxy.frame(in: .global)]
                     )
+                case .clarity:
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildClarity: proxy.frame(in: .global)]
+                    )
+                case .reverb:
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildReverb: proxy.frame(in: .global)]
+                    )
+                default:
+                    Color.clear
                 }
             }
         )

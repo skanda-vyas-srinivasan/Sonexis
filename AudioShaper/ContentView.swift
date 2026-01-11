@@ -56,10 +56,8 @@ struct ContentView: View {
                             audioEngine: audioEngine,
                             onSave: {
                                 saveCurrentPreset(overwrite: true)
-                                tutorial.advanceIf(.buildSave)
                             },
                             onLoad: {
-                                tutorial.advanceIf(.buildLoad)
                                 showingLoadDialog = true
                             },
                             onSaveAs: {
@@ -160,10 +158,15 @@ struct ContentView: View {
         .sheet(isPresented: $showingLoadDialog) {
             LoadPresetDialog(
                 presetManager: presetManager,
+                tutorialStep: tutorial.step,
                 onApply: { preset in
                     audioEngine.requestGraphLoad(preset.graph)
                     currentPresetID = preset.id
-                    showingLoadDialog = false
+                    if tutorial.step == .buildLoad {
+                        tutorial.advance()
+                    } else {
+                        showingLoadDialog = false
+                    }
                 },
                 onCancel: {
                     showingLoadDialog = false
@@ -187,6 +190,7 @@ struct ContentView: View {
         let preset = presetManager.savePreset(name: presetNameInput, graph: graph)
         currentPresetID = preset.id
         showSaveStatus("Saved at \(formattedTime())")
+        tutorial.advanceIf(.buildSave)
         // Save succeeded.
     }
 
@@ -215,6 +219,7 @@ struct ContentView: View {
         if overwrite, let presetID = currentPresetID {
             presetManager.updatePreset(id: presetID, graph: graph)
             showSaveStatus("Saved at \(formattedTime())")
+            tutorial.advanceIf(.buildSave)
             // Update succeeded.
         } else {
             presetNameInput = ""
@@ -553,6 +558,7 @@ private struct SkipSetupConfirm: View {
 
 struct LoadPresetDialog: View {
     @ObservedObject var presetManager: PresetManager
+    let tutorialStep: TutorialStep
     let onApply: (SavedPreset) -> Void
     let onCancel: () -> Void
     @State private var searchText = ""
@@ -563,6 +569,27 @@ struct LoadPresetDialog: View {
         }
 
         VStack(spacing: 16) {
+            if tutorialStep == .buildLoad || tutorialStep == .buildCloseLoad {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(tutorialStep == .buildLoad ? "Load a preset" : "Close this window")
+                        .font(AppTypography.heading)
+                        .foregroundColor(AppColors.textPrimary)
+                    Text(tutorialStep == .buildLoad ? "Pick a preset and press Apply." : "Press Cancel to continue.")
+                        .font(AppTypography.body)
+                        .foregroundColor(AppColors.textSecondary)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppColors.darkPurple.opacity(0.85))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppColors.neonCyan.opacity(0.6), lineWidth: 1)
+                        )
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             Text("Load Preset")
                 .font(AppTypography.heading)
                 .foregroundColor(AppColors.textPrimary)
@@ -617,6 +644,7 @@ struct LoadPresetDialog: View {
                                 .cornerRadius(12)
                             }
                             .buttonStyle(.plain)
+                            .disabled(tutorialStep == .buildCloseLoad)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -859,11 +887,16 @@ enum TutorialTarget: Hashable {
     case backButton
     case buildGraphMode
     case buildWiringMode
+    case buildCanvasMenu
     case buildBassBoost
+    case buildClarity
+    case buildReverb
     case buildCanvas
     case buildSave
     case buildLoad
-    case buildNode
+    case buildBassNode
+    case buildClarityNode
+    case buildReverbNode
 }
 
 struct TutorialTargetPreferenceKey: PreferenceKey {
@@ -883,13 +916,25 @@ enum TutorialStep: Equatable {
     case homeBuild
     case buildIntro
     case buildAddBass
+    case buildAutoExplain
+    case buildAutoAddClarity
+    case buildAutoReorder
+    case buildManualExplain
     case buildDoubleClick
     case buildCloseOverlay
     case buildRightClick
     case buildCloseContextMenu
     case buildWiringManual
     case buildConnect
+    case buildResetWiringForParallel
+    case buildParallelExplain
+    case buildParallelAddReverb
+    case buildParallelConnect
+    case buildClearCanvasForDualMono
     case buildGraphMode
+    case buildDualMonoAdd
+    case buildDualMonoConnect
+    case buildReturnStereoAuto
     case buildSave
     case buildSaveConfirm
     case buildLoad
@@ -934,13 +979,22 @@ final class TutorialController: ObservableObject {
         switch step {
         case .buildIntro,
              .buildAddBass,
+             .buildAutoExplain,
+             .buildAutoAddClarity,
+             .buildAutoReorder,
+             .buildManualExplain,
              .buildDoubleClick,
              .buildCloseOverlay,
              .buildRightClick,
              .buildCloseContextMenu,
              .buildWiringManual,
              .buildConnect,
+             .buildParallelExplain,
+             .buildParallelAddReverb,
+             .buildParallelConnect,
              .buildGraphMode,
+             .buildDualMonoAdd,
+             .buildReturnStereoAuto,
              .buildSave,
              .buildSaveConfirm,
              .buildLoad,
@@ -977,7 +1031,15 @@ final class TutorialController: ObservableObject {
         case .buildIntro:
             step = .buildAddBass
         case .buildAddBass:
-            step = .buildDoubleClick
+            step = .buildAutoExplain
+        case .buildAutoExplain:
+            step = .buildAutoAddClarity
+        case .buildAutoAddClarity:
+            step = .buildAutoReorder
+        case .buildAutoReorder:
+            step = .buildManualExplain
+        case .buildManualExplain:
+            step = .buildWiringManual
         case .buildDoubleClick:
             step = .buildCloseOverlay
         case .buildCloseOverlay:
@@ -985,12 +1047,28 @@ final class TutorialController: ObservableObject {
         case .buildRightClick:
             step = .buildCloseContextMenu
         case .buildCloseContextMenu:
-            step = .buildWiringManual
+            step = .buildResetWiringForParallel
         case .buildWiringManual:
             step = .buildConnect
         case .buildConnect:
+            step = .buildDoubleClick
+        case .buildResetWiringForParallel:
+            step = .buildParallelExplain
+        case .buildParallelExplain:
+            step = .buildParallelAddReverb
+        case .buildParallelAddReverb:
+            step = .buildParallelConnect
+        case .buildParallelConnect:
+            step = .buildClearCanvasForDualMono
+        case .buildClearCanvasForDualMono:
             step = .buildGraphMode
         case .buildGraphMode:
+            step = .buildDualMonoAdd
+        case .buildDualMonoAdd:
+            step = .buildDualMonoConnect
+        case .buildDualMonoConnect:
+            step = .buildReturnStereoAuto
+        case .buildReturnStereoAuto:
             step = .buildSave
         case .buildSave:
             step = .buildSaveConfirm
@@ -1048,7 +1126,17 @@ private struct TutorialOverlay: View {
         GeometryReader { proxy in
             let size = proxy.size
             let highlightRects = highlightFrames(in: size, proxy: proxy)
-            let primaryHighlight = highlightRects.first
+            let primaryHighlight: CGRect? = {
+                switch step {
+                case .buildReturnStereoAuto:
+                    guard let first = highlightRects.first else { return nil }
+                    return highlightRects.dropFirst().reduce(first) { partial, rect in
+                        partial.union(rect)
+                    }
+                default:
+                    return highlightRects.first
+                }
+            }()
 
             ZStack {
                 dimmingLayer(size: size, highlights: highlightRects)
@@ -1089,19 +1177,38 @@ private struct TutorialOverlay: View {
             return [convertToLocal(rect: targets[.buildButton], proxy: proxy)].compactMap { $0 }
         case .presetsBack:
             return [convertToLocal(rect: targets[.backButton], proxy: proxy)].compactMap { $0 }
+        case .buildAutoAddClarity:
+            return [
+                convertToLocal(rect: targets[.buildClarity], proxy: proxy),
+                convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
+            ].compactMap { $0 }
+        case .buildAutoReorder:
+            return [
+                convertToLocal(rect: targets[.buildBassNode], proxy: proxy),
+                convertToLocal(rect: targets[.buildClarityNode], proxy: proxy)
+            ].compactMap { $0 }
         case .buildWiringManual:
             return [convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)].compactMap { $0 }
+        case .buildResetWiringForParallel:
+            return [convertToLocal(rect: targets[.buildCanvasMenu], proxy: proxy)].compactMap { $0 }
+        case .buildClearCanvasForDualMono:
+            return [convertToLocal(rect: targets[.buildCanvasMenu], proxy: proxy)].compactMap { $0 }
         case .buildGraphMode:
             return [convertToLocal(rect: targets[.buildGraphMode], proxy: proxy)].compactMap { $0 }
+        case .buildReturnStereoAuto:
+            return [
+                convertToLocal(rect: targets[.buildGraphMode], proxy: proxy),
+                convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)
+            ].compactMap { $0 }
         case .buildAddBass:
             return [
                 convertToLocal(rect: targets[.buildBassBoost], proxy: proxy),
                 convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
             ].compactMap { $0 }
         case .buildDoubleClick:
-            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
+            return [convertToLocal(rect: targets[.buildBassNode], proxy: proxy)].compactMap { $0 }
         case .buildCloseOverlay:
-            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
+            return [convertToLocal(rect: targets[.buildBassNode], proxy: proxy)].compactMap { $0 }
         case .buildSave:
             return [convertToLocal(rect: targets[.buildSave], proxy: proxy)].compactMap { $0 }
         case .buildSaveConfirm:
@@ -1111,9 +1218,31 @@ private struct TutorialOverlay: View {
         case .buildCloseLoad:
             return []
         case .buildRightClick:
-            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
+            return [convertToLocal(rect: targets[.buildBassNode], proxy: proxy)].compactMap { $0 }
         case .buildCloseContextMenu:
-            return [convertToLocal(rect: targets[.buildNode], proxy: proxy)].compactMap { $0 }
+            return [convertToLocal(rect: targets[.buildBassNode], proxy: proxy)].compactMap { $0 }
+        case .buildParallelAddReverb:
+            return [
+                convertToLocal(rect: targets[.buildReverb], proxy: proxy),
+                convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
+            ].compactMap { $0 }
+        case .buildParallelConnect:
+            return [
+                convertToLocal(rect: targets[.buildBassNode], proxy: proxy),
+                convertToLocal(rect: targets[.buildClarityNode], proxy: proxy),
+                convertToLocal(rect: targets[.buildReverbNode], proxy: proxy)
+            ].compactMap { $0 }
+        case .buildDualMonoAdd:
+            return [
+                convertToLocal(rect: targets[.buildGraphMode], proxy: proxy),
+                convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
+            ].compactMap { $0 }
+        case .buildDualMonoConnect:
+            return [
+                convertToLocal(rect: targets[.buildBassNode], proxy: proxy),
+                convertToLocal(rect: targets[.buildClarityNode], proxy: proxy),
+                convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
+            ].compactMap { $0 }
         default:
             return []
         }
@@ -1152,14 +1281,31 @@ private struct TutorialOverlay: View {
         case .presetsExplore:
             return false
         case .buildAddBass:
-            // Keep the canvas visible while the user drags.
-            return true
+            return false
+        case .buildAutoAddClarity:
+            return false
         case .buildConnect:
             // User needs to see the whole canvas to wire.
+            return false
+        case .buildAutoReorder:
             return false
         case .buildSaveConfirm:
             return false
         case .buildCloseLoad:
+            return false
+        case .buildParallelConnect:
+            return false
+        case .buildParallelAddReverb:
+            return false
+        case .buildDualMonoAdd:
+            return false
+        case .buildDualMonoConnect:
+            return false
+        case .buildResetWiringForParallel:
+            return false
+        case .buildClearCanvasForDualMono:
+            return false
+        case .buildReturnStereoAuto:
             return false
         default:
             return true
@@ -1214,12 +1360,22 @@ private struct TutorialOverlay: View {
         let padding: CGFloat = 16
         let avoidPad: CGFloat = 10
 
-        let candidates: [CGPoint] = [
-            CGPoint(x: target.maxX + padding + cardSize.width / 2, y: target.midY), // right
-            CGPoint(x: target.minX - padding - cardSize.width / 2, y: target.midY), // left
-            CGPoint(x: target.midX, y: target.maxY + padding + cardSize.height / 2), // below
-            CGPoint(x: target.midX, y: target.minY - padding - cardSize.height / 2)  // above
-        ]
+        let candidates: [CGPoint]
+        if step == .buildReturnStereoAuto {
+            candidates = [
+                CGPoint(x: target.midX, y: target.minY - padding - cardSize.height / 2), // above
+                CGPoint(x: target.maxX + padding + cardSize.width / 2, y: target.midY), // right
+                CGPoint(x: target.minX - padding - cardSize.width / 2, y: target.midY), // left
+                CGPoint(x: target.midX, y: target.maxY + padding + cardSize.height / 2) // below
+            ]
+        } else {
+            candidates = [
+                CGPoint(x: target.maxX + padding + cardSize.width / 2, y: target.midY), // right
+                CGPoint(x: target.minX - padding - cardSize.width / 2, y: target.midY), // left
+                CGPoint(x: target.midX, y: target.maxY + padding + cardSize.height / 2), // below
+                CGPoint(x: target.midX, y: target.minY - padding - cardSize.height / 2)  // above
+            ]
+        }
 
         let inflatedTarget = target.insetBy(dx: -avoidPad, dy: -avoidPad)
         for candidate in candidates {
@@ -1231,7 +1387,7 @@ private struct TutorialOverlay: View {
         }
 
         // Fallback: prefer below, but clamp so it always stays visible.
-        return clamp(candidates[2], screen: screen, cardSize: cardSize)
+        return clamp(candidates.last ?? CGPoint(x: screen.width / 2, y: screen.height / 2), screen: screen, cardSize: cardSize)
     }
 
     private func clamp(_ center: CGPoint, screen: CGSize, cardSize: CGSize) -> CGPoint {
@@ -1303,6 +1459,30 @@ private struct TutorialOverlay: View {
                 body: "Bass Boost fattens the lows. Drag Bass Boost from the Effects tray onto the canvas.",
                 showNext: false
             )
+        case .buildAutoExplain:
+            return (
+                title: "Automatic wiring",
+                body: "Over here, Automatic wiring connects your effects for you. Add blocks and we’ll keep the signal flowing left to right.",
+                showNext: true
+            )
+        case .buildAutoAddClarity:
+            return (
+                title: "Add a second block",
+                body: "Drag Clarity onto the canvas. It should auto-connect into the chain.",
+                showNext: false
+            )
+        case .buildAutoReorder:
+            return (
+                title: "Reorder by moving",
+                body: "Drag Clarity to the left of Bass Boost. The auto-chain should reorder instantly.",
+                showNext: false
+            )
+        case .buildManualExplain:
+            return (
+                title: "Manual wiring",
+                body: "Manual wiring gives you full control. You can connect in series, build parallel paths, and merge them back together.",
+                showNext: true
+            )
         case .buildDoubleClick:
             return (
                 title: "Open controls",
@@ -1329,20 +1509,68 @@ private struct TutorialOverlay: View {
             )
         case .buildWiringManual:
             return (
-                title: "Manual wiring",
-                body: "Switch Wiring to Manual so you can route each block yourself.",
+                title: "Switch to Manual",
+                body: "Switch Wiring to Manual so you can draw connections yourself.",
                 showNext: false
             )
         case .buildConnect:
             return (
                 title: "Connect nodes",
-                body: "Option-drag from Start → Bass Boost, then Bass Boost → End.",
+                body: "Hold Option, then drag from Start to Bass Boost. Then drag from Bass Boost to End.",
+                showNext: false
+            )
+        case .buildResetWiringForParallel:
+            return (
+                title: "Reset wiring",
+                body: "Before we build a new wiring pattern, reset the current wires. Open Canvas, then click Reset Wiring.",
+                showNext: false
+            )
+        case .buildParallelExplain:
+            return (
+                title: "Parallel paths",
+                body: "Now let’s do a parallel route. We’ll split into two effects, then merge into Reverb.",
+                showNext: true
+            )
+        case .buildParallelAddReverb:
+            return (
+                title: "Add Reverb",
+                body: "Drag Reverb onto the canvas. We’ll use it as the merge point.",
+                showNext: false
+            )
+        case .buildParallelConnect:
+            return (
+                title: "Wire the parallel merge",
+                body: "Option-drag: Start → Bass Boost, Start → Clarity, then Bass Boost → Reverb, Clarity → Reverb, and Reverb → End.",
+                showNext: false
+            )
+        case .buildClearCanvasForDualMono:
+            return (
+                title: "Clear the canvas",
+                body: "Clear the canvas so the next step starts clean. Open Canvas, then click Clear Canvas.",
                 showNext: false
             )
         case .buildGraphMode:
             return (
                 title: "Graph Mode",
-                body: "Dual Mono (L/R) separates the channels—switch to it to keep left and right processing paths independent.",
+                body: "Dual Mono (L/R) separates the channels. Switch to it to keep left and right processing paths independent.",
+                showNext: false
+            )
+        case .buildDualMonoAdd:
+            return (
+                title: "Dual Mono demo",
+                body: "With Dual Mono on, drag Bass Boost into the left lane, then drag Clarity into the right lane.",
+                showNext: false
+            )
+        case .buildDualMonoConnect:
+            return (
+                title: "Wire both lanes",
+                body: "Hold Option and connect Start L → Bass Boost → End L. Then connect Start R → Clarity → End R.",
+                showNext: false
+            )
+        case .buildReturnStereoAuto:
+            return (
+                title: "Back to defaults",
+                body: "Set Graph Mode back to Stereo, and Wiring back to Automatic.",
                 showNext: false
             )
         case .buildSave:
@@ -1354,13 +1582,13 @@ private struct TutorialOverlay: View {
         case .buildSaveConfirm:
             return (
                 title: "Saved",
-                body: "Nice. Your chain is saved — next we’ll load a preset.",
+                body: "Nice. Your chain is saved. Next we’ll load a preset.",
                 showNext: true
             )
         case .buildLoad:
             return (
                 title: "Load presets",
-                body: "Load brings a saved chain back onto the canvas for more tweaking.",
+                body: "Open Load, pick a preset, and press Apply.",
                 showNext: false
             )
         case .buildCloseLoad:
@@ -1372,7 +1600,7 @@ private struct TutorialOverlay: View {
         case .buildFinish:
             return (
                 title: "All set",
-                body: "That’s the loop—build, tweak, save, load. You’re ready to bend audio.",
+                body: "That’s the loop. Build, tweak, save, load. You’re ready to bend audio.",
                 showNext: true
             )
         case .inactive:
