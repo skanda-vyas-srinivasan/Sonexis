@@ -211,7 +211,7 @@ class AudioEngine: ObservableObject {
     @Published var selectedOutputDeviceID: AudioDeviceID? {
         didSet {
             if let deviceID = selectedOutputDeviceID {
-                setOutputDeviceVolume(deviceID: deviceID, volume: outputVolume)
+                outputVolume = getOutputDeviceVolume(deviceID: deviceID)
             }
             if isRunning {
                 reconfigureAudio()
@@ -452,7 +452,8 @@ class AudioEngine: ObservableObject {
                 throw NSError(domain: "AudioEngine", code: 3, userInfo: [NSLocalizedDescriptionKey: "No output device configured"])
             }
 
-            setOutputDeviceVolume(deviceID: speakerDeviceID, volume: outputVolume)
+            // Read current device volume and update slider to reflect it
+            outputVolume = getOutputDeviceVolume(deviceID: speakerDeviceID)
 
             // Create AudioQueue for output to speakers
             let inputFormat = engine.inputNode.inputFormat(forBus: 0)
@@ -2856,6 +2857,47 @@ class AudioEngine: ObservableObject {
 
         guard status == noErr else { return nil }
         return uid as String
+    }
+
+    private func getOutputDeviceVolume(deviceID: AudioDeviceID) -> Float {
+        var volume: Float = 1.0
+        var size = UInt32(MemoryLayout<Float>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &size,
+            &volume
+        )
+
+        if status == noErr {
+            return volume
+        }
+
+        // Fallback to reading first channel volume when virtual master isn't supported.
+        var channelAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: 1
+        )
+
+        status = AudioObjectGetPropertyData(
+            deviceID,
+            &channelAddress,
+            0,
+            nil,
+            &size,
+            &volume
+        )
+
+        return status == noErr ? volume : 1.0
     }
 
     private func setOutputDeviceVolume(deviceID: AudioDeviceID, volume: Float) {
