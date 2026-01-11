@@ -2065,11 +2065,27 @@ struct HeaderView: View {
 
             // Error message if any
             if let error = audioEngine.errorMessage {
-                Text(error)
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.error)
-                    .lineLimit(2)
-                    .frame(maxWidth: 250)
+                HStack(spacing: 8) {
+                    Text(error)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.error)
+                        .lineLimit(2)
+                        .frame(maxWidth: 200)
+
+                    // Show "Open Settings" button for device-related errors
+                    if error.localizedCaseInsensitiveContains("Input") ||
+                       error.localizedCaseInsensitiveContains("Output") ||
+                       error.localizedCaseInsensitiveContains("BlackHole") {
+                        Button("Open Sound Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .font(AppTypography.caption)
+                        .tint(AppColors.neonPink)
+                    }
+                }
             }
 
             // Save/Load buttons

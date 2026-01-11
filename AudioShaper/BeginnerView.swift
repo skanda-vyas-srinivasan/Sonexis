@@ -1922,8 +1922,6 @@ struct BeginnerView: View {
 
     private func finalizeConnection(from fromID: UUID, dropPoint: CGPoint) {
         recordUndoSnapshot()
-        print("🔗 Attempting to finalize connection from \(fromID == startNodeID ? "START" : "node")")
-        print("   Drop point: \(dropPoint)")
 
         defer {
             activeConnectionFromID = nil
@@ -1933,7 +1931,6 @@ struct BeginnerView: View {
         guard let targetID = nearestConnectionTarget(from: fromID, at: dropPoint),
               targetID != fromID
         else {
-            print("   ❌ No valid target found or same node")
             return
         }
 
@@ -1941,24 +1938,18 @@ struct BeginnerView: View {
             let fromLane = laneForNodeID(fromID)
             let toLane = laneForNodeID(targetID)
             guard fromLane == toLane, fromLane != nil else {
-                print("   ❌ Cross-lane connection blocked")
                 return
             }
         }
 
-        print("   ✅ Found target: \(targetID == endNodeID ? "END" : "effect node")")
-
         guard tutorialAllowsConnection(from: fromID, to: targetID) else {
-            print("   ❌ Blocked by tutorial step")
             return
         }
 
         guard !createsCycle(from: fromID, to: targetID) else {
-            print("   ❌ Would create cycle")
             return
         }
 
-        print("   ✅ No cycle detected")
         if wiringMode == .automatic {
             manualConnections.removeAll { $0.fromNodeId == fromID || $0.toNodeId == targetID }
         } else {
@@ -1968,7 +1959,6 @@ struct BeginnerView: View {
         if wiringMode == .manual {
             normalizeOutgoingGains(from: fromID)
         }
-        print("   ✅ Connection created! Total connections: \(manualConnections.count)")
         applyChainToEngine()
         if tutorial.step == .buildConnect, shouldAdvanceConnectTutorial() {
             tutorial.advance()

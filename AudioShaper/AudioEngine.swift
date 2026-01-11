@@ -3685,11 +3685,6 @@ private func audioQueueOutputCallback(
     guard let userData = inUserData else { return }
 
     let audioEngine = Unmanaged<AudioEngine>.fromOpaque(userData).takeUnretainedValue()
-    struct DebugCounter {
-        static var callbackCount = 0
-        static var emptyCount = 0
-    }
-    DebugCounter.callbackCount += 1
 
     let floatBuffer = inBuffer.pointee.mAudioData.assumingMemoryBound(to: Float.self)
     let floatCount = Int(inBuffer.pointee.mAudioDataBytesCapacity) / MemoryLayout<Float>.size
@@ -3697,10 +3692,6 @@ private func audioQueueOutputCallback(
 
     if !audioEngine.getAudioDataForOutput(into: floatBuffer, count: floatCount) {
         memset(inBuffer.pointee.mAudioData, 0, bufferSize)
-        DebugCounter.emptyCount += 1
-        if DebugCounter.emptyCount % 50 == 0 {
-            // Debug output removed.
-        }
     }
     inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
 

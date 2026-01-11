@@ -230,9 +230,8 @@ class PresetManager: ObservableObject {
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(presets)
             try data.write(to: presetsFileURL, options: .atomic)
-            // Presets persisted.
         } catch {
-            // Failed to persist presets.
+            print("Failed to save presets: \(error.localizedDescription)")
         }
     }
 
@@ -247,9 +246,8 @@ class PresetManager: ObservableObject {
             let decoder = JSONDecoder()
             presets = try decoder.decode([SavedPreset].self, from: data)
             presets.sort { $0.createdDate > $1.createdDate }
-            // Presets loaded.
         } catch {
-            // Failed to load presets.
+            print("Failed to load presets: \(error.localizedDescription)")
             presets = []
         }
     }
