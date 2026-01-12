@@ -115,7 +115,7 @@ struct ContentView: View {
                 TutorialOverlay(
                     step: tutorial.step,
                     targets: tutorialTargets,
-                    isSetupReady: audioEngine.setupReady,
+                    isSetupReady: audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") },
                     onNext: { tutorial.advance() },
                     onSkip: { tutorial.endTutorial() },
                     onOpenSetup: { showSetupOverlay = true }
@@ -142,8 +142,9 @@ struct ContentView: View {
         .onAppear {
             guard !hasShownSetupThisSession else { return }
             hasShownSetupThisSession = true
-            let ready = audioEngine.refreshSetupStatus()
-            if !ready {
+            // Only show setup if BlackHole is not installed
+            let blackHoleInstalled = audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
+            if !blackHoleInstalled {
                 showSetupOverlay = true
             }
             tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
@@ -323,18 +324,11 @@ struct ContentView: View {
 private struct OnboardingOverlay: View {
     let audioEngine: AudioEngine
     let onDone: () -> Void
-    @State private var inputDeviceName: String?
-    @State private var outputDeviceName: String?
-    @State private var hasVerified = false
     @State private var showSkipConfirm = false
     @State private var backdropVisible = false
     @State private var animateIn = false
-    @State private var flowPulse = false
 
     var body: some View {
-        let inputIsBlackHole = inputDeviceName?.localizedCaseInsensitiveContains("BlackHole") == true
-        let outputIsBlackHole = outputDeviceName?.localizedCaseInsensitiveContains("BlackHole") == true
-        let ready = inputIsBlackHole && outputIsBlackHole
         let blackHoleInstalled = audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
 
         ZStack {
@@ -357,79 +351,51 @@ private struct OnboardingOverlay: View {
                     .buttonStyle(.plain)
                 }
 
-                Text("Hold On! Your input and output aren’t set up yet.")
+                Text(blackHoleInstalled ? "Almost Ready!" : "BlackHole Required")
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
 
                 VStack(spacing: 12) {
-                    Text("Setup checklist")
-                        .font(AppTypography.caption)
-                        .foregroundColor(AppColors.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(blackHoleInstalled
+                        ? "BlackHole is installed! You're ready to go."
+                        : "AudioShaper needs BlackHole to route your system audio. Install it to get started.")
+                        .font(AppTypography.body)
+                        .foregroundColor(AppColors.textSecondary)
+                        .multilineTextAlignment(.center)
 
-                    VStack(spacing: 8) {
-                        setupStepCard(
-                            completeText: "BlackHole is installed",
-                            incompleteText: "Install BlackHole",
-                            isComplete: blackHoleInstalled,
-                            linkText: "Install",
-                            onLinkTapped: {
-                                downloadAndOpenBlackHole()
-                            }
-                        )
-                        setupStepCard(
-                            completeText: "System sound input is set to BlackHole",
-                            incompleteText: "Set system sound input to BlackHole",
-                            isComplete: inputIsBlackHole
-                        )
-                        setupStepCard(
-                            completeText: "System sound output is set to BlackHole",
-                            incompleteText: "Set system sound output to BlackHole",
-                            isComplete: outputIsBlackHole
-                        )
+                    if blackHoleInstalled {
+                        Text("⚠️ When you press the power button, AudioShaper will automatically switch your system input/output to BlackHole. It will switch back when you turn it off.")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.warning)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                            .background(AppColors.deepBlack.opacity(0.5))
+                            .cornerRadius(8)
                     }
                 }
+                .padding(.horizontal, 20)
 
-                signalFlowView(inputReady: inputIsBlackHole, outputReady: outputIsBlackHole)
-
-                VStack(spacing: 10) {
-                    Text("Current devices")
-                        .font(AppTypography.caption)
-                        .foregroundColor(AppColors.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack(spacing: 12) {
-                        deviceStatusCard(title: "Input", name: inputDeviceName, ok: inputIsBlackHole)
-                        deviceStatusCard(title: "Output", name: outputDeviceName, ok: outputIsBlackHole)
-                    }
-                }
-
-                VStack(spacing: 8) {
-                    Button("Open Sound Settings") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
-                            NSWorkspace.shared.open(url)
+                if !blackHoleInstalled {
+                    Button {
+                        downloadAndOpenBlackHole()
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text("Install BlackHole")
                         }
                     }
-                    .buttonStyle(.bordered)
-                    .tint(AppColors.neonPink)
-
-                    Button("Verify Setup") {
-                        inputDeviceName = audioEngine.systemDefaultInputDeviceName()
-                        outputDeviceName = audioEngine.systemDefaultOutputDeviceName()
-                        _ = audioEngine.refreshSetupStatus()
-                        hasVerified = true
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(AppColors.neonCyan)
-
-                    Button("Start") {
-                        onDone()
-                    }
-                    .disabled(!ready)
                     .buttonStyle(.borderedProminent)
-                    .tint(ready ? AppColors.neonCyan : AppColors.textSecondary)
+                    .tint(AppColors.neonCyan)
+                    .padding(.top, 8)
                 }
+
+                Button(blackHoleInstalled ? "Continue" : "Skip Setup") {
+                    onDone()
+                }
+                .buttonStyle(.bordered)
+                .tint(blackHoleInstalled ? AppColors.neonCyan : AppColors.textSecondary)
             }
             .padding(22)
             .background(
@@ -461,37 +427,14 @@ private struct OnboardingOverlay: View {
         )
         .transition(.move(edge: .top).combined(with: .opacity))
         .onAppear {
-            inputDeviceName = audioEngine.systemDefaultInputDeviceName()
-            outputDeviceName = audioEngine.systemDefaultOutputDeviceName()
-            _ = audioEngine.refreshSetupStatus()
-            hasVerified = true
             animateIn = false
             withAnimation(.easeInOut(duration: 0.9)) {
                 backdropVisible = true
             }
             withAnimation(.easeOut(duration: 0.7)) {
                 animateIn = true
-            }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                flowPulse = true
             }
         }
-        .background(OverlayKeyCapture { event in
-            guard event.modifierFlags.contains(.command),
-                  event.charactersIgnoringModifiers?.lowercased() == "r" else { return }
-            animateIn = false
-            backdropVisible = false
-            flowPulse = false
-            withAnimation(.easeInOut(duration: 0.9)) {
-                backdropVisible = true
-            }
-            withAnimation(.easeOut(duration: 0.7)) {
-                animateIn = true
-            }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                flowPulse = true
-            }
-        })
     }
 
     private func downloadAndOpenBlackHole() {
@@ -505,98 +448,6 @@ private struct OnboardingOverlay: View {
         NSWorkspace.shared.open(installerURL)
     }
 
-    private func setupStepCard(
-        completeText: String,
-        incompleteText: String,
-        isComplete: Bool,
-        linkText: String? = nil,
-        onLinkTapped: (() -> Void)? = nil
-    ) -> some View {
-        HStack(spacing: 6) {
-            Text(isComplete ? completeText : incompleteText)
-                .font(AppTypography.caption)
-                .foregroundColor(isComplete ? AppColors.neonCyan : AppColors.neonPink)
-                .lineLimit(1)
-
-            if !isComplete, let linkText, let onLinkTapped {
-                Button(linkText) {
-                    onLinkTapped()
-                }
-                .buttonStyle(.plain)
-                .font(AppTypography.caption)
-                .foregroundColor(AppColors.neonCyan)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppColors.deepBlack.opacity(0.55))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke((isComplete ? AppColors.neonCyan : AppColors.neonPink).opacity(0.4), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func deviceStatusCard(title: String, name: String?, ok: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(ok ? AppColors.neonCyan : AppColors.neonPink)
-                    .frame(width: 8, height: 8)
-                Text(title)
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-            }
-            Text(name ?? "Not detected")
-                .font(AppTypography.body)
-                .foregroundColor(ok ? AppColors.textPrimary : AppColors.neonPink)
-                .lineLimit(1)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppColors.deepBlack.opacity(0.6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke((ok ? AppColors.neonCyan : AppColors.neonPink).opacity(0.35), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func signalFlowView(inputReady: Bool, outputReady: Bool) -> some View {
-        let activeColor = AppColors.neonCyan
-        let inactiveColor = AppColors.textMuted.opacity(0.5)
-        let lineOpacity = flowPulse ? 0.9 : 0.6
-
-        return HStack(spacing: 10) {
-            flowNode(title: "Input", active: inputReady)
-            flowLine(active: inputReady, opacity: lineOpacity)
-            flowNode(title: "AudioShaper", active: inputReady && outputReady)
-            flowLine(active: outputReady, opacity: lineOpacity)
-            flowNode(title: "Output", active: outputReady)
-        }
-        .padding(.vertical, 6)
-        .foregroundColor(inputReady ? activeColor : inactiveColor)
-    }
-
-    private func flowNode(title: String, active: Bool) -> some View {
-        VStack(spacing: 4) {
-            Circle()
-                .fill(active ? AppColors.neonCyan : AppColors.textMuted.opacity(0.4))
-                .frame(width: 10, height: 10)
-                .shadow(color: active ? AppColors.neonCyan.opacity(0.6) : Color.clear, radius: 6)
-            Text(title)
-                .font(AppTypography.caption)
-                .foregroundColor(active ? AppColors.textSecondary : AppColors.textMuted)
-        }
-    }
-
-    private func flowLine(active: Bool, opacity: Double) -> some View {
-        Capsule()
-            .fill(active ? AppColors.neonCyan.opacity(opacity) : AppColors.textMuted.opacity(0.3))
-            .frame(width: 40, height: 2)
-            .shadow(color: active ? AppColors.neonCyan.opacity(0.5) : Color.clear, radius: 6)
-    }
 }
 
 private struct SkipSetupConfirm: View {
@@ -1665,14 +1516,14 @@ private struct TutorialOverlay: View {
         case .buildPower:
             if !isSetupReady {
                 return (
-                    title: "Setup Required",
-                    body: "Seems like you aren't set up yet. To continue this tutorial you must:\n\n• Install BlackHole 2ch\n• Set system input to BlackHole\n• Set system output to BlackHole\n\nThen you can turn on the power button.",
+                    title: "Install BlackHole",
+                    body: "You need BlackHole 2ch installed to continue. Press the power button - we'll automatically route your audio through BlackHole!",
                     showNext: false
                 )
             } else {
                 return (
                     title: "Turn It On",
-                    body: "Click the power button to start processing audio. Feel free to play some music - this is when you'll hear AudioShaper in action!",
+                    body: "Click the power button to start processing audio. We'll automatically route your system audio through BlackHole. Feel free to play some music!",
                     showNext: false
                 )
             }
@@ -1958,35 +1809,39 @@ struct HeaderView: View {
 
     var body: some View {
         HStack(spacing: 20) {
-            // Power button
-            Button(action: {
-                if audioEngine.isRunning {
-                    audioEngine.stop()
-                } else {
-                    _ = audioEngine.refreshSetupStatus()
-                    guard audioEngine.setupReady else {
-                        audioEngine.errorMessage = "System Input/Output must be BlackHole 2ch to start."
-                        return
+            // Power button with status
+            VStack(spacing: 4) {
+                Button(action: {
+                    if audioEngine.isRunning {
+                        audioEngine.stop()
+                    } else {
+                        // Let start() handle BlackHole setup automatically
+                        audioEngine.start()
+                        tutorial.advanceIf(.buildPower)
                     }
-                    audioEngine.start()
-                    tutorial.advanceIf(.buildPower)
+                }) {
+                    Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
+                        .font(.system(size: 24))
+                        .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
                 }
-            }) {
-                Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
-                    .font(.system(size: 24))
-                    .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
+                .buttonStyle(.plain)
+                .help(audioEngine.isRunning ? "Stop Processing" : "Start Processing (Auto-routes to BlackHole)")
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.buildPower: proxy.frame(in: .global)]
+                        )
+                    }
+                )
+
+                if audioEngine.isRunning {
+                    Text("Routed to BlackHole")
+                        .font(.system(size: 9))
+                        .foregroundColor(AppColors.success.opacity(0.8))
+                        .transition(.opacity)
+                }
             }
-            .buttonStyle(.plain)
-            .opacity(audioEngine.setupReady ? 1.0 : 0.5)
-            .help(audioEngine.isRunning ? "Stop Processing" : (audioEngine.setupReady ? "Start Processing" : "Set System Input/Output to BlackHole 2ch to start"))
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TutorialTargetPreferenceKey.self,
-                        value: [.buildPower: proxy.frame(in: .global)]
-                    )
-                }
-            )
 
             Divider()
                 .frame(height: 30)
@@ -2178,6 +2033,7 @@ struct HeaderView: View {
         }
         .padding()
         .background(AppColors.midPurple.opacity(0.9))
+        .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
     }
 }
 

@@ -239,6 +239,10 @@ class AudioEngine: ObservableObject {
     private let outputQueueStartLock = NSLock()
     private var chainLogTimer: DispatchSourceTimer?
     private var setupMonitorTimer: DispatchSourceTimer?
+
+    // Store original devices before switching to BlackHole
+    private var originalInputDeviceID: AudioDeviceID?
+    private var originalOutputDeviceID: AudioDeviceID?
     private var nightcoreRestartWorkItem: DispatchWorkItem?
     private var effectChainOrder: [BeginnerNode] = []
     private var manualGraphNodes: [BeginnerNode] = []
@@ -396,12 +400,20 @@ class AudioEngine: ObservableObject {
     // MARK: - Engine Control
 
     func start() {
-        // First, request microphone permission
-        if !refreshSetupStatus() {
-            errorMessage = "System Input/Output must be set to BlackHole 2ch to start."
+        // Automatically set system input and output to BlackHole
+        if !switchSystemAudioToBlackHole() {
+            errorMessage = "BlackHole 2ch not found. Please install BlackHole 2ch to continue."
             isRunning = false
             return
         }
+
+        // Verify setup after switching
+        if !refreshSetupStatus() {
+            errorMessage = "Failed to set System Input/Output to BlackHole 2ch."
+            isRunning = false
+            return
+        }
+
         requestMicrophonePermission { [weak self] granted in
             guard let self = self else { return }
 
@@ -2799,6 +2811,114 @@ class AudioEngine: ObservableObject {
         return ready
     }
 
+    private func findBlackHoleDeviceID() -> AudioDeviceID? {
+        if let device = findDevice(matching: "BlackHole") {
+            return device.id
+        }
+        return nil
+    }
+
+    private func setSystemDefaultInputDevice(deviceID: AudioDeviceID) -> Bool {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        // Check if property is settable
+        var isSettable: DarwinBoolean = false
+        var status = AudioObjectIsPropertySettable(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            &isSettable
+        )
+
+        if status != noErr || !isSettable.boolValue {
+            return false
+        }
+
+        var deviceIDCopy = deviceID
+        status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size),
+            &deviceIDCopy
+        )
+
+        return status == noErr
+    }
+
+    private func setSystemDefaultOutputDevice(deviceID: AudioDeviceID) -> Bool {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        // Check if property is settable
+        var isSettable: DarwinBoolean = false
+        var status = AudioObjectIsPropertySettable(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            &isSettable
+        )
+
+        if status != noErr || !isSettable.boolValue {
+            return false
+        }
+
+        var deviceIDCopy = deviceID
+        status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size),
+            &deviceIDCopy
+        )
+
+        return status == noErr
+    }
+
+    @discardableResult
+    func switchSystemAudioToBlackHole() -> Bool {
+        guard let blackHoleID = findBlackHoleDeviceID() else {
+            return false
+        }
+
+        // Save current devices before switching
+        originalInputDeviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultInputDevice)
+        originalOutputDeviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice)
+
+        let inputSuccess = setSystemDefaultInputDevice(deviceID: blackHoleID)
+        let outputSuccess = setSystemDefaultOutputDevice(deviceID: blackHoleID)
+
+        // Add a small delay to let the system process the changes
+        Thread.sleep(forTimeInterval: 0.5)
+
+        return inputSuccess && outputSuccess
+    }
+
+    @discardableResult
+    func restoreOriginalAudioDevices() -> Bool {
+        var success = true
+
+        if let originalInput = originalInputDeviceID {
+            success = setSystemDefaultInputDevice(deviceID: originalInput) && success
+        }
+
+        if let originalOutput = originalOutputDeviceID {
+            success = setSystemDefaultOutputDevice(deviceID: originalOutput) && success
+        }
+
+        // Add a small delay to let the system process the changes
+        Thread.sleep(forTimeInterval: 0.5)
+
+        return success
+    }
+
     private func startSetupMonitor() {
         guard setupMonitorTimer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
@@ -2808,7 +2928,7 @@ class AudioEngine: ObservableObject {
             let ready = self.refreshSetupStatus()
             if !ready && self.isRunning {
                 DispatchQueue.main.async {
-                    self.errorMessage = "Input or output changed. Set System Input/Output to BlackHole 2ch to resume."
+                    self.errorMessage = "Audio routing was changed. Stopped to restore your original audio setup."
                     self.stop()
                 }
             }
@@ -3017,6 +3137,9 @@ class AudioEngine: ObservableObject {
 
     func stop() {
         stopInternal(setReconfiguringFlag: false)
+
+        // Restore original audio devices when stopping
+        restoreOriginalAudioDevices()
     }
 
     private func stopInternal(setReconfiguringFlag: Bool) {
