@@ -79,11 +79,13 @@ extension AudioEngine {
         effectStateLock.lock()
         defer { effectStateLock.unlock() }
 
+        let snapshot = currentProcessingSnapshot()
+        applyPendingResetsUnlocked()
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
         let sampleRate = buffer.format.sampleRate
 
-        if isReconfiguring {
+        if snapshot.isReconfiguring {
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
@@ -93,7 +95,7 @@ extension AudioEngine {
             return interleavedOutputBuffer
         }
 
-        if !processingEnabled {
+        if !snapshot.processingEnabled {
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
@@ -106,26 +108,27 @@ extension AudioEngine {
         // Initialize effect states
         initializeEffectStates(channelCount: channelCount)
 
-        if useSplitGraph {
+        if snapshot.useSplitGraph {
             let inputBuffer = deinterleavedInput(
                 channelData: channelData,
                 frameLength: frameLength,
                 channelCount: channelCount
             )
 
-            let autoConnect = splitAutoConnectEnd
+            let autoConnect = snapshot.splitAutoConnectEnd
             if channelCount < 2 {
-                let (processed, snapshot) = processGraph(
+                let (processed, levelSnapshot) = processGraph(
                     inputBuffer: inputBuffer,
                     channelCount: channelCount,
                     sampleRate: sampleRate,
-                    nodes: splitLeftNodes,
-                    connections: splitLeftConnections,
-                    startID: splitLeftStartID,
-                    endID: splitLeftEndID,
-                    autoConnectEnd: autoConnect
+                    nodes: snapshot.splitLeftNodes,
+                    connections: snapshot.splitLeftConnections,
+                    startID: snapshot.splitLeftStartID,
+                    endID: snapshot.splitLeftEndID,
+                    autoConnectEnd: autoConnect,
+                    snapshot: snapshot
                 )
-                updateEffectLevelsIfNeeded(snapshot)
+                updateEffectLevelsIfNeeded(levelSnapshot)
                 return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
             }
 
@@ -136,21 +139,23 @@ extension AudioEngine {
                 inputBuffer: leftInput,
                 channelCount: 1,
                 sampleRate: sampleRate,
-                nodes: splitLeftNodes,
-                connections: splitLeftConnections,
-                startID: splitLeftStartID,
-                endID: splitLeftEndID,
-                autoConnectEnd: autoConnect
+                nodes: snapshot.splitLeftNodes,
+                connections: snapshot.splitLeftConnections,
+                startID: snapshot.splitLeftStartID,
+                endID: snapshot.splitLeftEndID,
+                autoConnectEnd: autoConnect,
+                snapshot: snapshot
             )
             let (rightProcessed, rightSnapshot) = processGraph(
                 inputBuffer: rightInput,
                 channelCount: 1,
                 sampleRate: sampleRate,
-                nodes: splitRightNodes,
-                connections: splitRightConnections,
-                startID: splitRightStartID,
-                endID: splitRightEndID,
-                autoConnectEnd: autoConnect
+                nodes: snapshot.splitRightNodes,
+                connections: snapshot.splitRightConnections,
+                startID: snapshot.splitRightStartID,
+                endID: snapshot.splitRightEndID,
+                autoConnectEnd: autoConnect,
+                snapshot: snapshot
             )
 
             var combined = inputBuffer
@@ -170,12 +175,13 @@ extension AudioEngine {
             return interleaveBuffer(combined, frameLength: frameLength, channelCount: channelCount)
         }
 
-        if useManualGraph {
+        if snapshot.useManualGraph {
             return processManualGraph(
                 channelData: channelData,
                 frameLength: frameLength,
                 channelCount: channelCount,
-                sampleRate: sampleRate
+                sampleRate: sampleRate,
+                snapshot: snapshot
             )
         }
 
@@ -191,10 +197,10 @@ extension AudioEngine {
         }
 
         let orderedNodes: [EffectNode]
-        if effectChainOrder.isEmpty {
+        if snapshot.effectChainOrder.isEmpty {
             orderedNodes = defaultEffectOrder.map { EffectNode(id: nil, type: $0) }
         } else {
-            orderedNodes = effectChainOrder.map { EffectNode(id: $0.id, type: $0.type) }
+            orderedNodes = snapshot.effectChainOrder
         }
 
         var levelSnapshot: [UUID: Float] = [:]
@@ -206,7 +212,8 @@ extension AudioEngine {
                 channelCount: channelCount,
                 frameLength: frameLength,
                 nodeId: node.id,
-                levelSnapshot: &levelSnapshot
+                levelSnapshot: &levelSnapshot,
+                snapshot: snapshot
             )
         }
 

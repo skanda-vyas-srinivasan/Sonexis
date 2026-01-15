@@ -5,19 +5,21 @@ extension AudioEngine {
         channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
         frameLength: Int,
         channelCount: Int,
-        sampleRate: Double
+        sampleRate: Double,
+        snapshot: ProcessingSnapshot
     ) -> [Float] {
         let inputBuffer = deinterleavedInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
-        let autoConnect = manualGraphAutoConnectEnd
+        let autoConnect = snapshot.manualGraphAutoConnectEnd
         let (processed, levelSnapshot) = processGraph(
             inputBuffer: inputBuffer,
             channelCount: channelCount,
             sampleRate: sampleRate,
-            nodes: manualGraphNodes,
-            connections: manualGraphConnections,
-            startID: manualGraphStartID,
-            endID: manualGraphEndID,
-            autoConnectEnd: autoConnect
+            nodes: snapshot.manualGraphNodes,
+            connections: snapshot.manualGraphConnections,
+            startID: snapshot.manualGraphStartID,
+            endID: snapshot.manualGraphEndID,
+            autoConnectEnd: autoConnect,
+            snapshot: snapshot
         )
         updateEffectLevelsIfNeeded(levelSnapshot)
         return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
@@ -31,7 +33,8 @@ extension AudioEngine {
         connections: [BeginnerConnection],
         startID: UUID?,
         endID: UUID?,
-        autoConnectEnd: Bool = true
+        autoConnectEnd: Bool = true,
+        snapshot: ProcessingSnapshot
     ) -> ([[Float]], [UUID: Float]) {
         guard let startID, let endID else {
             return (inputBuffer, [:])
@@ -100,7 +103,8 @@ extension AudioEngine {
                 channelCount: channelCount,
                 frameLength: inputBuffer.first?.count ?? 0,
                 nodeId: node.id,
-                levelSnapshot: &levelSnapshot
+                levelSnapshot: &levelSnapshot,
+                snapshot: snapshot
             )
             outputBuffers[nodeID] = processed
 
@@ -122,7 +126,7 @@ extension AudioEngine {
             frameLength: inputBuffer.first?.count ?? 0,
             channelCount: channelCount
         )
-        let limited = limiterEnabled ? applySoftLimiter(mixed) : mixed
+        let limited = snapshot.limiterEnabled ? applySoftLimiter(mixed) : mixed
 
         return (limited, levelSnapshot)
     }
