@@ -138,39 +138,68 @@ extension AudioEngine {
         return created
     }
 
+    private func withRubberBandScratch(
+        nodeId: UUID?,
+        channelCount: Int,
+        frameLength: Int,
+        _ body: (inout RubberBandScratch) -> Void
+    ) {
+        let required = frameLength * channelCount
+        if let nodeId {
+            var scratch = rubberBandScratchByNode[nodeId] ?? RubberBandScratch()
+            if scratch.capacity < required || scratch.channelCount != channelCount {
+                scratch.interleaved = [Float](repeating: 0, count: required)
+                scratch.output = [Float](repeating: 0, count: required)
+                scratch.capacity = required
+                scratch.channelCount = channelCount
+            }
+            body(&scratch)
+            rubberBandScratchByNode[nodeId] = scratch
+        } else {
+            if rubberBandScratchGlobal.capacity < required || rubberBandScratchGlobal.channelCount != channelCount {
+                rubberBandScratchGlobal.interleaved = [Float](repeating: 0, count: required)
+                rubberBandScratchGlobal.output = [Float](repeating: 0, count: required)
+                rubberBandScratchGlobal.capacity = required
+                rubberBandScratchGlobal.channelCount = channelCount
+            }
+            body(&rubberBandScratchGlobal)
+        }
+    }
+
     private func applyRubberBand(
         _ processor: RubberBandWrapper,
         to processedAudio: inout [[Float]],
         frameLength: Int,
-        channelCount: Int
+        channelCount: Int,
+        nodeId: UUID?
     ) {
         guard frameLength > 0, channelCount > 0 else { return }
-        var interleaved = [Float](repeating: 0, count: frameLength * channelCount)
-        for frame in 0..<frameLength {
-            for channel in 0..<channelCount {
-                interleaved[frame * channelCount + channel] = processedAudio[channel][frame]
+        withRubberBandScratch(nodeId: nodeId, channelCount: channelCount, frameLength: frameLength) { scratch in
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    scratch.interleaved[frame * channelCount + channel] = processedAudio[channel][frame]
+                }
             }
-        }
 
-        var output = [Float](repeating: 0, count: frameLength * channelCount)
-        interleaved.withUnsafeBufferPointer { inputPtr in
-            output.withUnsafeMutableBufferPointer { outputPtr in
-                guard let inputBase = inputPtr.baseAddress, let outputBase = outputPtr.baseAddress else { return }
-                _ = processor.processInput(
-                    inputBase,
-                    frames: Int32(frameLength),
-                    channels: Int32(channelCount),
-                    output: outputBase,
-                    outputCapacity: Int32(frameLength)
-                )
+            scratch.interleaved.withUnsafeBufferPointer { inputPtr in
+                scratch.output.withUnsafeMutableBufferPointer { outputPtr in
+                    guard let inputBase = inputPtr.baseAddress, let outputBase = outputPtr.baseAddress else { return }
+                    _ = processor.processInput(
+                        inputBase,
+                        frames: Int32(frameLength),
+                        channels: Int32(channelCount),
+                        output: outputBase,
+                        outputCapacity: Int32(frameLength)
+                    )
+                }
             }
-        }
 
-        var index = 0
-        for frame in 0..<frameLength {
-            for channel in 0..<channelCount {
-                processedAudio[channel][frame] = output[index]
-                index += 1
+            var index = 0
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    processedAudio[channel][frame] = scratch.output[index]
+                    index += 1
+                }
             }
         }
     }
@@ -995,7 +1024,7 @@ extension AudioEngine {
             }
             let processor = rubberBandProcessor(for: nodeId, type: .rubberBandPitch, sampleRate: sampleRate, channels: channelCount)
             processor.setPitchSemitones(semitones)
-            applyRubberBand(processor, to: &processedAudio, frameLength: frameLength, channelCount: channelCount)
+            applyRubberBand(processor, to: &processedAudio, frameLength: frameLength, channelCount: channelCount, nodeId: nodeId)
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
@@ -1401,6 +1430,8 @@ extension AudioEngine {
         rubberBandGlobalByType.values.forEach { $0.reset() }
         rubberBandNodes.removeAll()
         rubberBandGlobalByType.removeAll()
+        rubberBandScratchByNode.removeAll()
+        rubberBandScratchGlobal = RubberBandScratch()
         bassBoostStatesByNode.removeAll()
         clarityStatesByNode.removeAll()
         nightcoreStatesByNode.removeAll()
