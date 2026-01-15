@@ -84,6 +84,10 @@ extension AudioEngine {
 
             // Create AudioQueue for output to speakers
             let inputFormat = engine.inputNode.inputFormat(forBus: 0)
+            updateRecordingFormat(
+                sampleRate: inputFormat.sampleRate,
+                channelCount: inputFormat.channelCount
+            )
 
             // Use fixed sample rate (no more nightcore rate changes)
             var audioFormat = AudioStreamBasicDescription(
@@ -423,6 +427,7 @@ extension AudioEngine {
     }
 
     private func stopInternal(setReconfiguringFlag: Bool) {
+        stopRecording()
         nightcoreRestartWorkItem?.cancel()
         nightcoreRestartWorkItem = nil
         resetEffectState()

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct AudioShaperApp: App {
+struct LayaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

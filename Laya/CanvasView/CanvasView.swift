@@ -49,8 +49,10 @@ struct CanvasView: View {
     @State private var isOptionHeld = false
     @State private var flagsMonitor: Any?
     @State private var isWindowKey = true
+    @State private var betaUnlockBuffer = ""
     private let connectionSnapRadius: CGFloat = 120
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
+    private let betaUnlockPhrase = "iloveskanda"
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
             fill: Color(hex: "#00F5FF"),
@@ -1622,6 +1624,27 @@ struct CanvasView: View {
             guard !selectedNodeIDs.isEmpty else { return }
             removeEffects(ids: selectedNodeIDs)
         }
+
+        handleBetaUnlock(event)
+    }
+
+    private func handleBetaUnlock(_ event: NSEvent) {
+        guard !audioEngine.betaRecordingUnlocked else { return }
+        let blocked: NSEvent.ModifierFlags = [.command, .control, .option]
+        guard event.modifierFlags.intersection(blocked).isEmpty else { return }
+        guard let chars = event.charactersIgnoringModifiers?.lowercased(), !chars.isEmpty else { return }
+
+        for scalar in chars.unicodeScalars where CharacterSet.letters.contains(scalar) {
+            betaUnlockBuffer.append(Character(scalar))
+        }
+
+        if betaUnlockBuffer.count > betaUnlockPhrase.count {
+            betaUnlockBuffer = String(betaUnlockBuffer.suffix(betaUnlockPhrase.count))
+        }
+
+        if betaUnlockBuffer == betaUnlockPhrase {
+            audioEngine.betaRecordingUnlocked = true
+        }
     }
 
     private func clearCanvas() {
@@ -2336,5 +2359,4 @@ struct CanvasView: View {
         node.position == .zero ? defaultNodePosition(in: size, lane: graphMode == .split ? node.lane : nil) : node.position
     }
 }
-
 

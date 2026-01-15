@@ -202,6 +202,13 @@ class AudioEngine: ObservableObject {
     @Published var inputDeviceName: String = "Searching..."
     @Published var outputDeviceName: String = "Searching..."
     @Published var signalFlowToken: Int = 0
+    @Published var betaRecordingUnlocked = false
+    @Published var isRecording = false
+
+    private var recordingFile: AVAudioFile?
+    private let recordingLock = NSLock()
+    private var recordingSampleRate: Double = 44100
+    private var recordingChannelCount: AVAudioChannelCount = 2
 
     init() {
         setupNotifications()
@@ -968,6 +975,100 @@ class AudioEngine: ObservableObject {
     func enqueueReset(_ reset: ResetFlags) {
         withEffectStateLock {
             pendingResets.insert(reset)
+        }
+    }
+
+    func updateRecordingFormat(sampleRate: Double, channelCount: AVAudioChannelCount) {
+        recordingSampleRate = sampleRate
+        recordingChannelCount = channelCount
+    }
+
+    func startRecording(url: URL) {
+        recordingLock.lock()
+        defer { recordingLock.unlock() }
+        guard !isRecording else { return }
+
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: recordingSampleRate,
+            channels: recordingChannelCount,
+            interleaved: false
+        ) else {
+            errorMessage = "Unable to create recording format."
+            return
+        }
+
+        do {
+            recordingFile = try AVAudioFile(forWriting: url, settings: format.settings)
+            isRecording = true
+        } catch {
+            errorMessage = "Recording failed: \(error.localizedDescription)"
+        }
+    }
+
+    func stopRecording() {
+        recordingLock.lock()
+        recordingFile = nil
+        recordingLock.unlock()
+        isRecording = false
+    }
+
+    func recordIfNeeded(
+        _ buffer: [[Float]],
+        frameLength: Int,
+        channelCount: Int,
+        sampleRate: Double
+    ) {
+        guard isRecording else { return }
+        guard channelCount > 0, frameLength > 0 else { return }
+
+        if sampleRate != recordingSampleRate || AVAudioChannelCount(channelCount) != recordingChannelCount {
+            DispatchQueue.main.async {
+                self.errorMessage = "Recording format changed. Stop and start recording again."
+                self.stopRecording()
+            }
+            return
+        }
+
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: AVAudioChannelCount(channelCount),
+            interleaved: false
+        ), let pcmBuffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(frameLength)
+        ) else {
+            return
+        }
+
+        pcmBuffer.frameLength = AVAudioFrameCount(frameLength)
+
+        if let channelData = pcmBuffer.floatChannelData {
+            for channel in 0..<channelCount {
+                buffer[channel].withUnsafeBufferPointer { src in
+                    guard let base = src.baseAddress else { return }
+                    channelData[channel].assign(from: base, count: frameLength)
+                }
+            }
+        }
+
+        var writeError: Error?
+        recordingLock.lock()
+        if let recordingFile {
+            do {
+                try recordingFile.write(from: pcmBuffer)
+            } catch {
+                writeError = error
+            }
+        }
+        recordingLock.unlock()
+
+        if let writeError {
+            DispatchQueue.main.async {
+                self.errorMessage = "Recording failed: \(writeError.localizedDescription)"
+                self.stopRecording()
+            }
         }
     }
 

@@ -85,6 +85,33 @@ struct HeaderView: View {
                 }
             )
 
+            if audioEngine.betaRecordingUnlocked {
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.gridLines)
+
+                Button(action: {
+                    if audioEngine.isRecording {
+                        audioEngine.stopRecording()
+                    } else if let url = promptForRecordingURL() {
+                        audioEngine.startRecording(url: url)
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(audioEngine.isRecording ? AppColors.error : AppColors.textMuted)
+                            .frame(width: 8, height: 8)
+                        Text(audioEngine.isRecording ? "Recording" : "Record")
+                            .font(AppTypography.caption)
+                            .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!audioEngine.isRunning)
+                .opacity(audioEngine.isRunning ? 1.0 : 0.4)
+                .help(audioEngine.isRecording ? "Stop Recording (Beta)" : "Start Recording (Beta)")
+            }
+
             Divider()
                 .frame(height: 30)
                 .background(AppColors.gridLines)
@@ -239,5 +266,13 @@ struct HeaderView: View {
         .background(AppColors.midPurple.opacity(0.9))
         .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
     }
-}
 
+    private func promptForRecordingURL() -> URL? {
+        let panel = NSSavePanel()
+        panel.title = "Save Recording"
+        panel.nameFieldStringValue = "Laya Recording.wav"
+        panel.allowedFileTypes = ["wav"]
+        panel.canCreateDirectories = true
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+}
