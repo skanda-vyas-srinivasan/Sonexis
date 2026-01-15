@@ -63,6 +63,7 @@ extension AudioEngine {
     private func startAudioEngine() {
         do {
             isReconfiguring = true
+            scheduleSnapshotUpdate()
             // Configure audio devices FIRST
             refreshOutputDevices()
             try configureAudioDevices()
@@ -185,10 +186,12 @@ extension AudioEngine {
             // Debug output removed.
             startChainLogTimer()
             isReconfiguring = false
+            scheduleSnapshotUpdate()
         } catch {
             errorMessage = "Failed to start: \(error.localizedDescription)"
             isRunning = false
             isReconfiguring = false
+            scheduleSnapshotUpdate()
             // Debug output removed.
         }
     }
@@ -417,6 +420,7 @@ extension AudioEngine {
 
         if setReconfiguringFlag {
             isReconfiguring = true
+            scheduleSnapshotUpdate()
         }
 
         // Stop AudioQueue first
@@ -451,6 +455,7 @@ extension AudioEngine {
         if !setReconfiguringFlag {
             isReconfiguring = false
         }
+        scheduleSnapshotUpdate()
         // Debug output removed.
     }
 
@@ -463,6 +468,7 @@ extension AudioEngine {
             return
         }
         isReconfiguring = true
+        scheduleSnapshotUpdate()
         restartWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
@@ -475,6 +481,7 @@ extension AudioEngine {
                     self.errorMessage = "Microphone permission denied. Please enable in System Settings > Privacy & Security > Microphone"
                     self.isRunning = false
                     self.isReconfiguring = false
+                    self.scheduleSnapshotUpdate()
                 }
             }
         }

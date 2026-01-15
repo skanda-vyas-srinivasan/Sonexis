@@ -310,6 +310,7 @@ extension AudioEngine {
             useSplitGraph = false
             syncNodeState(chain)
         }
+        scheduleSnapshotUpdate()
 
         let activeTypes = Set(chain.filter { $0.isEnabled }.map { $0.type })
 
@@ -363,6 +364,7 @@ extension AudioEngine {
             useSplitGraph = false
             syncNodeState(nodes)
         }
+        scheduleSnapshotUpdate()
 
         let activeTypes = Set(nodes.filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
@@ -411,6 +413,7 @@ extension AudioEngine {
             useManualGraph = false
             syncNodeState(leftNodes + rightNodes)
         }
+        scheduleSnapshotUpdate()
 
         let activeTypes = Set((leftNodes + rightNodes).filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)

@@ -103,14 +103,14 @@ extension AudioEngine {
         let type: EffectType
     }
 
-    private func nodeParams(for nodeId: UUID?) -> NodeEffectParameters? {
+    private func nodeParams(for nodeId: UUID?, snapshot: ProcessingSnapshot) -> NodeEffectParameters? {
         guard let nodeId else { return nil }
-        return nodeParameters[nodeId]
+        return snapshot.nodeParameters[nodeId]
     }
 
-    private func nodeIsEnabled(_ nodeId: UUID?) -> Bool {
+    private func nodeIsEnabled(_ nodeId: UUID?, snapshot: ProcessingSnapshot) -> Bool {
         guard let nodeId else { return true }
-        return nodeEnabled[nodeId] ?? true
+        return snapshot.nodeEnabled[nodeId] ?? true
     }
 
     private func rubberBandProcessor(
@@ -197,19 +197,20 @@ extension AudioEngine {
         channelCount: Int,
         frameLength: Int,
         nodeId: UUID?,
-        levelSnapshot: inout [UUID: Float]
+        levelSnapshot: inout [UUID: Float],
+        snapshot: ProcessingSnapshot
     ) {
         switch effect {
         case .bassBoost:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? bassBoostEnabled : true else {
+            guard nodeId == nil ? snapshot.bassBoostEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let amount = nodeParams(for: nodeId)?.bassBoostAmount ?? bassBoostAmount
+            let amount = nodeParams(for: nodeId, snapshot: snapshot)?.bassBoostAmount ?? snapshot.bassBoostAmount
             guard amount > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -247,11 +248,11 @@ extension AudioEngine {
             }
 
         case .pitchShift:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? nightcoreEnabled : true else {
+            guard nodeId == nil ? snapshot.nightcoreEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
@@ -261,15 +262,15 @@ extension AudioEngine {
             return
 
         case .clarity:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? clarityEnabled : true else {
+            guard nodeId == nil ? snapshot.clarityEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let amount = nodeParams(for: nodeId)?.clarityAmount ?? clarityAmount
+            let amount = nodeParams(for: nodeId, snapshot: snapshot)?.clarityAmount ?? snapshot.clarityAmount
             guard amount > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -306,15 +307,15 @@ extension AudioEngine {
             }
 
         case .deMud:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? deMudEnabled : true else {
+            guard nodeId == nil ? snapshot.deMudEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let strength = nodeParams(for: nodeId)?.deMudStrength ?? deMudStrength
+            let strength = nodeParams(for: nodeId, snapshot: snapshot)?.deMudStrength ?? snapshot.deMudStrength
             guard strength > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -351,18 +352,18 @@ extension AudioEngine {
             }
 
         case .simpleEQ:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? simpleEQEnabled : true else {
+            guard nodeId == nil ? snapshot.simpleEQEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let params = nodeParams(for: nodeId)
-            let bass = params?.eqBass ?? eqBass
-            let mids = params?.eqMids ?? eqMids
-            let treble = params?.eqTreble ?? eqTreble
+            let params = nodeParams(for: nodeId, snapshot: snapshot)
+            let bass = params?.eqBass ?? snapshot.eqBass
+            let mids = params?.eqMids ?? snapshot.eqMids
+            let treble = params?.eqTreble ?? snapshot.eqTreble
             guard bass != 0 || mids != 0 || treble != 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -439,15 +440,15 @@ extension AudioEngine {
             }
 
         case .tenBandEQ:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? tenBandEQEnabled : true else {
+            guard nodeId == nil ? snapshot.tenBandEQEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let gains = nodeParams(for: nodeId)?.tenBandGains ?? tenBandGains
+            let gains = nodeParams(for: nodeId, snapshot: snapshot)?.tenBandGains ?? snapshot.tenBandGains
             guard gains.contains(where: { $0 != 0 }) else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -493,15 +494,15 @@ extension AudioEngine {
             }
 
         case .compressor:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? compressorEnabled : true else {
+            guard nodeId == nil ? snapshot.compressorEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let strength = nodeParams(for: nodeId)?.compressorStrength ?? compressorStrength
+            let strength = nodeParams(for: nodeId, snapshot: snapshot)?.compressorStrength ?? snapshot.compressorStrength
             guard strength > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -530,16 +531,16 @@ extension AudioEngine {
             }
 
         case .reverb:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? reverbEnabled : true else {
+            guard nodeId == nil ? snapshot.reverbEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let mixValue = nodeParams(for: nodeId)?.reverbMix ?? reverbMix
-            let sizeValue = nodeParams(for: nodeId)?.reverbSize ?? reverbSize
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.reverbMix ?? snapshot.reverbMix
+            let sizeValue = nodeParams(for: nodeId, snapshot: snapshot)?.reverbSize ?? snapshot.reverbSize
             guard mixValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -581,17 +582,17 @@ extension AudioEngine {
             }
 
         case .delay:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? delayEnabled : true else {
+            guard nodeId == nil ? snapshot.delayEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let mixValue = nodeParams(for: nodeId)?.delayMix ?? delayMix
-            let feedbackValue = nodeParams(for: nodeId)?.delayFeedback ?? delayFeedback
-            let timeValue = nodeParams(for: nodeId)?.delayTime ?? delayTime
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.delayMix ?? snapshot.delayMix
+            let feedbackValue = nodeParams(for: nodeId, snapshot: snapshot)?.delayFeedback ?? snapshot.delayFeedback
+            let timeValue = nodeParams(for: nodeId, snapshot: snapshot)?.delayTime ?? snapshot.delayTime
             guard mixValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -632,16 +633,16 @@ extension AudioEngine {
             }
 
         case .distortion:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? distortionEnabled : true else {
+            guard nodeId == nil ? snapshot.distortionEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let driveValue = nodeParams(for: nodeId)?.distortionDrive ?? distortionDrive
-            let mixValue = nodeParams(for: nodeId)?.distortionMix ?? distortionMix
+            let driveValue = nodeParams(for: nodeId, snapshot: snapshot)?.distortionDrive ?? snapshot.distortionDrive
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.distortionMix ?? snapshot.distortionMix
             guard driveValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -662,16 +663,16 @@ extension AudioEngine {
             }
 
         case .tremolo:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? tremoloEnabled : true else {
+            guard nodeId == nil ? snapshot.tremoloEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let rateValue = nodeParams(for: nodeId)?.tremoloRate ?? tremoloRate
-            let depthValue = nodeParams(for: nodeId)?.tremoloDepth ?? tremoloDepth
+            let rateValue = nodeParams(for: nodeId, snapshot: snapshot)?.tremoloRate ?? snapshot.tremoloRate
+            let depthValue = nodeParams(for: nodeId, snapshot: snapshot)?.tremoloDepth ?? snapshot.tremoloDepth
             guard depthValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -702,17 +703,17 @@ extension AudioEngine {
             }
 
         case .chorus:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? chorusEnabled : true else {
+            guard nodeId == nil ? snapshot.chorusEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let rateValue = nodeParams(for: nodeId)?.chorusRate ?? chorusRate
-            let depthValue = nodeParams(for: nodeId)?.chorusDepth ?? chorusDepth
-            let mixValue = nodeParams(for: nodeId)?.chorusMix ?? chorusMix
+            let rateValue = nodeParams(for: nodeId, snapshot: snapshot)?.chorusRate ?? snapshot.chorusRate
+            let depthValue = nodeParams(for: nodeId, snapshot: snapshot)?.chorusDepth ?? snapshot.chorusDepth
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.chorusMix ?? snapshot.chorusMix
             guard mixValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -758,16 +759,16 @@ extension AudioEngine {
             }
 
         case .phaser:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? phaserEnabled : true else {
+            guard nodeId == nil ? snapshot.phaserEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let rateValue = nodeParams(for: nodeId)?.phaserRate ?? phaserRate
-            let depthValue = nodeParams(for: nodeId)?.phaserDepth ?? phaserDepth
+            let rateValue = nodeParams(for: nodeId, snapshot: snapshot)?.phaserRate ?? snapshot.phaserRate
+            let depthValue = nodeParams(for: nodeId, snapshot: snapshot)?.phaserDepth ?? snapshot.phaserDepth
             guard depthValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -813,18 +814,18 @@ extension AudioEngine {
             }
 
         case .flanger:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? flangerEnabled : true else {
+            guard nodeId == nil ? snapshot.flangerEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let rateValue = nodeParams(for: nodeId)?.flangerRate ?? flangerRate
-            let depthValue = nodeParams(for: nodeId)?.flangerDepth ?? flangerDepth
-            let feedbackValue = nodeParams(for: nodeId)?.flangerFeedback ?? flangerFeedback
-            let mixValue = nodeParams(for: nodeId)?.flangerMix ?? flangerMix
+            let rateValue = nodeParams(for: nodeId, snapshot: snapshot)?.flangerRate ?? snapshot.flangerRate
+            let depthValue = nodeParams(for: nodeId, snapshot: snapshot)?.flangerDepth ?? snapshot.flangerDepth
+            let feedbackValue = nodeParams(for: nodeId, snapshot: snapshot)?.flangerFeedback ?? snapshot.flangerFeedback
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.flangerMix ?? snapshot.flangerMix
             guard mixValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -870,17 +871,17 @@ extension AudioEngine {
             }
 
         case .bitcrusher:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? bitcrusherEnabled : true else {
+            guard nodeId == nil ? snapshot.bitcrusherEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let bitDepthValue = Int(nodeParams(for: nodeId)?.bitcrusherBitDepth ?? bitcrusherBitDepth)
-            let downsampleValue = Int(nodeParams(for: nodeId)?.bitcrusherDownsample ?? bitcrusherDownsample)
-            let mixValue = nodeParams(for: nodeId)?.bitcrusherMix ?? bitcrusherMix
+            let bitDepthValue = Int(nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherBitDepth ?? snapshot.bitcrusherBitDepth)
+            let downsampleValue = Int(nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherDownsample ?? snapshot.bitcrusherDownsample)
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherMix ?? snapshot.bitcrusherMix
             guard mixValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -923,16 +924,16 @@ extension AudioEngine {
             }
 
         case .tapeSaturation:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? tapeSaturationEnabled : true else {
+            guard nodeId == nil ? snapshot.tapeSaturationEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let driveValue = nodeParams(for: nodeId)?.tapeSaturationDrive ?? tapeSaturationDrive
-            let mixValue = nodeParams(for: nodeId)?.tapeSaturationMix ?? tapeSaturationMix
+            let driveValue = nodeParams(for: nodeId, snapshot: snapshot)?.tapeSaturationDrive ?? snapshot.tapeSaturationDrive
+            let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.tapeSaturationMix ?? snapshot.tapeSaturationMix
             guard mixValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -951,15 +952,15 @@ extension AudioEngine {
             }
 
         case .stereoWidth:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? stereoWidthEnabled : true else {
+            guard nodeId == nil ? snapshot.stereoWidthEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let amount = nodeParams(for: nodeId)?.stereoWidthAmount ?? stereoWidthAmount
+            let amount = nodeParams(for: nodeId, snapshot: snapshot)?.stereoWidthAmount ?? snapshot.stereoWidthAmount
             guard amount > 0, channelCount == 2 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -979,15 +980,15 @@ extension AudioEngine {
             }
 
         case .rubberBandPitch:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? rubberBandPitchEnabled : true else {
+            guard nodeId == nil ? snapshot.rubberBandPitchEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let semitones = nodeParams(for: nodeId)?.rubberBandPitchSemitones ?? rubberBandPitchSemitones
+            let semitones = nodeParams(for: nodeId, snapshot: snapshot)?.rubberBandPitchSemitones ?? snapshot.rubberBandPitchSemitones
             guard abs(semitones) > 0.01 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -1000,16 +1001,16 @@ extension AudioEngine {
             }
 
         case .resampling:
-            if let id = nodeId, !nodeIsEnabled(id) {
+            if let id = nodeId, !nodeIsEnabled(id, snapshot: snapshot) {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            guard nodeId == nil ? resampleEnabled : true else {
+            guard nodeId == nil ? snapshot.resampleEnabled : true else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
             }
-            let rateValue = nodeParams(for: nodeId)?.resampleRate ?? resampleRate
-            let crossfadeValue = nodeParams(for: nodeId)?.resampleCrossfade ?? resampleCrossfade
+            let rateValue = nodeParams(for: nodeId, snapshot: snapshot)?.resampleRate ?? snapshot.resampleRate
+            let crossfadeValue = nodeParams(for: nodeId, snapshot: snapshot)?.resampleCrossfade ?? snapshot.resampleCrossfade
             guard rateValue > 0 else {
                 if let id = nodeId { levelSnapshot[id] = 0 }
                 return
@@ -1293,9 +1294,7 @@ extension AudioEngine {
     }
 
     func resetBassBoostState() {
-        withEffectStateLock {
-            resetBassBoostStateUnlocked()
-        }
+        enqueueReset(.bassBoost)
     }
 
     func resetBassBoostStateUnlocked() {
@@ -1307,9 +1306,7 @@ extension AudioEngine {
     }
 
     func resetClarityState() {
-        withEffectStateLock {
-            resetClarityStateUnlocked()
-        }
+        enqueueReset(.clarity)
     }
 
     func resetClarityStateUnlocked() {
@@ -1317,9 +1314,7 @@ extension AudioEngine {
     }
 
     func resetDeMudState() {
-        withEffectStateLock {
-            resetDeMudStateUnlocked()
-        }
+        enqueueReset(.deMud)
     }
 
     func resetDeMudStateUnlocked() {
@@ -1327,9 +1322,7 @@ extension AudioEngine {
     }
 
     func resetEQState() {
-        withEffectStateLock {
-            resetEQStateUnlocked()
-        }
+        enqueueReset(.eq)
     }
 
     func resetEQStateUnlocked() {
@@ -1339,15 +1332,128 @@ extension AudioEngine {
     }
 
     func resetTenBandEQState() {
-        withEffectStateLock {
-            resetTenBandEQStateUnlocked()
-        }
+        enqueueReset(.tenBandEQ)
     }
 
     func resetTenBandEQStateUnlocked() {
         tenBandStates = tenBandStates.map { bandStates in
             bandStates.map { _ in BiquadState() }
         }
+    }
+
+    func resetChorusStateUnlocked() {
+        chorusBuffer.removeAll()
+        chorusWriteIndex = 0
+        chorusPhase = 0
+        chorusBuffersByNode.removeAll()
+        chorusWriteIndexByNode.removeAll()
+        chorusPhaseByNode.removeAll()
+    }
+
+    func resetFlangerStateUnlocked() {
+        flangerBuffer.removeAll()
+        flangerWriteIndex = 0
+        flangerPhase = 0
+        flangerBuffersByNode.removeAll()
+        flangerWriteIndexByNode.removeAll()
+        flangerPhaseByNode.removeAll()
+    }
+
+    func resetPhaserStateUnlocked() {
+        phaserStates = Array(
+            repeating: Array(repeating: AllPassState(), count: phaserStageCount),
+            count: phaserStates.count
+        )
+        phaserPhase = 0
+        phaserStatesByNode.removeAll()
+        phaserPhaseByNode.removeAll()
+    }
+
+    func resetBitcrusherStateUnlocked() {
+        bitcrusherHoldCounters = bitcrusherHoldCounters.map { _ in 0 }
+        bitcrusherHoldValues = bitcrusherHoldValues.map { _ in 0 }
+        bitcrusherHoldCountersByNode.removeAll()
+        bitcrusherHoldValuesByNode.removeAll()
+    }
+
+    func resetEffectStateUnlocked() {
+        resetBassBoostStateUnlocked()
+        resetClarityStateUnlocked()
+        resetDeMudStateUnlocked()
+        resetEQStateUnlocked()
+        resetTenBandEQStateUnlocked()
+        resetCompressorStateUnlocked()
+        tremoloPhase = 0
+        resetReverbStateUnlocked()
+        resetDelayStateUnlocked()
+        resetChorusStateUnlocked()
+        resetFlangerStateUnlocked()
+        phaserPhase = 0
+        resetBitcrusherStateUnlocked()
+        resampleBuffer.removeAll()
+        resampleWriteIndex = 0
+        resampleReadPhase = 0
+        resampleCrossfadeRemaining = 0
+        resampleCrossfadeTotal = 0
+        resampleCrossfadeStartPhase = 0
+        resampleCrossfadeTargetPhase = 0
+        rubberBandNodes.values.forEach { $0.reset() }
+        rubberBandGlobalByType.values.forEach { $0.reset() }
+        rubberBandNodes.removeAll()
+        rubberBandGlobalByType.removeAll()
+        bassBoostStatesByNode.removeAll()
+        clarityStatesByNode.removeAll()
+        nightcoreStatesByNode.removeAll()
+        deMudStatesByNode.removeAll()
+        eqBassStatesByNode.removeAll()
+        eqMidsStatesByNode.removeAll()
+        eqTrebleStatesByNode.removeAll()
+        tenBandStatesByNode.removeAll()
+        reverbBuffersByNode.removeAll()
+        reverbWriteIndexByNode.removeAll()
+        delayBuffersByNode.removeAll()
+        delayWriteIndexByNode.removeAll()
+        tremoloPhaseByNode.removeAll()
+        chorusBuffersByNode.removeAll()
+        chorusWriteIndexByNode.removeAll()
+        chorusPhaseByNode.removeAll()
+        flangerBuffersByNode.removeAll()
+        flangerWriteIndexByNode.removeAll()
+        flangerPhaseByNode.removeAll()
+        phaserStatesByNode.removeAll()
+        bitcrusherHoldCountersByNode.removeAll()
+        bitcrusherHoldValuesByNode.removeAll()
+        resampleBuffersByNode.removeAll()
+        resampleWriteIndexByNode.removeAll()
+        resampleReadPhaseByNode.removeAll()
+    }
+
+    func applyPendingResetsUnlocked() {
+        guard pendingResets != [] else { return }
+
+        let resets = pendingResets
+        pendingResets = []
+
+        if resets.contains(ResetFlags.all) {
+            resetEffectStateUnlocked()
+            DispatchQueue.main.async {
+                self.effectLevels = [:]
+            }
+            return
+        }
+
+        if resets.contains(ResetFlags.bassBoost) { resetBassBoostStateUnlocked() }
+        if resets.contains(ResetFlags.clarity) { resetClarityStateUnlocked() }
+        if resets.contains(ResetFlags.deMud) { resetDeMudStateUnlocked() }
+        if resets.contains(ResetFlags.eq) { resetEQStateUnlocked() }
+        if resets.contains(ResetFlags.tenBandEQ) { resetTenBandEQStateUnlocked() }
+        if resets.contains(ResetFlags.compressor) { resetCompressorStateUnlocked() }
+        if resets.contains(ResetFlags.reverb) { resetReverbStateUnlocked() }
+        if resets.contains(ResetFlags.delay) { resetDelayStateUnlocked() }
+        if resets.contains(ResetFlags.chorus) { resetChorusStateUnlocked() }
+        if resets.contains(ResetFlags.flanger) { resetFlangerStateUnlocked() }
+        if resets.contains(ResetFlags.phaser) { resetPhaserStateUnlocked() }
+        if resets.contains(ResetFlags.bitcrusher) { resetBitcrusherStateUnlocked() }
     }
 
     func resetTenBandValues() {
@@ -1364,9 +1470,7 @@ extension AudioEngine {
     }
 
     func resetCompressorState() {
-        withEffectStateLock {
-            resetCompressorStateUnlocked()
-        }
+        enqueueReset(.compressor)
     }
 
     func resetCompressorStateUnlocked() {
@@ -1374,9 +1478,7 @@ extension AudioEngine {
     }
 
     func resetReverbState() {
-        withEffectStateLock {
-            resetReverbStateUnlocked()
-        }
+        enqueueReset(.reverb)
     }
 
     func resetReverbStateUnlocked() {
@@ -1385,9 +1487,7 @@ extension AudioEngine {
     }
 
     func resetDelayState() {
-        withEffectStateLock {
-            resetDelayStateUnlocked()
-        }
+        enqueueReset(.delay)
     }
 
     func resetDelayStateUnlocked() {
@@ -1396,108 +1496,23 @@ extension AudioEngine {
     }
 
     func resetChorusState() {
-        withEffectStateLock {
-            chorusBuffer.removeAll()
-            chorusWriteIndex = 0
-            chorusPhase = 0
-            chorusBuffersByNode.removeAll()
-            chorusWriteIndexByNode.removeAll()
-            chorusPhaseByNode.removeAll()
-        }
+        enqueueReset(.chorus)
     }
 
     func resetFlangerState() {
-        withEffectStateLock {
-            flangerBuffer.removeAll()
-            flangerWriteIndex = 0
-            flangerPhase = 0
-            flangerBuffersByNode.removeAll()
-            flangerWriteIndexByNode.removeAll()
-            flangerPhaseByNode.removeAll()
-        }
+        enqueueReset(.flanger)
     }
 
     func resetPhaserState() {
-        withEffectStateLock {
-            phaserStates = Array(
-                repeating: Array(repeating: AllPassState(), count: phaserStageCount),
-                count: phaserStates.count
-            )
-            phaserPhase = 0
-            phaserStatesByNode.removeAll()
-            phaserPhaseByNode.removeAll()
-        }
+        enqueueReset(.phaser)
     }
 
     func resetBitcrusherState() {
-        withEffectStateLock {
-            bitcrusherHoldCounters = bitcrusherHoldCounters.map { _ in 0 }
-            bitcrusherHoldValues = bitcrusherHoldValues.map { _ in 0 }
-            bitcrusherHoldCountersByNode.removeAll()
-            bitcrusherHoldValuesByNode.removeAll()
-        }
+        enqueueReset(.bitcrusher)
     }
 
     func resetEffectState() {
-        withEffectStateLock {
-            resetBassBoostStateUnlocked()
-            resetClarityStateUnlocked()
-            resetDeMudStateUnlocked()
-            resetEQStateUnlocked()
-            resetTenBandEQStateUnlocked()
-            resetCompressorStateUnlocked()
-            tremoloPhase = 0
-            resetReverbStateUnlocked()
-            resetDelayStateUnlocked()
-            chorusBuffer.removeAll()
-            chorusWriteIndex = 0
-            chorusPhase = 0
-            flangerBuffer.removeAll()
-            flangerWriteIndex = 0
-            flangerPhase = 0
-            phaserPhase = 0
-            bitcrusherHoldCounters = bitcrusherHoldCounters.map { _ in 0 }
-            bitcrusherHoldValues = bitcrusherHoldValues.map { _ in 0 }
-            resampleBuffer.removeAll()
-            resampleWriteIndex = 0
-            resampleReadPhase = 0
-            resampleCrossfadeRemaining = 0
-            resampleCrossfadeTotal = 0
-            resampleCrossfadeStartPhase = 0
-            resampleCrossfadeTargetPhase = 0
-            rubberBandNodes.values.forEach { $0.reset() }
-            rubberBandGlobalByType.values.forEach { $0.reset() }
-            rubberBandNodes.removeAll()
-            rubberBandGlobalByType.removeAll()
-            bassBoostStatesByNode.removeAll()
-            clarityStatesByNode.removeAll()
-            nightcoreStatesByNode.removeAll()
-            deMudStatesByNode.removeAll()
-            eqBassStatesByNode.removeAll()
-            eqMidsStatesByNode.removeAll()
-            eqTrebleStatesByNode.removeAll()
-            tenBandStatesByNode.removeAll()
-            reverbBuffersByNode.removeAll()
-            reverbWriteIndexByNode.removeAll()
-            delayBuffersByNode.removeAll()
-            delayWriteIndexByNode.removeAll()
-            tremoloPhaseByNode.removeAll()
-            chorusBuffersByNode.removeAll()
-            chorusWriteIndexByNode.removeAll()
-            chorusPhaseByNode.removeAll()
-            flangerBuffersByNode.removeAll()
-            flangerWriteIndexByNode.removeAll()
-            flangerPhaseByNode.removeAll()
-            phaserStatesByNode.removeAll()
-            bitcrusherHoldCountersByNode.removeAll()
-            bitcrusherHoldValuesByNode.removeAll()
-            resampleBuffersByNode.removeAll()
-            resampleWriteIndexByNode.removeAll()
-            resampleReadPhaseByNode.removeAll()
-        }
-        DispatchQueue.main.async {
-            self.effectLevels = [:]
-        }
+        enqueueReset(.all)
     }
 
     // Note: Proper pitch shifting without tempo change requires complex DSP (phase vocoder, etc.)
