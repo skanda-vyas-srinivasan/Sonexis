@@ -11,34 +11,100 @@
 		16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */ = {isa = PBXBuildFile; fileRef = 16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */; };
 		23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */; };
 		5047C507DB83004AA57728BE /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C769F79DC65143B6C5646AB /* Accelerate.framework */; };
+		129CB3F47F11795BF43B10B6 /* Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7687CE20D496432330108900 /* Presets.swift */; };
+		2429E1711C28361A030AAB38 /* Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */; };
+		6CDD090FD8393BDBF1E0ED6B /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */; };
+		7C7976BF0F52D5D8AC916119 /* Routing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F410F57B093E1301CF36D3 /* Routing.swift */; };
 		AA0000010000000000000001 /* AudioShaperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* AudioShaperApp.swift */; };
-		AA0000030000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000040000000000000001 /* ContentView.swift */; };
-		AA0000050000000000000001 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000060000000000000001 /* AudioEngine.swift */; };
-		AA0000070000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000080000000000000002 /* Models.swift */; };
 		AA0000090000000000000003 /* PresetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000100000000000000003 /* PresetManager.swift */; };
-		AA0000110000000000000004 /* BeginnerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000120000000000000004 /* BeginnerView.swift */; };
-		AA0000130000000000000005 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000140000000000000005 /* DesignSystem.swift */; };
-		AA0000150000000000000006 /* TutorialCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000160000000000000006 /* TutorialCardView.swift */; };
+		A1825A6FCC19882231762830 /* IO.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30616271FFD0E7417F8DCF0 /* IO.swift */; };
+		C729E6C58F8333FBBB33147A /* Graph.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BD1F558BD122C461C6973C /* Graph.swift */; };
+		F47E53D00947C3D4B881E35C /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CD68673030CDE14EBC9571 /* Effects.swift */; };
+		11AD96768DB240ECB9E96087 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B480440BFFC4FF7AF9DC3B4 /* ContentView.swift */; };
+		6A183A1EFF524A58ABD5EA97 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF11C6BF5F0846D0B1A6F5C8 /* OnboardingOverlay.swift */; };
+		3C5B4E60481C48CD9E2F44EC /* EngineStoppedAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B366B5B633B4A6591FD3162 /* EngineStoppedAlert.swift */; };
+		923969B7552B486CA2E9A345 /* LoadPresetDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F4F824ACA64D73BBB68248 /* LoadPresetDialog.swift */; };
+		A6223C4A21044FB3BC10846A /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5448F10ACA734BCA8141D567 /* HomeView.swift */; };
+		3BBDBDFF389A4E6296A4C00C /* OverlayKeyCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F97866D212E0442DB54A08E0 /* OverlayKeyCapture.swift */; };
+		A1D26E29978D458EB4CEC446 /* AppTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E53C4F928DF4D049688EC2C /* AppTopBar.swift */; };
+		EEA2BD405CFB42D2B66A3AE9 /* TutorialTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 143D40209EFD4ABBB3D8EAB4 /* TutorialTypes.swift */; };
+		51C7E28703824B969C776D2B /* TutorialController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B0007C956447E0AF4C19F1 /* TutorialController.swift */; };
+		D7180F652505446A9C6C3DFA /* TutorialOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5DABF5E39DB4261BE92AA6F /* TutorialOverlay.swift */; };
+		ED282A9B4E9B4780871C4680 /* SavePresetDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE57C4C4CB29482C91F8C369 /* SavePresetDialog.swift */; };
+		D67FE51D10724C68AE282E68 /* HeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F71BED35F430413B92B0ABA9 /* HeaderView.swift */; };
+		78DC5CC2951744FBA534E231 /* PresetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F59EDFF342354984ACA34430 /* PresetView.swift */; };
+		F4652A9B977E40049F4D1E23 /* CanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C15E7511CA4796A695E13F /* CanvasView.swift */; };
+		02BE2B51B4BA49988F010853 /* CanvasDropDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4AFFA79197E4AE3939EC87A /* CanvasDropDelegate.swift */; };
+		A4CBCEA591A44FB98C51E5DC /* InsertionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9CE7C6B89004C53875C3117 /* InsertionIndicator.swift */; };
+		86192E61F46B4CBD8F3DE9BE /* EffectTray.swift in Sources */ = {isa = PBXBuildFile; fileRef = C68561C9406E49B7A2D54237 /* EffectTray.swift */; };
+		59633923B7C44718A971B968 /* StartEndNodes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57472F786544E64A9AE1A35 /* StartEndNodes.swift */; };
+		0F518659D0634FD1ACF70A3D /* FlowConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE61017F0B24A5280D822F3 /* FlowConnection.swift */; };
+		C7C9064BA7C940F5ADF9DF7E /* FlowLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E472E6A41744CC86549A60 /* FlowLine.swift */; };
+		043972D804664239B44A86FC /* EffectBlockHorizontal.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD475BF9350040D4AF8B42D8 /* EffectBlockHorizontal.swift */; };
+		5D3B51B6D40B4B358BDAF2EB /* EffectParametersViewCompact.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA2410F774D4085BA35D76B /* EffectParametersViewCompact.swift */; };
+		743DB43FB73844B7A144C66C /* SupportingTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 088D4BB8A51F4CDD9BBC4C3F /* SupportingTypes.swift */; };
+		C301B96200C4474DB6404092 /* EffectType.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80F14336B4B4196BB00C2FB /* EffectType.swift */; };
+		27B229E90DA3439397B7C58A /* EffectBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CE198051973410B8D565067 /* EffectBlock.swift */; };
+		8A078972288649A3A8237E9B /* EffectChain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9451D5646F84F5DA8132628 /* EffectChain.swift */; };
+		BAA24474EA674B5D81098ACF /* GraphModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82822CB130BF4C54A774D7F8 /* GraphModels.swift */; };
+		2EB076074F414A4DA6A758EE /* PresetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8392BBF2A4F4689ACF75334 /* PresetModels.swift */; };
+		9E8ECD39BC894AF693BB0104 /* AdvancedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC3C35E7AD3E4E449915932A /* AdvancedModels.swift */; };
+		341F9A2908BA49DB86339096 /* ProjectModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073C10634DF64EA7B3E73A15 /* ProjectModels.swift */; };
+		D9F68784BB3B45F0BFE27724 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0242442D29D4F198347542A /* DesignSystem.swift */; };
+		4F98459F3F0C4FE8A9EF273B /* TutorialCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635180A2D5414FB0912B6145 /* TutorialCardView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BlackHole2ch-0.6.1 (1).pkg"; sourceTree = "<group>"; };
 		5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RubberBandWrapper.mm; sourceTree = "<group>"; };
 		7C769F79DC65143B6C5646AB /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		7687CE20D496432330108900 /* Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Presets.swift; sourceTree = "<group>"; };
+		AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lifecycle.swift; sourceTree = "<group>"; };
 		AA0000010000000000000002 /* AudioShaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioShaper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000020000000000000001 /* AudioShaperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioShaperApp.swift; sourceTree = "<group>"; };
-		AA0000040000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		AA0000060000000000000001 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		AA0000070000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000080000000000000001 /* AudioShaper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudioShaper.entitlements; sourceTree = "<group>"; };
-		AA0000080000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		AA0000100000000000000003 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
-		AA0000120000000000000004 /* BeginnerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeginnerView.swift; sourceTree = "<group>"; };
-		AA0000140000000000000005 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
-		AA0000160000000000000006 /* TutorialCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialCardView.swift; sourceTree = "<group>"; };
+		B30616271FFD0E7417F8DCF0 /* IO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IO.swift; sourceTree = "<group>"; };
+		B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
+		C5CD68673030CDE14EBC9571 /* Effects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Effects.swift; sourceTree = "<group>"; };
 		D9C93DEA747BFDF98A24E5A1 /* RubberBandWrapper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RubberBandWrapper.h; sourceTree = "<group>"; };
+		E5BD1F558BD122C461C6973C /* Graph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Graph.swift; sourceTree = "<group>"; };
+		E5F410F57B093E1301CF36D3 /* Routing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Routing.swift; sourceTree = "<group>"; };
 		E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AudioShaper-Bridging-Header.h"; sourceTree = "<group>"; };
 		F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RubberBandSingle.cpp; sourceTree = "<group>"; };
+		8B480440BFFC4FF7AF9DC3B4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		BF11C6BF5F0846D0B1A6F5C8 /* OnboardingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingOverlay.swift; sourceTree = "<group>"; };
+		4B366B5B633B4A6591FD3162 /* EngineStoppedAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineStoppedAlert.swift; sourceTree = "<group>"; };
+		54F4F824ACA64D73BBB68248 /* LoadPresetDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadPresetDialog.swift; sourceTree = "<group>"; };
+		5448F10ACA734BCA8141D567 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		F97866D212E0442DB54A08E0 /* OverlayKeyCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayKeyCapture.swift; sourceTree = "<group>"; };
+		2E53C4F928DF4D049688EC2C /* AppTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTopBar.swift; sourceTree = "<group>"; };
+		143D40209EFD4ABBB3D8EAB4 /* TutorialTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialTypes.swift; sourceTree = "<group>"; };
+		47B0007C956447E0AF4C19F1 /* TutorialController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialController.swift; sourceTree = "<group>"; };
+		E5DABF5E39DB4261BE92AA6F /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialOverlay.swift; sourceTree = "<group>"; };
+		BE57C4C4CB29482C91F8C369 /* SavePresetDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavePresetDialog.swift; sourceTree = "<group>"; };
+		F71BED35F430413B92B0ABA9 /* HeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderView.swift; sourceTree = "<group>"; };
+		F59EDFF342354984ACA34430 /* PresetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetView.swift; sourceTree = "<group>"; };
+		08C15E7511CA4796A695E13F /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
+		C4AFFA79197E4AE3939EC87A /* CanvasDropDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasDropDelegate.swift; sourceTree = "<group>"; };
+		C9CE7C6B89004C53875C3117 /* InsertionIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsertionIndicator.swift; sourceTree = "<group>"; };
+		C68561C9406E49B7A2D54237 /* EffectTray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectTray.swift; sourceTree = "<group>"; };
+		A57472F786544E64A9AE1A35 /* StartEndNodes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartEndNodes.swift; sourceTree = "<group>"; };
+		4BE61017F0B24A5280D822F3 /* FlowConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowConnection.swift; sourceTree = "<group>"; };
+		D5E472E6A41744CC86549A60 /* FlowLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLine.swift; sourceTree = "<group>"; };
+		AD475BF9350040D4AF8B42D8 /* EffectBlockHorizontal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectBlockHorizontal.swift; sourceTree = "<group>"; };
+		DFA2410F774D4085BA35D76B /* EffectParametersViewCompact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectParametersViewCompact.swift; sourceTree = "<group>"; };
+		088D4BB8A51F4CDD9BBC4C3F /* SupportingTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingTypes.swift; sourceTree = "<group>"; };
+		C80F14336B4B4196BB00C2FB /* EffectType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectType.swift; sourceTree = "<group>"; };
+		6CE198051973410B8D565067 /* EffectBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectBlock.swift; sourceTree = "<group>"; };
+		C9451D5646F84F5DA8132628 /* EffectChain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectChain.swift; sourceTree = "<group>"; };
+		82822CB130BF4C54A774D7F8 /* GraphModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphModels.swift; sourceTree = "<group>"; };
+		A8392BBF2A4F4689ACF75334 /* PresetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetModels.swift; sourceTree = "<group>"; };
+		AC3C35E7AD3E4E449915932A /* AdvancedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedModels.swift; sourceTree = "<group>"; };
+		073C10634DF64EA7B3E73A15 /* ProjectModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModels.swift; sourceTree = "<group>"; };
+		F0242442D29D4F198347542A /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		635180A2D5414FB0912B6145 /* TutorialCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialCardView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,12 +127,27 @@
 			name = "Recovered References";
 			sourceTree = "<group>";
 		};
-		1F7A3B1AC7A1465FD2C6FA42 /* ThirdParty */ = {
+		1F7A3B1AC7A1465FD2C6FA42 /* External */ = {
 			isa = PBXGroup;
 			children = (
 				A783C7BC4BD2E924BA1E782C /* rubberband/single */,
+				16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */,
 			);
-			path = ThirdParty;
+			path = External;
+			sourceTree = "<group>";
+		};
+		A19256146F90870535C89A39 /* AudioEngine */ = {
+			isa = PBXGroup;
+			children = (
+				B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */,
+				C5CD68673030CDE14EBC9571 /* Effects.swift */,
+				E5BD1F558BD122C461C6973C /* Graph.swift */,
+				B30616271FFD0E7417F8DCF0 /* IO.swift */,
+				AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */,
+				7687CE20D496432330108900 /* Presets.swift */,
+				E5F410F57B093E1301CF36D3 /* Routing.swift */,
+			);
+			path = AudioEngine;
 			sourceTree = "<group>";
 		};
 		A783C7BC4BD2E924BA1E782C /* rubberband/single */ = {
@@ -77,11 +158,20 @@
 			path = rubberband/single;
 			sourceTree = "<group>";
 		};
+		AA0000200000000000000001 /* Wrappers */ = {
+			isa = PBXGroup;
+			children = (
+				D9C93DEA747BFDF98A24E5A1 /* RubberBandWrapper.h */,
+				5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */,
+			);
+			path = Wrappers;
+			sourceTree = "<group>";
+		};
 		AA0000010000000000000004 = {
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000002 /* AudioShaper */,
-				1F7A3B1AC7A1465FD2C6FA42 /* ThirdParty */,
+				1F7A3B1AC7A1465FD2C6FA42 /* External */,
 				AA0000030000000000000002 /* Products */,
 				16F077052F1454B10088C4AF /* Recovered References */,
 			);
@@ -90,17 +180,14 @@
 		AA0000020000000000000002 /* AudioShaper */ = {
 			isa = PBXGroup;
 			children = (
-				16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */,
 				AA0000020000000000000001 /* AudioShaperApp.swift */,
-				AA0000040000000000000001 /* ContentView.swift */,
-				AA0000160000000000000006 /* TutorialCardView.swift */,
-				AA0000120000000000000004 /* BeginnerView.swift */,
-				AA0000140000000000000005 /* DesignSystem.swift */,
-				AA0000060000000000000001 /* AudioEngine.swift */,
-				AA0000080000000000000002 /* Models.swift */,
+				D66A6809EC0B4F4EBE673B9D /* ContentView */,
+				C150ADB2C304463B8EB70A19 /* CanvasView */,
+				58F8F7EC791A4AC5AB40AF98 /* Models */,
+				25CE615C807643DEA2CF34D8 /* SharedUI */,
+				A19256146F90870535C89A39 /* AudioEngine */,
 				AA0000100000000000000003 /* PresetManager.swift */,
-				D9C93DEA747BFDF98A24E5A1 /* RubberBandWrapper.h */,
-				5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */,
+				AA0000200000000000000001 /* Wrappers */,
 				E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */,
 				AA0000070000000000000001 /* Info.plist */,
 				AA0000080000000000000001 /* AudioShaper.entitlements */,
@@ -114,6 +201,66 @@
 				AA0000010000000000000002 /* AudioShaper.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D66A6809EC0B4F4EBE673B9D /* ContentView */ = {
+			isa = PBXGroup;
+			children = (
+				8B480440BFFC4FF7AF9DC3B4 /* ContentView.swift */,
+				BF11C6BF5F0846D0B1A6F5C8 /* OnboardingOverlay.swift */,
+				4B366B5B633B4A6591FD3162 /* EngineStoppedAlert.swift */,
+				54F4F824ACA64D73BBB68248 /* LoadPresetDialog.swift */,
+				5448F10ACA734BCA8141D567 /* HomeView.swift */,
+				F97866D212E0442DB54A08E0 /* OverlayKeyCapture.swift */,
+				2E53C4F928DF4D049688EC2C /* AppTopBar.swift */,
+				143D40209EFD4ABBB3D8EAB4 /* TutorialTypes.swift */,
+				47B0007C956447E0AF4C19F1 /* TutorialController.swift */,
+				E5DABF5E39DB4261BE92AA6F /* TutorialOverlay.swift */,
+				BE57C4C4CB29482C91F8C369 /* SavePresetDialog.swift */,
+				F71BED35F430413B92B0ABA9 /* HeaderView.swift */,
+				F59EDFF342354984ACA34430 /* PresetView.swift */,
+			);
+			path = ContentView;
+			sourceTree = "<group>";
+		};
+		C150ADB2C304463B8EB70A19 /* CanvasView */ = {
+			isa = PBXGroup;
+			children = (
+				08C15E7511CA4796A695E13F /* CanvasView.swift */,
+				C4AFFA79197E4AE3939EC87A /* CanvasDropDelegate.swift */,
+				C9CE7C6B89004C53875C3117 /* InsertionIndicator.swift */,
+				C68561C9406E49B7A2D54237 /* EffectTray.swift */,
+				A57472F786544E64A9AE1A35 /* StartEndNodes.swift */,
+				4BE61017F0B24A5280D822F3 /* FlowConnection.swift */,
+				D5E472E6A41744CC86549A60 /* FlowLine.swift */,
+				AD475BF9350040D4AF8B42D8 /* EffectBlockHorizontal.swift */,
+				DFA2410F774D4085BA35D76B /* EffectParametersViewCompact.swift */,
+				088D4BB8A51F4CDD9BBC4C3F /* SupportingTypes.swift */,
+			);
+			path = CanvasView;
+			sourceTree = "<group>";
+		};
+		58F8F7EC791A4AC5AB40AF98 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				C80F14336B4B4196BB00C2FB /* EffectType.swift */,
+				6CE198051973410B8D565067 /* EffectBlock.swift */,
+				C9451D5646F84F5DA8132628 /* EffectChain.swift */,
+				82822CB130BF4C54A774D7F8 /* GraphModels.swift */,
+				A8392BBF2A4F4689ACF75334 /* PresetModels.swift */,
+				AC3C35E7AD3E4E449915932A /* AdvancedModels.swift */,
+				073C10634DF64EA7B3E73A15 /* ProjectModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		25CE615C807643DEA2CF34D8 /* SharedUI */ = {
+			isa = PBXGroup;
+			children = (
+				F0242442D29D4F198347542A /* DesignSystem.swift */,
+				635180A2D5414FB0912B6145 /* TutorialCardView.swift */,
+			);
+			path = SharedUI;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -185,13 +332,46 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D9F68784BB3B45F0BFE27724 /* DesignSystem.swift in Sources */,
+				4F98459F3F0C4FE8A9EF273B /* TutorialCardView.swift in Sources */,
+				C301B96200C4474DB6404092 /* EffectType.swift in Sources */,
+				27B229E90DA3439397B7C58A /* EffectBlock.swift in Sources */,
+				8A078972288649A3A8237E9B /* EffectChain.swift in Sources */,
+				BAA24474EA674B5D81098ACF /* GraphModels.swift in Sources */,
+				2EB076074F414A4DA6A758EE /* PresetModels.swift in Sources */,
+				9E8ECD39BC894AF693BB0104 /* AdvancedModels.swift in Sources */,
+				341F9A2908BA49DB86339096 /* ProjectModels.swift in Sources */,
+				F4652A9B977E40049F4D1E23 /* CanvasView.swift in Sources */,
+				02BE2B51B4BA49988F010853 /* CanvasDropDelegate.swift in Sources */,
+				A4CBCEA591A44FB98C51E5DC /* InsertionIndicator.swift in Sources */,
+				86192E61F46B4CBD8F3DE9BE /* EffectTray.swift in Sources */,
+				59633923B7C44718A971B968 /* StartEndNodes.swift in Sources */,
+				0F518659D0634FD1ACF70A3D /* FlowConnection.swift in Sources */,
+				C7C9064BA7C940F5ADF9DF7E /* FlowLine.swift in Sources */,
+				043972D804664239B44A86FC /* EffectBlockHorizontal.swift in Sources */,
+				5D3B51B6D40B4B358BDAF2EB /* EffectParametersViewCompact.swift in Sources */,
+				743DB43FB73844B7A144C66C /* SupportingTypes.swift in Sources */,
+				11AD96768DB240ECB9E96087 /* ContentView.swift in Sources */,
+				6A183A1EFF524A58ABD5EA97 /* OnboardingOverlay.swift in Sources */,
+				3C5B4E60481C48CD9E2F44EC /* EngineStoppedAlert.swift in Sources */,
+				923969B7552B486CA2E9A345 /* LoadPresetDialog.swift in Sources */,
+				A6223C4A21044FB3BC10846A /* HomeView.swift in Sources */,
+				3BBDBDFF389A4E6296A4C00C /* OverlayKeyCapture.swift in Sources */,
+				A1D26E29978D458EB4CEC446 /* AppTopBar.swift in Sources */,
+				EEA2BD405CFB42D2B66A3AE9 /* TutorialTypes.swift in Sources */,
+				51C7E28703824B969C776D2B /* TutorialController.swift in Sources */,
+				D7180F652505446A9C6C3DFA /* TutorialOverlay.swift in Sources */,
+				ED282A9B4E9B4780871C4680 /* SavePresetDialog.swift in Sources */,
+				D67FE51D10724C68AE282E68 /* HeaderView.swift in Sources */,
+				78DC5CC2951744FBA534E231 /* PresetView.swift in Sources */,
 				AA0000010000000000000001 /* AudioShaperApp.swift in Sources */,
-				AA0000030000000000000001 /* ContentView.swift in Sources */,
-				AA0000150000000000000006 /* TutorialCardView.swift in Sources */,
-				AA0000110000000000000004 /* BeginnerView.swift in Sources */,
-				AA0000130000000000000005 /* DesignSystem.swift in Sources */,
-				AA0000050000000000000001 /* AudioEngine.swift in Sources */,
-				AA0000070000000000000002 /* Models.swift in Sources */,
+				6CDD090FD8393BDBF1E0ED6B /* AudioEngine.swift in Sources */,
+				F47E53D00947C3D4B881E35C /* Effects.swift in Sources */,
+				C729E6C58F8333FBBB33147A /* Graph.swift in Sources */,
+				A1825A6FCC19882231762830 /* IO.swift in Sources */,
+				2429E1711C28361A030AAB38 /* Lifecycle.swift in Sources */,
+				129CB3F47F11795BF43B10B6 /* Presets.swift in Sources */,
+				7C7976BF0F52D5D8AC916119 /* Routing.swift in Sources */,
 				AA0000090000000000000003 /* PresetManager.swift in Sources */,
 				23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */,
 				0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */,
@@ -333,8 +513,8 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(PROJECT_DIR)/ThirdParty/rubberband/rubberband",
-					"$(PROJECT_DIR)/ThirdParty/rubberband",
+					"$(PROJECT_DIR)/External/rubberband/rubberband",
+					"$(PROJECT_DIR)/External/rubberband",
 				);
 				INFOPLIST_FILE = AudioShaper/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -366,8 +546,8 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(PROJECT_DIR)/ThirdParty/rubberband/rubberband",
-					"$(PROJECT_DIR)/ThirdParty/rubberband",
+					"$(PROJECT_DIR)/External/rubberband/rubberband",
+					"$(PROJECT_DIR)/External/rubberband",
 				);
 				INFOPLIST_FILE = AudioShaper/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";

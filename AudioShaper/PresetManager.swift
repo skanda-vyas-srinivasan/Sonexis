@@ -118,10 +118,35 @@ struct SavedPreset: Identifiable, Codable {
             params.reverbSize = values.reverbSize ?? params.reverbSize
         case .stereoWidth:
             params.stereoWidthAmount = values.stereoWidthAmount ?? params.stereoWidthAmount
-        case .delay, .distortion, .tremolo:
-            break
-        case .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation:
-            break
+        case .delay:
+            params.delayTime = values.delayTime ?? params.delayTime
+            params.delayFeedback = values.delayFeedback ?? params.delayFeedback
+            params.delayMix = values.delayMix ?? params.delayMix
+        case .distortion:
+            params.distortionDrive = values.distortionDrive ?? params.distortionDrive
+            params.distortionMix = values.distortionMix ?? params.distortionMix
+        case .tremolo:
+            params.tremoloRate = values.tremoloRate ?? params.tremoloRate
+            params.tremoloDepth = values.tremoloDepth ?? params.tremoloDepth
+        case .chorus:
+            params.chorusRate = values.chorusRate ?? params.chorusRate
+            params.chorusDepth = values.chorusDepth ?? params.chorusDepth
+            params.chorusMix = values.chorusMix ?? params.chorusMix
+        case .phaser:
+            params.phaserRate = values.phaserRate ?? params.phaserRate
+            params.phaserDepth = values.phaserDepth ?? params.phaserDepth
+        case .flanger:
+            params.flangerRate = values.flangerRate ?? params.flangerRate
+            params.flangerDepth = values.flangerDepth ?? params.flangerDepth
+            params.flangerFeedback = values.flangerFeedback ?? params.flangerFeedback
+            params.flangerMix = values.flangerMix ?? params.flangerMix
+        case .bitcrusher:
+            params.bitcrusherBitDepth = values.bitcrusherBitDepth ?? params.bitcrusherBitDepth
+            params.bitcrusherDownsample = values.bitcrusherDownsample ?? params.bitcrusherDownsample
+            params.bitcrusherMix = values.bitcrusherMix ?? params.bitcrusherMix
+        case .tapeSaturation:
+            params.tapeSaturationDrive = values.tapeSaturationDrive ?? params.tapeSaturationDrive
+            params.tapeSaturationMix = values.tapeSaturationMix ?? params.tapeSaturationMix
         case .resampling:
             params.resampleRate = values.resampleRate ?? params.resampleRate
             params.resampleCrossfade = values.resampleCrossfade ?? params.resampleCrossfade
@@ -173,6 +198,43 @@ struct EffectChainSnapshot: Codable {
 
         // Stereo Width
         var stereoWidthAmount: Double?
+
+        // Delay
+        var delayTime: Double?
+        var delayFeedback: Double?
+        var delayMix: Double?
+
+        // Distortion
+        var distortionDrive: Double?
+        var distortionMix: Double?
+
+        // Tremolo
+        var tremoloRate: Double?
+        var tremoloDepth: Double?
+
+        // Chorus
+        var chorusRate: Double?
+        var chorusDepth: Double?
+        var chorusMix: Double?
+
+        // Phaser
+        var phaserRate: Double?
+        var phaserDepth: Double?
+
+        // Flanger
+        var flangerRate: Double?
+        var flangerDepth: Double?
+        var flangerFeedback: Double?
+        var flangerMix: Double?
+
+        // Bitcrusher
+        var bitcrusherBitDepth: Double?
+        var bitcrusherDownsample: Double?
+        var bitcrusherMix: Double?
+
+        // Tape Saturation
+        var tapeSaturationDrive: Double?
+        var tapeSaturationMix: Double?
 
         // Resampling
         var resampleRate: Double?
