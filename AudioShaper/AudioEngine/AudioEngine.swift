@@ -181,6 +181,20 @@ struct ResetFlags: OptionSet {
     static let all = ResetFlags(rawValue: 1 << 12)
 }
 
+struct RubberBandScratch {
+    var interleaved: [Float]
+    var output: [Float]
+    var capacity: Int
+    var channelCount: Int
+
+    init() {
+        self.interleaved = []
+        self.output = []
+        self.capacity = 0
+        self.channelCount = 0
+    }
+}
+
 class AudioEngine: ObservableObject {
     let engine = AVAudioEngine()
     @Published var isRunning = false
@@ -759,6 +773,8 @@ class AudioEngine: ObservableObject {
     // Rubber Band state
     var rubberBandNodes: [UUID: RubberBandWrapper] = [:]
     var rubberBandGlobalByType: [EffectType: RubberBandWrapper] = [:]
+    var rubberBandScratchByNode: [UUID: RubberBandScratch] = [:]
+    var rubberBandScratchGlobal = RubberBandScratch()
 
     // Bitcrusher state
     var bitcrusherHoldCounters: [Int] = []
