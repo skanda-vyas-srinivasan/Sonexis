@@ -120,7 +120,6 @@ struct OnboardingOverlay: View {
     private func downloadAndOpenBlackHole() {
         // Look for bundled BlackHole installer in app resources
         guard let installerURL = Bundle.main.url(forResource: "BlackHole2ch-0.6.1 (1)", withExtension: "pkg") else {
-            print("BlackHole installer not found in app bundle")
             return
         }
 

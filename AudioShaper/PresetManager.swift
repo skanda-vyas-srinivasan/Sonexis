@@ -293,7 +293,7 @@ class PresetManager: ObservableObject {
             let data = try encoder.encode(presets)
             try data.write(to: presetsFileURL, options: .atomic)
         } catch {
-            print("Failed to save presets: \(error.localizedDescription)")
+            // Silently fail - preset save errors are non-critical
         }
     }
 
@@ -309,7 +309,7 @@ class PresetManager: ObservableObject {
             presets = try decoder.decode([SavedPreset].self, from: data)
             presets.sort { $0.createdDate > $1.createdDate }
         } catch {
-            print("Failed to load presets: \(error.localizedDescription)")
+            // Reset to empty if corrupted
             presets = []
         }
     }
