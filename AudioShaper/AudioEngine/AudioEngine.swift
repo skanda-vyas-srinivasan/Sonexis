@@ -972,6 +972,21 @@ class AudioEngine: ObservableObject {
     }
 
     deinit {
+        // Stop audio queue before deallocation to prevent callback accessing freed memory
+        if let queue = outputQueue {
+            AudioQueueStop(queue, true)
+            AudioQueueDispose(queue, true)
+        }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+
+        // Clean up ring buffer
+        ringBufferLock.lock()
+        if let buffer = ringBuffer {
+            buffer.deallocate()
+        }
+        ringBufferLock.unlock()
+
         NotificationCenter.default.removeObserver(self)
     }
 
