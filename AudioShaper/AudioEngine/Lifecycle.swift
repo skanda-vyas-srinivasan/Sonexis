@@ -7,29 +7,36 @@ extension AudioEngine {
     // MARK: - Engine Control
 
     func start() {
-        // Automatically set system input and output to BlackHole
-        if !switchSystemAudioToBlackHole() {
-            errorMessage = "BlackHole 2ch not found. Please install BlackHole 2ch to continue."
-            isRunning = false
-            return
-        }
+        Task {
+            // Automatically set system input and output to BlackHole
+            let switched = await switchSystemAudioToBlackHole()
+            if !switched {
+                await MainActor.run {
+                    errorMessage = "BlackHole 2ch not found. Please install BlackHole 2ch to continue."
+                    isRunning = false
+                }
+                return
+            }
 
-        // Verify setup after switching
-        if !refreshSetupStatus() {
-            errorMessage = "Failed to set System Input/Output to BlackHole 2ch."
-            isRunning = false
-            return
-        }
+            // Verify setup after switching
+            if !refreshSetupStatus() {
+                await MainActor.run {
+                    errorMessage = "Failed to set System Input/Output to BlackHole 2ch."
+                    isRunning = false
+                }
+                return
+            }
 
-        requestMicrophonePermission { [weak self] granted in
-            guard let self = self else { return }
+            requestMicrophonePermission { [weak self] granted in
+                guard let self = self else { return }
 
-            if granted {
-                self.startAudioEngine()
-            } else {
-                DispatchQueue.main.async {
-                    self.errorMessage = "Microphone permission denied. Please enable in System Settings > Privacy & Security > Microphone"
-                    self.isRunning = false
+                if granted {
+                    self.startAudioEngine()
+                } else {
+                    DispatchQueue.main.async {
+                        self.errorMessage = "Microphone permission denied. Please enable in System Settings > Privacy & Security > Microphone"
+                        self.isRunning = false
+                    }
                 }
             }
         }
@@ -410,7 +417,9 @@ extension AudioEngine {
         stopInternal(setReconfiguringFlag: false)
 
         // Restore original audio devices when stopping
-        restoreOriginalAudioDevices()
+        Task {
+            await restoreOriginalAudioDevices()
+        }
     }
 
     private func stopInternal(setReconfiguringFlag: Bool) {

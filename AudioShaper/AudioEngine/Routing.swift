@@ -127,7 +127,7 @@ extension AudioEngine {
     }
 
     @discardableResult
-    func switchSystemAudioToBlackHole() -> Bool {
+    func switchSystemAudioToBlackHole() async -> Bool {
         guard let blackHoleID = findBlackHoleDeviceID() else {
             return false
         }
@@ -139,14 +139,14 @@ extension AudioEngine {
         let inputSuccess = setSystemDefaultInputDevice(deviceID: blackHoleID)
         let outputSuccess = setSystemDefaultOutputDevice(deviceID: blackHoleID)
 
-        // Add a small delay to let the system process the changes
-        Thread.sleep(forTimeInterval: 0.5)
+        // Let the system process the changes without blocking UI
+        try? await Task.sleep(nanoseconds: 500_000_000)
 
         return inputSuccess && outputSuccess
     }
 
     @discardableResult
-    func restoreOriginalAudioDevices() -> Bool {
+    func restoreOriginalAudioDevices() async -> Bool {
         var success = true
 
         if let originalInput = originalInputDeviceID {
@@ -157,8 +157,8 @@ extension AudioEngine {
             success = setSystemDefaultOutputDevice(deviceID: originalOutput) && success
         }
 
-        // Add a small delay to let the system process the changes
-        Thread.sleep(forTimeInterval: 0.5)
+        // Let the system process the changes without blocking UI
+        try? await Task.sleep(nanoseconds: 500_000_000)
 
         return success
     }
