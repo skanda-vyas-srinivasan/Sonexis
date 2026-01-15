@@ -255,12 +255,21 @@ class PresetManager: ObservableObject {
     init() {
         // Store presets in Application Support directory
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let audioShaperDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
+        let legacyDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
+        let layaDir = appSupport.appendingPathComponent("Laya", isDirectory: true)
 
         // Create directory if needed
-        try? FileManager.default.createDirectory(at: audioShaperDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: layaDir, withIntermediateDirectories: true)
 
-        presetsFileURL = audioShaperDir.appendingPathComponent("presets.json")
+        let legacyPresetsURL = legacyDir.appendingPathComponent("presets.json")
+        let newPresetsURL = layaDir.appendingPathComponent("presets.json")
+
+        if !FileManager.default.fileExists(atPath: newPresetsURL.path),
+           FileManager.default.fileExists(atPath: legacyPresetsURL.path) {
+            try? FileManager.default.moveItem(at: legacyPresetsURL, to: newPresetsURL)
+        }
+
+        presetsFileURL = newPresetsURL
 
         // Load presets
         loadPresets()

@@ -6,8 +6,8 @@
     <string>This app needs to capture system audio to apply real-time effects</string>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
-    <key>CFBundleDisplayName</key>
-    <string>AudioShaper</string>
+	<key>CFBundleDisplayName</key>
+	<string>Laya</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleVersion</key>

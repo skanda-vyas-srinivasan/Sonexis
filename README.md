@@ -1,6 +1,6 @@
-# Audio Shaper
+# Laya
 
-Audio Shaper is a macOS app that processes all system audio in real time. It listens to a virtual device (BlackHole), runs audio through an effect chain, then outputs to your speakers with automatic device selection to avoid feedback loops.
+Laya is a macOS app that processes all system audio in real time. It listens to a virtual device (BlackHole), runs audio through an effect chain, then outputs to your speakers with automatic device selection to avoid feedback loops.
 
 ## What’s working now
 
@@ -38,7 +38,7 @@ Audio Shaper is a macOS app that processes all system audio in real time. It lis
 1. Open **System Settings** > **Sound**
 2. In **Output**, select **Multi-Output Device**
 
-### 4. Run Audio Shaper
+### 4. Run Laya
 
 1. Launch the app
 2. It should auto-select **BlackHole 2ch** as input and your speakers as output
@@ -47,13 +47,13 @@ Audio Shaper is a macOS app that processes all system audio in real time. It lis
 ## Build and run
 
 ```bash
-cd AudioShaper
-open AudioShaper.xcodeproj
+cd Laya
+open Laya.xcodeproj
 ```
 
 In Xcode:
 
-1. Select the **AudioShaper** scheme
+1. Select the **Laya** scheme (target name)
 2. Choose **My Mac**
 3. Press **⌘R**
 
@@ -66,7 +66,7 @@ In Xcode:
 Preset files are stored at:
 
 ```
-~/Library/Application Support/AudioShaper/presets.json
+~/Library/Application Support/Laya/presets.json
 ```
 
 ## Troubleshooting
@@ -87,8 +87,8 @@ Preset files are stored at:
 ## Project layout
 
 ```
-AudioShaper/
-├── AudioShaperApp.swift        # App entry point
+Laya/
+├── LayaApp.swift               # App entry point
 ├── ContentView.swift           # Main UI
 ├── AudioEngine.swift           # Core audio processing engine
 ├── Models.swift                # Effect/chain data models

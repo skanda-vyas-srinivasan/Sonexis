@@ -18,11 +18,11 @@ struct HomeView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Text("AudioShaper")
+                Text("Laya")
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.neonPink)
                     .shadow(color: AppColors.neonPink.opacity(0.6), radius: 12)
-                Text("Shape your system audio in real time")
+                Text("Audio Shaping for System Sound")
                     .font(AppTypography.body)
                     .foregroundColor(AppColors.textSecondary)
             }
@@ -139,4 +139,3 @@ struct NeonActionButton: View {
         }
     }
 }
-

@@ -346,7 +346,7 @@ struct TutorialOverlay: View {
         case .welcome:
             return (
                 title: "Welcome",
-                body: "Hey, welcome to AudioShaper. Since it’s your first time here, let me walk you through the key screens.",
+                body: "Hey, welcome to Laya. Since it’s your first time here, let me walk you through the key screens.",
                 showNext: true
             )
         case .homePresets:
@@ -629,4 +629,3 @@ private struct SkipTutorialConfirm: View {
         .frame(maxWidth: 320)
     }
 }
-

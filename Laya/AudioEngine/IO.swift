@@ -86,6 +86,19 @@ extension AudioEngine {
         let sampleRate = buffer.format.sampleRate
 
         if snapshot.isReconfiguring {
+            if isRecording {
+                let inputBuffer = deinterleavedInput(
+                    channelData: channelData,
+                    frameLength: frameLength,
+                    channelCount: channelCount
+                )
+                recordIfNeeded(
+                    inputBuffer,
+                    frameLength: frameLength,
+                    channelCount: channelCount,
+                    sampleRate: sampleRate
+                )
+            }
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
@@ -96,6 +109,19 @@ extension AudioEngine {
         }
 
         if !snapshot.processingEnabled {
+            if isRecording {
+                let inputBuffer = deinterleavedInput(
+                    channelData: channelData,
+                    frameLength: frameLength,
+                    channelCount: channelCount
+                )
+                recordIfNeeded(
+                    inputBuffer,
+                    frameLength: frameLength,
+                    channelCount: channelCount,
+                    sampleRate: sampleRate
+                )
+            }
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
@@ -117,20 +143,26 @@ extension AudioEngine {
 
             let autoConnect = snapshot.splitAutoConnectEnd
             if channelCount < 2 {
-                let (processed, levelSnapshot) = processGraph(
-                    inputBuffer: inputBuffer,
-                    channelCount: channelCount,
-                    sampleRate: sampleRate,
-                    nodes: snapshot.splitLeftNodes,
+            let (processed, levelSnapshot) = processGraph(
+                inputBuffer: inputBuffer,
+                channelCount: channelCount,
+                sampleRate: sampleRate,
+                nodes: snapshot.splitLeftNodes,
                     connections: snapshot.splitLeftConnections,
                     startID: snapshot.splitLeftStartID,
                     endID: snapshot.splitLeftEndID,
-                    autoConnectEnd: autoConnect,
-                    snapshot: snapshot
-                )
-                updateEffectLevelsIfNeeded(levelSnapshot)
-                return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
-            }
+                autoConnectEnd: autoConnect,
+                snapshot: snapshot
+            )
+            updateEffectLevelsIfNeeded(levelSnapshot)
+            recordIfNeeded(
+                processed,
+                frameLength: frameLength,
+                channelCount: channelCount,
+                sampleRate: sampleRate
+            )
+            return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
+        }
 
             let leftInput = [inputBuffer[0]]
             let rightInput = [inputBuffer[1]]
@@ -172,6 +204,12 @@ extension AudioEngine {
             }
             updateEffectLevelsIfNeeded(mergedSnapshot)
 
+            recordIfNeeded(
+                combined,
+                frameLength: frameLength,
+                channelCount: channelCount,
+                sampleRate: sampleRate
+            )
             return interleaveBuffer(combined, frameLength: frameLength, channelCount: channelCount)
         }
 
@@ -226,6 +264,13 @@ extension AudioEngine {
                 }
             }
         }
+
+        recordIfNeeded(
+            processedAudio,
+            frameLength: frameLength,
+            channelCount: channelCount,
+            sampleRate: sampleRate
+        )
 
         // Convert to interleaved format
         ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
