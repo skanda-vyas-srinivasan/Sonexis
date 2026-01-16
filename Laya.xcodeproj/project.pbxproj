@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */; };
 		16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */ = {isa = PBXBuildFile; fileRef = 16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */; };
+		B0A1C2D3E4F5061728394052 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B0A1C2D3E4F5061728394051 /* Assets.xcassets */; };
 		23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */; };
 		5047C507DB83004AA57728BE /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C769F79DC65143B6C5646AB /* Accelerate.framework */; };
 		129CB3F47F11795BF43B10B6 /* Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7687CE20D496432330108900 /* Presets.swift */; };
@@ -56,6 +57,7 @@
 
 /* Begin PBXFileReference section */
 		16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BlackHole2ch-0.6.1 (1).pkg"; sourceTree = "<group>"; };
+		B0A1C2D3E4F5061728394051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RubberBandWrapper.mm; sourceTree = "<group>"; };
 		7C769F79DC65143B6C5646AB /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		7687CE20D496432330108900 /* Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Presets.swift; sourceTree = "<group>"; };
@@ -190,6 +192,7 @@
 				AA0000200000000000000001 /* Wrappers */,
 				E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */,
 				AA0000070000000000000001 /* Info.plist */,
+				B0A1C2D3E4F5061728394051 /* Assets.xcassets */,
 				AA0000080000000000000001 /* AudioShaper.entitlements */,
 			);
 			path = Laya;
@@ -321,6 +324,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B0A1C2D3E4F5061728394052 /* Assets.xcassets in Resources */,
 				16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
