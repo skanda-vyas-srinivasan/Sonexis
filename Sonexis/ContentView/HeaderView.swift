@@ -270,7 +270,7 @@ struct HeaderView: View {
     private func promptForRecordingURL() -> URL? {
         let panel = NSSavePanel()
         panel.title = "Save Recording"
-        panel.nameFieldStringValue = "Laya Recording.wav"
+        panel.nameFieldStringValue = "Sonexis Recording.wav"
         panel.allowedFileTypes = ["wav"]
         panel.canCreateDirectories = true
         return panel.runModal() == .OK ? panel.url : nil

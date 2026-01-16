@@ -1,8 +1,8 @@
-# Laya
+# Sonexis
 
 Real-time audio effects for your entire Mac.
 
-Laya captures all system audio, routes it through a visual effect chain you design, and outputs the processed sound to your speakers or headphones. One button handles all the routing automatically.
+Sonexis captures all system audio, routes it through a visual effect chain you design, and outputs the processed sound to your speakers or headphones. One button handles all the routing automatically.
 
 ---
 
@@ -10,7 +10,7 @@ Laya captures all system audio, routes it through a visual effect chain you desi
 
 1. You build an effect chain by dragging effects onto a canvas
 2. You press the power button
-3. Laya reroutes your system audio through your effect chain
+3. Sonexis reroutes your system audio through your effect chain
 4. Everything you hear on your Mac now goes through your effects
 5. Turn it off and your audio routing returns to normal
 
@@ -68,18 +68,18 @@ Right-click any effect to edit parameters or remove it.
 
 ## Install
 
-Download the `.pkg` from [Releases](https://github.com/skanda-vyas-srinivasan/Laya/releases), open it, done.
+Download the `.pkg` from [Releases](https://github.com/skanda-vyas-srinivasan/Sonexis/releases), open it, done.
 
-On first launch, Laya will prompt you to install BlackHole if it's not already installed.
+On first launch, Sonexis will prompt you to install BlackHole if it's not already installed.
 
 ---
 
 ## Build from Source
 
 ```bash
-git clone https://github.com/skanda-vyas-srinivasan/Laya.git
-cd Laya
-open Laya.xcodeproj
+git clone https://github.com/skanda-vyas-srinivasan/Sonexis.git
+cd Sonexis
+open Sonexis.xcodeproj
 ```
 
 Build with ⌘R.
@@ -88,13 +88,13 @@ Build with ⌘R.
 
 ## How It Works
 
-Laya uses BlackHole as a virtual loopback:
+Sonexis uses BlackHole as a virtual loopback:
 
 ```
-System Audio → BlackHole → Laya (effects) → Your Speakers/Headphones
+System Audio → BlackHole → Sonexis (effects) → Your Speakers/Headphones
 ```
 
-When you press power, Laya sets BlackHole as your system output, captures that audio, processes it through your effect chain, and sends it to your real output device. When you turn it off, your original audio routing is restored.
+When you press power, Sonexis sets BlackHole as your system output, captures that audio, processes it through your effect chain, and sends it to your real output device. When you turn it off, your original audio routing is restored.
 
 ---
 
