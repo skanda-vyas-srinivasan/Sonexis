@@ -256,18 +256,24 @@ class PresetManager: ObservableObject {
     init() {
         // Store presets in Application Support directory
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let legacyDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
-        let layaDir = appSupport.appendingPathComponent("Sonexis", isDirectory: true)
+        let audioShaperDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
+        let layaDir = appSupport.appendingPathComponent("Laya", isDirectory: true)
+        let sonexisDir = appSupport.appendingPathComponent("Sonexis", isDirectory: true)
 
         // Create directory if needed
-        try? FileManager.default.createDirectory(at: layaDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: sonexisDir, withIntermediateDirectories: true)
 
-        let legacyPresetsURL = legacyDir.appendingPathComponent("presets.json")
-        let newPresetsURL = layaDir.appendingPathComponent("presets.json")
+        let audioShaperPresetsURL = audioShaperDir.appendingPathComponent("presets.json")
+        let layaPresetsURL = layaDir.appendingPathComponent("presets.json")
+        let newPresetsURL = sonexisDir.appendingPathComponent("presets.json")
 
-        if !FileManager.default.fileExists(atPath: newPresetsURL.path),
-           FileManager.default.fileExists(atPath: legacyPresetsURL.path) {
-            try? FileManager.default.moveItem(at: legacyPresetsURL, to: newPresetsURL)
+        // Migrate from Laya (most recent legacy) first, then AudioShaper
+        if !FileManager.default.fileExists(atPath: newPresetsURL.path) {
+            if FileManager.default.fileExists(atPath: layaPresetsURL.path) {
+                try? FileManager.default.copyItem(at: layaPresetsURL, to: newPresetsURL)
+            } else if FileManager.default.fileExists(atPath: audioShaperPresetsURL.path) {
+                try? FileManager.default.copyItem(at: audioShaperPresetsURL, to: newPresetsURL)
+            }
         }
 
         presetsFileURL = newPresetsURL
