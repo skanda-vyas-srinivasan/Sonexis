@@ -108,6 +108,11 @@ When you press power, Laya sets BlackHole as your system output, captures that a
 
 ---
 
+## Acknowledgments
+
+- [RubberBand](https://breakfastquay.com/rubberband/) - Audio time-stretching and pitch-shifting library (GPL-2.0)
+- [BlackHole](https://existential.audio/blackhole/) - Virtual audio driver (GPL-3.0)
+
 ## License
 
 GPL-3.0
