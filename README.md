@@ -20,7 +20,7 @@ No manual audio configuration. No MIDI setup. Just press power.
 
 ## Effects
 
-19 built-in effects:
+18 built-in effects:
 
 | Effect | What it does |
 |--------|--------------|
@@ -29,8 +29,7 @@ No manual audio configuration. No MIDI setup. Just press power.
 | **Reverb** | Adds space and depth |
 | **Soft Compression** | Evens out loud and quiet parts |
 | **Stereo Widening** | Makes the soundstage feel wider |
-| **Pitch** | Shift pitch up or down (±12 semitones) |
-| **Pitch (Rubber Band)** | High-quality pitch shifting |
+| **Pitch** | High-quality pitch shifting (±12 semitones) |
 | **Simple EQ** | 3-band bass/mid/treble control |
 | **10-Band EQ** | Fine control over 10 frequency bands |
 | **De-Mud** | Cuts muddy mid-frequency buildup |
