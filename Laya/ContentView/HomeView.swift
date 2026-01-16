@@ -19,15 +19,15 @@ struct HomeView: View {
 
             VStack(spacing: 8) {
                 Text("Laya")
-                    .font(AppTypography.title)
+                    .font(.system(size: 48, weight: .black, design: .default))
                     .foregroundColor(AppColors.neonPink)
                     .shadow(color: AppColors.neonPink.opacity(0.6), radius: 12)
-                Text("Audio Shaping for System Sound")
-                    .font(AppTypography.body)
+                Text("Shape your system audio in real time")
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundColor(AppColors.textSecondary)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: 24) {
                 NeonActionButton(
                     title: "Build from scratch",
                     subtitle: "New Project",
@@ -110,28 +110,37 @@ struct NeonActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 28))
+                    .font(.system(size: 40))
                     .foregroundColor(accent)
-                Text(title.uppercased())
-                    .font(AppTypography.heading)
+                    .scaleEffect(isHovered ? 1.1 : 1.0)
+                Text(title)
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundColor(AppColors.textPrimary)
+                    .tracking(0.8)
                 Text(subtitle)
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(isHovered ? AppColors.textSecondary : AppColors.textMuted)
             }
-            .frame(width: 240, height: 150)
-            .background(AppColors.midPurple)
+            .frame(width: 288, height: 176)
+            .background(AppColors.darkPurple)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(isHovered ? accent : AppColors.neonCyan.opacity(0.4), lineWidth: 2)
+                    .stroke(AppColors.midPurple, lineWidth: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(accent, lineWidth: 1)
+                    .shadow(color: accent.opacity(0.19), radius: 12)
+                    .opacity(isHovered ? 1 : 0)
             )
             .cornerRadius(16)
-            .shadow(color: accent.opacity(isHovered ? 0.5 : 0.15), radius: isHovered ? 18 : 8)
-            .scaleEffect(isHovered ? 1.03 : 1.0)
+            .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 4)
         }
         .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.02 : 1.0)
+        .offset(y: isHovered ? -4 : 0)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.2)) {
                 isHovered = hovering

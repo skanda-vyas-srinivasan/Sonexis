@@ -255,6 +255,14 @@ struct ContentView: View {
                 tutorial.advance()
             }
         }
+        .alert("Preset Save Failed", isPresented: Binding(
+            get: { presetManager.saveError != nil },
+            set: { if !$0 { presetManager.saveError = nil } }
+        )) {
+            Button("OK") { presetManager.saveError = nil }
+        } message: {
+            Text(presetManager.saveError ?? "")
+        }
     }
 
     private func savePresetAs() {

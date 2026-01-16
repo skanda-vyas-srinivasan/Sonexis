@@ -249,6 +249,7 @@ struct EffectChainSnapshot: Codable {
 
 class PresetManager: ObservableObject {
     @Published var presets: [SavedPreset] = []
+    @Published var saveError: String?
 
     private let presetsFileURL: URL
 
@@ -302,7 +303,7 @@ class PresetManager: ObservableObject {
             let data = try encoder.encode(presets)
             try data.write(to: presetsFileURL, options: .atomic)
         } catch {
-            // Silently fail - preset save errors are non-critical
+            saveError = "Failed to save preset: \(error.localizedDescription)"
         }
     }
 
