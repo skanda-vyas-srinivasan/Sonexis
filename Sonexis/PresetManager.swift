@@ -257,7 +257,7 @@ class PresetManager: ObservableObject {
         // Store presets in Application Support directory
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let legacyDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
-        let layaDir = appSupport.appendingPathComponent("Laya", isDirectory: true)
+        let layaDir = appSupport.appendingPathComponent("Sonexis", isDirectory: true)
 
         // Create directory if needed
         try? FileManager.default.createDirectory(at: layaDir, withIntermediateDirectories: true)

@@ -39,13 +39,13 @@ struct OnboardingOverlay: View {
                 VStack(spacing: 12) {
                     Text(blackHoleInstalled
                         ? "BlackHole is installed! You're ready to go."
-                        : "Laya needs BlackHole to route your system audio. Install it to get started.")
+                        : "Sonexis needs BlackHole to route your system audio. Install it to get started.")
                         .font(AppTypography.body)
                         .foregroundColor(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
 
                     if blackHoleInstalled {
-                        Text("⚠️ When you press the power button, Laya will automatically switch your system input/output to BlackHole. It will switch back when you turn it off.")
+                        Text("⚠️ When you press the power button, Sonexis will automatically switch your system input/output to BlackHole. It will switch back when you turn it off.")
                             .font(AppTypography.caption)
                             .foregroundColor(AppColors.warning)
                             .multilineTextAlignment(.center)
@@ -140,7 +140,7 @@ private struct SkipSetupConfirm: View {
                 .foregroundColor(AppColors.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text("Laya won’t be functional without setting Input and Output to BlackHole. You won’t hear sound until you set it up.")
+            Text("Sonexis won't be functional without setting Input and Output to BlackHole. You won't hear sound until you set it up.")
                 .font(AppTypography.body)
                 .foregroundColor(AppColors.textSecondary)
 

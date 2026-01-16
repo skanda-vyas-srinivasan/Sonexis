@@ -16,7 +16,7 @@
 		2429E1711C28361A030AAB38 /* Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */; };
 		6CDD090FD8393BDBF1E0ED6B /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */; };
 		7C7976BF0F52D5D8AC916119 /* Routing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F410F57B093E1301CF36D3 /* Routing.swift */; };
-		AA0000010000000000000001 /* LayaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* LayaApp.swift */; };
+		AA0000010000000000000001 /* SonexisApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* SonexisApp.swift */; };
 		AA0000090000000000000003 /* PresetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000100000000000000003 /* PresetManager.swift */; };
 		A1825A6FCC19882231762830 /* IO.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30616271FFD0E7417F8DCF0 /* IO.swift */; };
 		C729E6C58F8333FBBB33147A /* Graph.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BD1F558BD122C461C6973C /* Graph.swift */; };
@@ -62,8 +62,8 @@
 		7C769F79DC65143B6C5646AB /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		7687CE20D496432330108900 /* Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Presets.swift; sourceTree = "<group>"; };
 		AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lifecycle.swift; sourceTree = "<group>"; };
-		AA0000010000000000000002 /* Laya.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Laya.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		AA0000020000000000000001 /* LayaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayaApp.swift; sourceTree = "<group>"; };
+		AA0000010000000000000002 /* Sonexis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sonexis.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000020000000000000001 /* SonexisApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonexisApp.swift; sourceTree = "<group>"; };
 		AA0000070000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000080000000000000001 /* AudioShaper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudioShaper.entitlements; sourceTree = "<group>"; };
 		AA0000100000000000000003 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
@@ -179,10 +179,10 @@
 			);
 			sourceTree = "<group>";
 		};
-		AA0000020000000000000002 /* Laya */ = {
+		AA0000020000000000000002 /* Sonexis */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000020000000000000001 /* LayaApp.swift */,
+				AA0000020000000000000001 /* SonexisApp.swift */,
 				D66A6809EC0B4F4EBE673B9D /* ContentView */,
 				C150ADB2C304463B8EB70A19 /* CanvasView */,
 				58F8F7EC791A4AC5AB40AF98 /* Models */,
@@ -195,13 +195,13 @@
 				B0A1C2D3E4F5061728394051 /* Assets.xcassets */,
 				AA0000080000000000000001 /* AudioShaper.entitlements */,
 			);
-			path = Laya;
+			path = Sonexis;
 			sourceTree = "<group>";
 		};
 		AA0000030000000000000002 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000010000000000000002 /* Laya.app */,
+				AA0000010000000000000002 /* Sonexis.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -269,9 +269,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AA0000010000000000000005 /* Laya */ = {
+		AA0000010000000000000005 /* Sonexis */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AA0000020000000000000003 /* Build configuration list for PBXNativeTarget "Laya" */;
+			buildConfigurationList = AA0000020000000000000003 /* Build configuration list for PBXNativeTarget "Sonexis" */;
 			buildPhases = (
 				AA0000030000000000000003 /* Sources */,
 				AA0000010000000000000003 /* Frameworks */,
@@ -281,9 +281,9 @@
 			);
 			dependencies = (
 			);
-			name = Laya;
-			productName = Laya;
-			productReference = AA0000010000000000000002 /* Laya.app */;
+			name = Sonexis;
+			productName = Sonexis;
+			productReference = AA0000010000000000000002 /* Sonexis.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -314,7 +314,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AA0000010000000000000005 /* Laya */,
+				AA0000010000000000000005 /* Sonexis */,
 			);
 		};
 /* End PBXProject section */
@@ -368,7 +368,7 @@
 				ED282A9B4E9B4780871C4680 /* SavePresetDialog.swift in Sources */,
 				D67FE51D10724C68AE282E68 /* HeaderView.swift in Sources */,
 				78DC5CC2951744FBA534E231 /* PresetView.swift in Sources */,
-				AA0000010000000000000001 /* LayaApp.swift in Sources */,
+				AA0000010000000000000001 /* SonexisApp.swift in Sources */,
 				6CDD090FD8393BDBF1E0ED6B /* AudioEngine.swift in Sources */,
 				F47E53D00947C3D4B881E35C /* Effects.swift in Sources */,
 				C729E6C58F8333FBBB33147A /* Graph.swift in Sources */,
@@ -507,7 +507,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Laya/AudioShaper.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Sonexis/AudioShaper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -520,7 +520,7 @@
 					"$(PROJECT_DIR)/External/rubberband/rubberband",
 					"$(PROJECT_DIR)/External/rubberband",
 				);
-				INFOPLIST_FILE = Laya/Info.plist;
+				INFOPLIST_FILE = Sonexis/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -531,7 +531,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.audioshaper.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "Laya/AudioShaper-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sonexis/AudioShaper-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -540,7 +540,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Laya/AudioShaper.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Sonexis/AudioShaper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -553,7 +553,7 @@
 					"$(PROJECT_DIR)/External/rubberband/rubberband",
 					"$(PROJECT_DIR)/External/rubberband",
 				);
-				INFOPLIST_FILE = Laya/Info.plist;
+				INFOPLIST_FILE = Sonexis/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -564,7 +564,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.audioshaper.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "Laya/AudioShaper-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sonexis/AudioShaper-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -572,7 +572,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AA0000020000000000000003 /* Build configuration list for PBXNativeTarget "Laya" */ = {
+		AA0000020000000000000003 /* Build configuration list for PBXNativeTarget "Sonexis" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA0000050000000000000004 /* Debug */,

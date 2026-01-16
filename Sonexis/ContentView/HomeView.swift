@@ -18,7 +18,7 @@ struct HomeView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Text("Laya")
+                Text("Sonexis")
                     .font(.system(size: 48, weight: .black, design: .default))
                     .foregroundColor(AppColors.neonPink)
                     .shadow(color: AppColors.neonPink.opacity(0.6), radius: 12)

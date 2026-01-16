@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct LayaApp: App {
+struct SonexisApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

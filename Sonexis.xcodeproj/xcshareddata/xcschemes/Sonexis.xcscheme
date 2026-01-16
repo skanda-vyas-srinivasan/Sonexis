@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AA0000010000000000000005"
-               BuildableName = "Laya.app"
-               BlueprintName = "Laya"
-               ReferencedContainer = "container:Laya.xcodeproj">
+               BuildableName = "Sonexis.app"
+               BlueprintName = "Sonexis"
+               ReferencedContainer = "container:Sonexis.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000010000000000000005"
-            BuildableName = "Laya.app"
-            BlueprintName = "Laya"
-            ReferencedContainer = "container:Laya.xcodeproj">
+            BuildableName = "Sonexis.app"
+            BlueprintName = "Sonexis"
+            ReferencedContainer = "container:Sonexis.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000010000000000000005"
-            BuildableName = "Laya.app"
-            BlueprintName = "Laya"
-            ReferencedContainer = "container:Laya.xcodeproj">
+            BuildableName = "Sonexis.app"
+            BlueprintName = "Sonexis"
+            ReferencedContainer = "container:Sonexis.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
