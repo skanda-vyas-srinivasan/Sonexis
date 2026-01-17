@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 
 extension AudioEngine {
@@ -1250,15 +1251,13 @@ extension AudioEngine {
 
     private func computeRMS(_ processedAudio: [[Float]], frameLength: Int, channelCount: Int) -> Float {
         guard frameLength > 0, channelCount > 0 else { return 0 }
-        var sumSquares: Float = 0
+        var sumRMSSquared: Float = 0
         for channel in 0..<channelCount {
-            for frame in 0..<frameLength {
-                let sample = processedAudio[channel][frame]
-                sumSquares += sample * sample
-            }
+            var channelRMS: Float = 0
+            vDSP_rmsqv(processedAudio[channel], 1, &channelRMS, vDSP_Length(frameLength))
+            sumRMSSquared += channelRMS * channelRMS
         }
-        let mean = sumSquares / Float(frameLength * channelCount)
-        return sqrt(mean)
+        return sqrt(sumRMSSquared / Float(channelCount))
     }
 
     func initializeEffectStates(channelCount: Int) {
@@ -1553,11 +1552,13 @@ extension AudioEngine {
         resampleReadPhaseByNode.removeAll()
     }
 
-    func applyPendingResetsUnlocked() {
-        guard pendingResets != [] else { return }
-
+    func applyPendingResets() {
+        pendingResetsLock.lock()
         let resets = pendingResets
         pendingResets = []
+        pendingResetsLock.unlock()
+
+        guard resets != [] else { return }
 
         if resets.contains(ResetFlags.all) {
             resetEffectStateUnlocked()

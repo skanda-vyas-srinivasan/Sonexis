@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 
 extension AudioEngine {
@@ -46,57 +47,53 @@ extension AudioEngine {
             return (inputBuffer, [:])
         }
 
-        var outEdges: [UUID: [UUID]] = [:]
-        var inEdges: [UUID: [(UUID, Double)]] = [:]
+        // Clear and reuse pre-allocated scratch buffers (avoids allocation)
+        for key in graphOutEdges.keys { graphOutEdges[key]?.removeAll(keepingCapacity: true) }
+        for key in graphInEdges.keys { graphInEdges[key]?.removeAll(keepingCapacity: true) }
+        graphOutputBuffers.removeAll(keepingCapacity: true)
+        graphIndegree.removeAll(keepingCapacity: true)
+        graphQueue.removeAll(keepingCapacity: true)
+
         for connection in connections {
-            outEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
-            inEdges[connection.toNodeId, default: []].append((connection.fromNodeId, connection.gain))
+            graphOutEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
+            graphInEdges[connection.toNodeId, default: []].append((connection.fromNodeId, connection.gain))
         }
 
-        let reachable = reachableNodes(from: startID, outEdges: outEdges)
+        let reachable = reachableNodes(from: startID, outEdges: graphOutEdges)
 
         if autoConnectEnd {
-            var sinkNodes: [UUID] = []
             for nodeID in reachable where nodeID != startID && nodeID != endID {
-                let outs = outEdges[nodeID] ?? []
+                let outs = graphOutEdges[nodeID] ?? []
                 let hasReachableOut = outs.contains(where: { reachable.contains($0) && $0 != endID })
                 let hasEndOut = outs.contains(endID)
                 if !hasReachableOut && !hasEndOut {
-                    sinkNodes.append(nodeID)
+                    graphOutEdges[nodeID, default: []].append(endID)
+                    graphInEdges[endID, default: []].append((nodeID, 1.0))
                 }
             }
+        }
 
-            for sink in sinkNodes {
-                outEdges[sink, default: []].append(endID)
-                inEdges[endID, default: []].append((sink, 1.0))
+        for node in nodes where reachable.contains(node.id) {
+            let incoming = graphInEdges[node.id] ?? []
+            let count = incoming.filter { $0.0 != startID }.count
+            graphIndegree[node.id] = count
+            if count == 0 {
+                graphQueue.append(node.id)
             }
         }
 
-        var indegree: [UUID: Int] = [:]
-        for node in nodes where reachable.contains(node.id) {
-            let incoming = inEdges[node.id] ?? []
-            let count = incoming.filter { $0.0 != startID }.count
-            indegree[node.id] = count
-        }
-
-        var queue: [UUID] = nodes.compactMap { node in
-            guard reachable.contains(node.id) else { return nil }
-            return (indegree[node.id] ?? 0) == 0 ? node.id : nil
-        }
-
-        var outputBuffers: [UUID: [[Float]]] = [:]
         var levelSnapshot: [UUID: Float] = [:]
 
-        while let nodeID = queue.first {
-            queue.removeFirst()
+        while let nodeID = graphQueue.first {
+            graphQueue.removeFirst()
             guard let node = nodes.first(where: { $0.id == nodeID }) else { continue }
 
-            let inputs = inEdges[nodeID] ?? []
+            let inputs = graphInEdges[nodeID] ?? []
             let merged = mergeInputs(
                 inputs: inputs,
                 startID: startID,
                 inputBuffer: inputBuffer,
-                outputBuffers: outputBuffers,
+                outputBuffers: graphOutputBuffers,
                 frameLength: inputBuffer.first?.count ?? 0,
                 channelCount: channelCount
             )
@@ -112,23 +109,23 @@ extension AudioEngine {
                 levelSnapshot: &levelSnapshot,
                 snapshot: snapshot
             )
-            outputBuffers[nodeID] = processed
+            graphOutputBuffers[nodeID] = processed
 
-            for next in outEdges[nodeID] ?? [] {
+            for next in graphOutEdges[nodeID] ?? [] {
                 guard reachable.contains(next), next != endID else { continue }
-                indegree[next, default: 0] -= 1
-                if indegree[next] == 0 {
-                    queue.append(next)
+                graphIndegree[next, default: 0] -= 1
+                if graphIndegree[next] == 0 {
+                    graphQueue.append(next)
                 }
             }
         }
 
-        let endInputs = inEdges[endID] ?? []
+        let endInputs = graphInEdges[endID] ?? []
         let mixed = mergeInputs(
             inputs: endInputs,
             startID: startID,
             inputBuffer: inputBuffer,
-            outputBuffers: outputBuffers,
+            outputBuffers: graphOutputBuffers,
             frameLength: inputBuffer.first?.count ?? 0,
             channelCount: channelCount
         )
@@ -184,11 +181,10 @@ extension AudioEngine {
             }
 
             guard let buffer = sourceBuffer else { continue }
-            let gainValue = Float(gain)
+            var gainValue = Float(gain)
             for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    merged[channel][frame] += buffer[channel][frame] * gainValue
-                }
+                // vDSP_vsma: merged = merged + (buffer * gain)
+                vDSP_vsma(buffer[channel], 1, &gainValue, merged[channel], 1, &merged[channel], 1, vDSP_Length(frameLength))
             }
         }
         return merged

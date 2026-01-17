@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import AudioToolbox
 import Foundation
@@ -8,13 +9,23 @@ extension AudioEngine {
         frameLength: Int,
         channelCount: Int
     ) -> [[Float]] {
-        var output = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+        ensureDeinterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for channel in 0..<channelCount {
             for frame in 0..<frameLength {
-                output[channel][frame] = channelData[channel][frame]
+                deinterleavedInputBuffer[channel][frame] = channelData[channel][frame]
             }
         }
-        return output
+        return deinterleavedInputBuffer
+    }
+
+    func ensureDeinterleavedCapacity(frameLength: Int, channelCount: Int) {
+        if deinterleavedInputCapacity != frameLength || deinterleavedInputBuffer.count != channelCount {
+            deinterleavedInputBuffer = [[Float]](
+                repeating: [Float](repeating: 0, count: frameLength),
+                count: channelCount
+            )
+            deinterleavedInputCapacity = frameLength
+        }
     }
 
     private func interleaveInput(
@@ -76,11 +87,9 @@ extension AudioEngine {
     func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
         guard let channelData = buffer.floatChannelData else { return [] }
 
-        effectStateLock.lock()
-        defer { effectStateLock.unlock() }
-
+        // Lock-free: snapshot has its own lock, pendingResets has its own lock
         let snapshot = currentProcessingSnapshot()
-        applyPendingResetsUnlocked()
+        applyPendingResets()
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
         let sampleRate = buffer.format.sampleRate

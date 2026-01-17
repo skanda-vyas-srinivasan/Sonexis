@@ -673,6 +673,7 @@ class AudioEngine: ObservableObject {
     private var snapshotUpdateScheduled = false
     private var processingSnapshot = ProcessingSnapshot.empty
     var pendingResets: ResetFlags = []
+    let pendingResetsLock = NSLock()
     var isReconfiguring = false
     var restartWorkItem: DispatchWorkItem?
     let restartDebounceInterval: TimeInterval = 0.25
@@ -838,6 +839,14 @@ class AudioEngine: ObservableObject {
     var interleavedOutputCapacity: Int = 0
     var processingBuffer: [[Float]] = []
     var processingFrameCapacity: Int = 0
+    var deinterleavedInputBuffer: [[Float]] = []
+    var deinterleavedInputCapacity: Int = 0
+    // Graph processing scratch buffers (reused to avoid allocations)
+    var graphOutEdges: [UUID: [UUID]] = [:]
+    var graphInEdges: [UUID: [(UUID, Double)]] = [:]
+    var graphOutputBuffers: [UUID: [[Float]]] = [:]
+    var graphIndegree: [UUID: Int] = [:]
+    var graphQueue: [UUID] = []
     var graphTransitionSamplesRemaining: Int = 0
     var graphTransitionSamplesTotal: Int = 0
     var graphTransitionFromManual: Bool = false
@@ -1021,9 +1030,9 @@ class AudioEngine: ObservableObject {
     }
 
     func enqueueReset(_ reset: ResetFlags) {
-        withEffectStateLock {
-            pendingResets.insert(reset)
-        }
+        pendingResetsLock.lock()
+        pendingResets.insert(reset)
+        pendingResetsLock.unlock()
     }
 
     func updateRecordingFormat(sampleRate: Double, channelCount: AVAudioChannelCount) {
