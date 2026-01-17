@@ -683,6 +683,8 @@ class AudioEngine: ObservableObject {
     var bassBoostLastSampleRate: Double = 0
     var bassBoostLastAmount: Double = -1
     var bassBoostStatesByNode: [UUID: [BiquadState]] = [:]
+    var bassBoostSmoothedGain: Float = 0
+    var bassBoostSmoothedGainByNode: [UUID: Float] = [:]
 
     // Clarity state (high shelf boost)
     var clarityState: [BiquadState] = []
@@ -690,7 +692,11 @@ class AudioEngine: ObservableObject {
     var clarityLastSampleRate: Double = 0
     var clarityLastAmount: Double = -1
     var clarityStatesByNode: [UUID: [BiquadState]] = [:]
+    var claritySmoothedGain: Float = 0
+    var claritySmoothedGainByNode: [UUID: Float] = [:]
     var nightcoreStatesByNode: [UUID: [BiquadState]] = [:]
+    var nightcoreSmoothedGain: Float = 0
+    var nightcoreSmoothedGainByNode: [UUID: Float] = [:]
 
     // De-mud state (mid frequency cut)
     var deMudState: [BiquadState] = []
@@ -698,6 +704,8 @@ class AudioEngine: ObservableObject {
     var deMudLastSampleRate: Double = 0
     var deMudLastStrength: Double = -1
     var deMudStatesByNode: [UUID: [BiquadState]] = [:]
+    var deMudSmoothedGain: Float = 0
+    var deMudSmoothedGainByNode: [UUID: Float] = [:]
 
     // Simple EQ state (3 bands)
     var eqBassState: [BiquadState] = []
@@ -710,6 +718,8 @@ class AudioEngine: ObservableObject {
     var eqBassStatesByNode: [UUID: [BiquadState]] = [:]
     var eqMidsStatesByNode: [UUID: [BiquadState]] = [:]
     var eqTrebleStatesByNode: [UUID: [BiquadState]] = [:]
+    var simpleEQSmoothedGain: Float = 0
+    var simpleEQSmoothedGainByNode: [UUID: Float] = [:]
 
     // 10-band EQ state (peaking filters)
     let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -718,25 +728,35 @@ class AudioEngine: ObservableObject {
     var tenBandLastSampleRate: Double = 0
     var tenBandLastGains: [Double] = []
     var tenBandStatesByNode: [UUID: [[BiquadState]]] = [:]
+    var tenBandEQSmoothedGain: Float = 0
+    var tenBandEQSmoothedGainByNode: [UUID: Float] = [:]
 
     // Compressor state (simple dynamic range compression)
     var compressorEnvelope: [Float] = []
+    var compressorSmoothedGain: Float = 0
+    var compressorSmoothedGainByNode: [UUID: Float] = [:]
 
     // Reverb buffer (simple delay-based reverb)
     var reverbBuffer: [[Float]] = []
     var reverbWriteIndex = 0
     var reverbBuffersByNode: [UUID: [[Float]]] = [:]
     var reverbWriteIndexByNode: [UUID: Int] = [:]
+    var reverbSmoothedGain: Float = 0
+    var reverbSmoothedGainByNode: [UUID: Float] = [:]
 
     // Delay buffer (circular buffer for echo)
     var delayBuffer: [[Float]] = []
     var delayWriteIndex = 0
     var delayBuffersByNode: [UUID: [[Float]]] = [:]
     var delayWriteIndexByNode: [UUID: Int] = [:]
+    var delaySmoothedGain: Float = 0
+    var delaySmoothedGainByNode: [UUID: Float] = [:]
 
     // Tremolo state (LFO phase)
     var tremoloPhase: Double = 0
     var tremoloPhaseByNode: [UUID: Double] = [:]
+    var tremoloSmoothedGain: Float = 0
+    var tremoloSmoothedGainByNode: [UUID: Float] = [:]
 
     // Chorus state (delay modulation)
     var chorusBuffer: [[Float]] = []
@@ -745,6 +765,8 @@ class AudioEngine: ObservableObject {
     var chorusBuffersByNode: [UUID: [[Float]]] = [:]
     var chorusWriteIndexByNode: [UUID: Int] = [:]
     var chorusPhaseByNode: [UUID: Double] = [:]
+    var chorusSmoothedGain: Float = 0
+    var chorusSmoothedGainByNode: [UUID: Float] = [:]
 
     // Flanger state (short delay modulation with feedback)
     var flangerBuffer: [[Float]] = []
@@ -753,6 +775,8 @@ class AudioEngine: ObservableObject {
     var flangerBuffersByNode: [UUID: [[Float]]] = [:]
     var flangerWriteIndexByNode: [UUID: Int] = [:]
     var flangerPhaseByNode: [UUID: Double] = [:]
+    var flangerSmoothedGain: Float = 0
+    var flangerSmoothedGainByNode: [UUID: Float] = [:]
 
     // Phaser state (all-pass)
     let phaserStageCount = 2
@@ -760,6 +784,8 @@ class AudioEngine: ObservableObject {
     var phaserStatesByNode: [UUID: [[AllPassState]]] = [:]
     var phaserPhase: Double = 0
     var phaserPhaseByNode: [UUID: Double] = [:]
+    var phaserSmoothedGain: Float = 0
+    var phaserSmoothedGainByNode: [UUID: Float] = [:]
 
     // Resampling state
     var resampleBuffer: [[Float]] = []
@@ -776,18 +802,36 @@ class AudioEngine: ObservableObject {
     var resampleCrossfadeTotalByNode: [UUID: Int] = [:]
     var resampleCrossfadeStartPhaseByNode: [UUID: Double] = [:]
     var resampleCrossfadeTargetPhaseByNode: [UUID: Double] = [:]
+    var resampleSmoothedGain: Float = 0
+    var resampleSmoothedGainByNode: [UUID: Float] = [:]
 
     // Rubber Band state
     var rubberBandNodes: [UUID: RubberBandWrapper] = [:]
     var rubberBandGlobalByType: [EffectType: RubberBandWrapper] = [:]
     var rubberBandScratchByNode: [UUID: RubberBandScratch] = [:]
     var rubberBandScratchGlobal = RubberBandScratch()
+    var rubberBandSmoothedGain: Float = 0
+    var rubberBandSmoothedGainByNode: [UUID: Float] = [:]
 
     // Bitcrusher state
     var bitcrusherHoldCounters: [Int] = []
     var bitcrusherHoldValues: [Float] = []
     var bitcrusherHoldCountersByNode: [UUID: [Int]] = [:]
     var bitcrusherHoldValuesByNode: [UUID: [Float]] = [:]
+    var bitcrusherSmoothedGain: Float = 0
+    var bitcrusherSmoothedGainByNode: [UUID: Float] = [:]
+
+    // Distortion state (stateless effect, but needs smoothing)
+    var distortionSmoothedGain: Float = 0
+    var distortionSmoothedGainByNode: [UUID: Float] = [:]
+
+    // Tape Saturation state
+    var tapeSaturationSmoothedGain: Float = 0
+    var tapeSaturationSmoothedGainByNode: [UUID: Float] = [:]
+
+    // Stereo Width state
+    var stereoWidthSmoothedGain: Float = 0
+    var stereoWidthSmoothedGainByNode: [UUID: Float] = [:]
 
     // Pre-allocated buffers
     var interleavedOutputBuffer: [Float] = []
