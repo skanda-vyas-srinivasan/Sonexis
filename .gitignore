@@ -24,3 +24,6 @@ fastlane/test_output
 
 # Carthage
 Carthage/Build/
+
+# Project notes
+Issues.md
