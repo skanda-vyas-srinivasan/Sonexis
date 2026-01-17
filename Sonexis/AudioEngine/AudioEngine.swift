@@ -838,6 +838,10 @@ class AudioEngine: ObservableObject {
     var interleavedOutputCapacity: Int = 0
     var processingBuffer: [[Float]] = []
     var processingFrameCapacity: Int = 0
+    var graphTransitionSamplesRemaining: Int = 0
+    var graphTransitionSamplesTotal: Int = 0
+    var graphTransitionFromManual: Bool = false
+    var lastUseManualGraph: Bool = false
 
     // Ring buffer for audio data (interleaved frames)
     var ringBuffer: UnsafeMutablePointer<Float>?

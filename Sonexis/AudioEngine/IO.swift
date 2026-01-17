@@ -213,74 +213,132 @@ extension AudioEngine {
             return interleaveBuffer(combined, frameLength: frameLength, channelCount: channelCount)
         }
 
-        if snapshot.useManualGraph {
-            return processManualGraph(
-                channelData: channelData,
-                frameLength: frameLength,
+        func renderManualGraph(inputBuffer: [[Float]]) -> ([[Float]], [UUID: Float]) {
+            let autoConnect = snapshot.manualGraphAutoConnectEnd
+            return processGraph(
+                inputBuffer: inputBuffer,
                 channelCount: channelCount,
                 sampleRate: sampleRate,
+                nodes: snapshot.manualGraphNodes,
+                connections: snapshot.manualGraphConnections,
+                startID: snapshot.manualGraphStartID,
+                endID: snapshot.manualGraphEndID,
+                autoConnectEnd: autoConnect,
                 snapshot: snapshot
             )
         }
 
-        // Process audio through effect chain (reused buffer)
-        ensureProcessingCapacity(frameLength: frameLength, channelCount: channelCount)
-        var processedAudio = processingBuffer
+        func renderAutomaticGraph() -> ([[Float]], [UUID: Float]) {
+            // Process audio through effect chain (reused buffer)
+            ensureProcessingCapacity(frameLength: frameLength, channelCount: channelCount)
+            var processedAudio = processingBuffer
 
-        // Copy input to processed audio
-        for channel in 0..<channelCount {
-            for frame in 0..<frameLength {
-                processedAudio[channel][frame] = channelData[channel][frame]
-            }
-        }
-
-        let orderedNodes: [EffectNode]
-        if snapshot.effectChainOrder.isEmpty {
-            orderedNodes = defaultEffectOrder.map { EffectNode(id: nil, type: $0) }
-        } else {
-            orderedNodes = snapshot.effectChainOrder
-        }
-
-        var levelSnapshot: [UUID: Float] = [:]
-        for node in orderedNodes {
-            applyEffect(
-                node.type,
-                to: &processedAudio,
-                sampleRate: sampleRate,
-                channelCount: channelCount,
-                frameLength: frameLength,
-                nodeId: node.id,
-                levelSnapshot: &levelSnapshot,
-                snapshot: snapshot
-            )
-        }
-
-        if !levelSnapshot.isEmpty {
-            levelUpdateCounter += 1
-            if levelUpdateCounter % 8 == 0 {
-                let snapshot = levelSnapshot
-                DispatchQueue.main.async {
-                    self.effectLevels = snapshot
+            // Copy input to processed audio
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    processedAudio[channel][frame] = channelData[channel][frame]
                 }
             }
+
+            let orderedNodes: [EffectNode]
+            if snapshot.effectChainOrder.isEmpty {
+                orderedNodes = defaultEffectOrder.map { EffectNode(id: nil, type: $0) }
+            } else {
+                orderedNodes = snapshot.effectChainOrder
+            }
+
+            var levelSnapshot: [UUID: Float] = [:]
+            for node in orderedNodes {
+                applyEffect(
+                    node.type,
+                    to: &processedAudio,
+                    sampleRate: sampleRate,
+                    channelCount: channelCount,
+                    frameLength: frameLength,
+                    nodeId: node.id,
+                    levelSnapshot: &levelSnapshot,
+                    snapshot: snapshot
+                )
+            }
+
+            let limited = snapshot.limiterEnabled ? applySoftLimiter(processedAudio) : processedAudio
+            return (limited, levelSnapshot)
         }
 
+        let useManual = snapshot.useManualGraph
+        if lastUseManualGraph != useManual {
+            graphTransitionFromManual = lastUseManualGraph
+            graphTransitionSamplesTotal = max(1, Int(sampleRate * 0.05))
+            graphTransitionSamplesRemaining = graphTransitionSamplesTotal
+            lastUseManualGraph = useManual
+        }
+
+        if graphTransitionSamplesRemaining > 0 {
+            let inputBuffer = deinterleavedInput(
+                channelData: channelData,
+                frameLength: frameLength,
+                channelCount: channelCount
+            )
+            let (manualProcessed, manualLevels) = renderManualGraph(inputBuffer: inputBuffer)
+            let (autoProcessed, autoLevels) = renderAutomaticGraph()
+
+            let fromProcessed = graphTransitionFromManual ? manualProcessed : autoProcessed
+            let toProcessed = graphTransitionFromManual ? autoProcessed : manualProcessed
+            let targetLevels = useManual ? manualLevels : autoLevels
+
+            var mixed = fromProcessed
+            let total = max(graphTransitionSamplesTotal, 1)
+            let start = total - graphTransitionSamplesRemaining
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    let t = min(1.0, Double(start + frame) / Double(total))
+                    let fadeOut = Float(cos(t * 0.5 * Double.pi))
+                    let fadeIn = Float(sin(t * 0.5 * Double.pi))
+                    mixed[channel][frame] = fromProcessed[channel][frame] * fadeOut
+                        + toProcessed[channel][frame] * fadeIn
+                }
+            }
+
+            graphTransitionSamplesRemaining = max(0, graphTransitionSamplesRemaining - frameLength)
+            if snapshot.limiterEnabled {
+                mixed = applySoftLimiter(mixed)
+            }
+            updateEffectLevelsIfNeeded(targetLevels)
+            recordIfNeeded(
+                mixed,
+                frameLength: frameLength,
+                channelCount: channelCount,
+                sampleRate: sampleRate
+            )
+            return interleaveBuffer(mixed, frameLength: frameLength, channelCount: channelCount)
+        }
+
+        if useManual {
+            let inputBuffer = deinterleavedInput(
+                channelData: channelData,
+                frameLength: frameLength,
+                channelCount: channelCount
+            )
+            let (processed, levelSnapshot) = renderManualGraph(inputBuffer: inputBuffer)
+            updateEffectLevelsIfNeeded(levelSnapshot)
+            recordIfNeeded(
+                processed,
+                frameLength: frameLength,
+                channelCount: channelCount,
+                sampleRate: sampleRate
+            )
+            return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
+        }
+
+        let (processedAudio, levelSnapshot) = renderAutomaticGraph()
+        updateEffectLevelsIfNeeded(levelSnapshot)
         recordIfNeeded(
             processedAudio,
             frameLength: frameLength,
             channelCount: channelCount,
             sampleRate: sampleRate
         )
-
-        // Convert to interleaved format
-        ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
-        for frame in 0..<frameLength {
-            for channel in 0..<channelCount {
-                interleavedOutputBuffer[frame * channelCount + channel] = processedAudio[channel][frame]
-            }
-        }
-
-        return interleavedOutputBuffer
+        return interleaveBuffer(processedAudio, frameLength: frameLength, channelCount: channelCount)
     }
 
     func ensureInterleavedCapacity(frameLength: Int, channelCount: Int) {
