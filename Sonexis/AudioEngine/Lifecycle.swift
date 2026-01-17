@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import AudioToolbox
 import Foundation
@@ -513,6 +514,28 @@ extension AudioEngine {
             name: .AVAudioEngineConfigurationChange,
             object: engine
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppWillTerminate),
+            name: NSApplication.willTerminateNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleAppWillTerminate(notification: Notification) {
+        // Synchronously restore audio devices before app terminates
+        if isRunning {
+            stopInternal(setReconfiguringFlag: false)
+        }
+
+        // Restore original audio devices synchronously (can't use async here)
+        if let originalInput = originalInputDeviceID {
+            _ = setSystemDefaultInputDevice(deviceID: originalInput)
+        }
+        if let originalOutput = originalOutputDeviceID {
+            _ = setSystemDefaultOutputDevice(deviceID: originalOutput)
+        }
     }
 
     @objc private func handleConfigurationChange(notification: Notification) {

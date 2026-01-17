@@ -480,7 +480,12 @@ struct CanvasView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
+                                        let canWire = wiringMode == .manual && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
+                                        // Only check Option when starting a new connection
+                                        let shouldStartConnection = activeConnectionFromID == nil && NSEvent.modifierFlags.contains(.option)
+                                        let isDraggingConnection = activeConnectionFromID == leftStartNodeID
+
+                                        if canWire && (shouldStartConnection || isDraggingConnection) {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             activeConnectionFromID = leftStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -490,7 +495,8 @@ struct CanvasView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
+                                        // Finalize if we were dragging a connection from this node
+                                        if activeConnectionFromID == leftStartNodeID {
                                             let start = startNodePosition(in: geometry.size, lane: .left)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -512,7 +518,11 @@ struct CanvasView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
+                                        let canWire = wiringMode == .manual && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
+                                        let shouldStartConnection = activeConnectionFromID == nil && NSEvent.modifierFlags.contains(.option)
+                                        let isDraggingConnection = activeConnectionFromID == rightStartNodeID
+
+                                        if canWire && (shouldStartConnection || isDraggingConnection) {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             activeConnectionFromID = rightStartNodeID
                                             activeConnectionPoint = CGPoint(
@@ -522,7 +532,7 @@ struct CanvasView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
+                                        if activeConnectionFromID == rightStartNodeID {
                                             let start = startNodePosition(in: geometry.size, lane: .right)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -544,7 +554,11 @@ struct CanvasView: View {
                             .simultaneousGesture(
                                 DragGesture()
                                     .onChanged { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
+                                        let canWire = wiringMode == .manual && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
+                                        let shouldStartConnection = activeConnectionFromID == nil && NSEvent.modifierFlags.contains(.option)
+                                        let isDraggingConnection = activeConnectionFromID == startNodeID
+
+                                        if canWire && (shouldStartConnection || isDraggingConnection) {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             activeConnectionFromID = startNodeID
                                             activeConnectionPoint = CGPoint(
@@ -554,7 +568,7 @@ struct CanvasView: View {
                                         }
                                     }
                                     .onEnded { value in
-                                        if wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect) {
+                                        if activeConnectionFromID == startNodeID {
                                             let start = startNodePosition(in: geometry.size, lane: nil)
                                             let dropPoint = CGPoint(
                                                 x: start.x + value.translation.width,
@@ -642,15 +656,20 @@ struct CanvasView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { value in
-                                        let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
-                                    if hasOption {
+                                    let canWire = wiringMode == .manual && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
+                                    // Only check Option when starting a new connection
+                                    let shouldStartConnection = activeConnectionFromID == nil && NSEvent.modifierFlags.contains(.option)
+                                    let isDraggingConnection = activeConnectionFromID == effectValue.id
+
+                                    if canWire && (shouldStartConnection || isDraggingConnection) {
                                         // Wiring mode
                                         activeConnectionFromID = effectValue.id
                                         activeConnectionPoint = CGPoint(
                                             x: nodePos.x + value.translation.width,
                                             y: nodePos.y + value.translation.height
                                         )
-                                    } else {
+                                    } else if activeConnectionFromID == nil {
+                                        // Only allow move mode if not dragging a connection
                                         // Allow node movement during reorder and connection steps
                                         let allowMoveDuringTutorial = tutorial.step == .buildAutoReorder ||
                                                                       tutorial.step == .buildConnect ||
@@ -697,8 +716,8 @@ struct CanvasView: View {
                                     }
                                 }
                                 .onEnded { value in
-                                    let hasOption = wiringMode == .manual && NSEvent.modifierFlags.contains(.option) && (!tutorial.isBuildStep || tutorial.step == .buildConnect || tutorial.step == .buildParallelConnect || tutorial.step == .buildDualMonoConnect)
-                                    if hasOption {
+                                    // Check if we were dragging a connection from this node
+                                    if activeConnectionFromID == effectValue.id {
                                         // Finalize wiring
                                         let dropPoint = CGPoint(
                                             x: nodePos.x + value.translation.width,
