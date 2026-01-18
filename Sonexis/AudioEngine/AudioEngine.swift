@@ -686,6 +686,11 @@ class AudioEngine: ObservableObject {
     var bassBoostStatesByNode: [UUID: [BiquadState]] = [:]
     var bassBoostSmoothedGain: Float = 0
     var bassBoostSmoothedGainByNode: [UUID: Float] = [:]
+    // vDSP biquad delay states (4 floats per channel)
+    var bassBoostVDSPDelay: [[Float]] = []
+    var bassBoostVDSPDelayByNode: [UUID: [[Float]]] = [:]
+    var biquadScratchBuffer: [Float] = []  // Scratch for wet signal
+    var biquadScratchBuffer2: [Float] = [] // Second scratch for multi-band EQ
 
     // Clarity state (high shelf boost)
     var clarityState: [BiquadState] = []
@@ -695,6 +700,8 @@ class AudioEngine: ObservableObject {
     var clarityStatesByNode: [UUID: [BiquadState]] = [:]
     var claritySmoothedGain: Float = 0
     var claritySmoothedGainByNode: [UUID: Float] = [:]
+    var clarityVDSPDelay: [[Float]] = []
+    var clarityVDSPDelayByNode: [UUID: [[Float]]] = [:]
     var nightcoreStatesByNode: [UUID: [BiquadState]] = [:]
     var nightcoreSmoothedGain: Float = 0
     var nightcoreSmoothedGainByNode: [UUID: Float] = [:]
@@ -707,6 +714,8 @@ class AudioEngine: ObservableObject {
     var deMudStatesByNode: [UUID: [BiquadState]] = [:]
     var deMudSmoothedGain: Float = 0
     var deMudSmoothedGainByNode: [UUID: Float] = [:]
+    var deMudVDSPDelay: [[Float]] = []
+    var deMudVDSPDelayByNode: [UUID: [[Float]]] = [:]
 
     // Simple EQ state (3 bands)
     var eqBassState: [BiquadState] = []
@@ -718,6 +727,12 @@ class AudioEngine: ObservableObject {
     var eqLastSampleRate: Double = 0
     var eqBassStatesByNode: [UUID: [BiquadState]] = [:]
     var eqMidsStatesByNode: [UUID: [BiquadState]] = [:]
+    var eqBassVDSPDelay: [[Float]] = []
+    var eqMidsVDSPDelay: [[Float]] = []
+    var eqTrebleVDSPDelay: [[Float]] = []
+    var eqBassVDSPDelayByNode: [UUID: [[Float]]] = [:]
+    var eqMidsVDSPDelayByNode: [UUID: [[Float]]] = [:]
+    var eqTrebleVDSPDelayByNode: [UUID: [[Float]]] = [:]
     var eqTrebleStatesByNode: [UUID: [BiquadState]] = [:]
     var simpleEQSmoothedGain: Float = 0
     var simpleEQSmoothedGainByNode: [UUID: Float] = [:]
@@ -731,6 +746,9 @@ class AudioEngine: ObservableObject {
     var tenBandStatesByNode: [UUID: [[BiquadState]]] = [:]
     var tenBandEQSmoothedGain: Float = 0
     var tenBandEQSmoothedGainByNode: [UUID: Float] = [:]
+    // vDSP delays: [band][channel][4 floats]
+    var tenBandVDSPDelays: [[[Float]]] = []
+    var tenBandVDSPDelaysByNode: [UUID: [[[Float]]]] = [:]
 
     // Compressor state (simple dynamic range compression)
     var compressorEnvelope: [Float] = []
