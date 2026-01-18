@@ -271,36 +271,45 @@ extension AudioEngine {
                 q: 0.8
             )
 
-            var states: [BiquadState]
+            // Get or initialize vDSP delay states (4 floats per channel)
+            var vdspDelays: [[Float]]
             if let id = nodeId {
-                states = bassBoostStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+                vdspDelays = bassBoostVDSPDelayByNode[id] ?? [[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount)
             } else {
-                states = bassBoostState
+                vdspDelays = bassBoostVDSPDelay
             }
-            states = normalizedBiquadStates(states, channelCount: channelCount)
+            // Ensure correct channel count
+            while vdspDelays.count < channelCount {
+                vdspDelays.append([Float](repeating: 0, count: 4))
+            }
+
+            // Ensure scratch buffer is large enough
+            if biquadScratchBuffer.count < frameLength {
+                biquadScratchBuffer = [Float](repeating: 0, count: frameLength)
+            }
 
             for channel in 0..<channelCount {
+                // Step 1: Process entire channel through biquad using vDSP (vectorized)
+                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel])
+
+                // Step 2: Crossfade dry/wet with per-sample gain smoothing (for click-free transitions)
                 for frame in 0..<frameLength {
-                    // Smooth gain per-sample for click-free transitions
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
 
                     let dry = processedAudio[channel][frame]
-                    var state = states[channel]
-                    let wet = coefficients.process(x: dry, state: &state)
+                    let wet = biquadScratchBuffer[frame]
                     let outputGain = 1.0 + smoothedGain * 0.35
 
-                    // Crossfade between dry and wet based on smoothed gain
                     processedAudio[channel][frame] = (dry * (1 - smoothedGain) + wet * smoothedGain) * outputGain
-                    states[channel] = state
                 }
             }
 
             // Store updated state
             if let id = nodeId {
-                bassBoostStatesByNode[id] = states
+                bassBoostVDSPDelayByNode[id] = vdspDelays
                 bassBoostSmoothedGainByNode[id] = smoothedGain
             } else {
-                bassBoostState = states
+                bassBoostVDSPDelay = vdspDelays
                 bassBoostSmoothedGain = smoothedGain
             }
             if let id = nodeId {
@@ -343,28 +352,37 @@ extension AudioEngine {
                 gainDb: max(gainDb, 3.0),
                 q: 0.7
             )
-            var states: [BiquadState]
+
+            // Get or initialize vDSP delay states
+            var vdspDelays: [[Float]]
             if let id = nodeId {
-                states = clarityStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+                vdspDelays = clarityVDSPDelayByNode[id] ?? [[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount)
             } else {
-                states = clarityState
+                vdspDelays = clarityVDSPDelay
             }
-            states = normalizedBiquadStates(states, channelCount: channelCount)
+            while vdspDelays.count < channelCount {
+                vdspDelays.append([Float](repeating: 0, count: 4))
+            }
+
+            if biquadScratchBuffer.count < frameLength {
+                biquadScratchBuffer = [Float](repeating: 0, count: frameLength)
+            }
+
             for channel in 0..<channelCount {
+                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel])
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
-                    var state = states[channel]
-                    let wet = coefficients.process(x: dry, state: &state)
+                    let wet = biquadScratchBuffer[frame]
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
-                    states[channel] = state
                 }
             }
+
             if let id = nodeId {
-                clarityStatesByNode[id] = states
+                clarityVDSPDelayByNode[id] = vdspDelays
                 claritySmoothedGainByNode[id] = smoothedGain
             } else {
-                clarityState = states
+                clarityVDSPDelay = vdspDelays
                 claritySmoothedGain = smoothedGain
             }
             if let id = nodeId {
@@ -393,28 +411,36 @@ extension AudioEngine {
                 gainDb: min(gainDb, -2.0),
                 q: 1.5
             )
-            var states: [BiquadState]
+
+            var vdspDelays: [[Float]]
             if let id = nodeId {
-                states = deMudStatesByNode[id] ?? [BiquadState](repeating: BiquadState(), count: channelCount)
+                vdspDelays = deMudVDSPDelayByNode[id] ?? [[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount)
             } else {
-                states = deMudState
+                vdspDelays = deMudVDSPDelay
             }
-            states = normalizedBiquadStates(states, channelCount: channelCount)
+            while vdspDelays.count < channelCount {
+                vdspDelays.append([Float](repeating: 0, count: 4))
+            }
+
+            if biquadScratchBuffer.count < frameLength {
+                biquadScratchBuffer = [Float](repeating: 0, count: frameLength)
+            }
+
             for channel in 0..<channelCount {
+                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel])
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
-                    var state = states[channel]
-                    let wet = coefficients.process(x: dry, state: &state)
+                    let wet = biquadScratchBuffer[frame]
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
-                    states[channel] = state
                 }
             }
+
             if let id = nodeId {
-                deMudStatesByNode[id] = states
+                deMudVDSPDelayByNode[id] = vdspDelays
                 deMudSmoothedGainByNode[id] = smoothedGain
             } else {
-                deMudState = states
+                deMudVDSPDelay = vdspDelays
                 deMudSmoothedGain = smoothedGain
             }
             if let id = nodeId {
@@ -458,47 +484,63 @@ extension AudioEngine {
                 gainDb: treble * 12.0,
                 q: 0.7
             )
+
+            // Get vDSP delays for each band
             let targetId = nodeId
-            var bassStates = targetId.flatMap { eqBassStatesByNode[$0] } ?? eqBassState
-            var midsStates = targetId.flatMap { eqMidsStatesByNode[$0] } ?? eqMidsState
-            var trebleStates = targetId.flatMap { eqTrebleStatesByNode[$0] } ?? eqTrebleState
-            bassStates = normalizedBiquadStates(bassStates, channelCount: channelCount)
-            midsStates = normalizedBiquadStates(midsStates, channelCount: channelCount)
-            trebleStates = normalizedBiquadStates(trebleStates, channelCount: channelCount)
+            var bassDelays = targetId.flatMap { eqBassVDSPDelayByNode[$0] } ?? eqBassVDSPDelay
+            var midsDelays = targetId.flatMap { eqMidsVDSPDelayByNode[$0] } ?? eqMidsVDSPDelay
+            var trebleDelays = targetId.flatMap { eqTrebleVDSPDelayByNode[$0] } ?? eqTrebleVDSPDelay
+
+            while bassDelays.count < channelCount { bassDelays.append([Float](repeating: 0, count: 4)) }
+            while midsDelays.count < channelCount { midsDelays.append([Float](repeating: 0, count: 4)) }
+            while trebleDelays.count < channelCount { trebleDelays.append([Float](repeating: 0, count: 4)) }
+
+            if biquadScratchBuffer.count < frameLength {
+                biquadScratchBuffer = [Float](repeating: 0, count: frameLength)
+            }
+            if biquadScratchBuffer2.count < frameLength {
+                biquadScratchBuffer2 = [Float](repeating: 0, count: frameLength)
+            }
 
             for channel in 0..<channelCount {
+                // Process through 3 bands in series using vDSP
+                // Input → Bass → Mids → Treble → Output (wet)
+                if bass != 0 {
+                    bassCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &bassDelays[channel])
+                } else {
+                    biquadScratchBuffer = Array(processedAudio[channel].prefix(frameLength))
+                }
+
+                if mids != 0 {
+                    midsCoefficients.processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &midsDelays[channel])
+                } else {
+                    biquadScratchBuffer2 = biquadScratchBuffer
+                }
+
+                if treble != 0 {
+                    trebleCoefficients.processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &trebleDelays[channel])
+                } else {
+                    biquadScratchBuffer = biquadScratchBuffer2
+                }
+
+                // biquadScratchBuffer now contains the fully filtered wet signal
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
-                    var wet = dry
-
-                    if bass != 0 {
-                        var state = bassStates[channel]
-                        wet = bassCoefficients.process(x: wet, state: &state)
-                        bassStates[channel] = state
-                    }
-                    if mids != 0 {
-                        var state = midsStates[channel]
-                        wet = midsCoefficients.process(x: wet, state: &state)
-                        midsStates[channel] = state
-                    }
-                    if treble != 0 {
-                        var state = trebleStates[channel]
-                        wet = trebleCoefficients.process(x: wet, state: &state)
-                        trebleStates[channel] = state
-                    }
+                    let wet = biquadScratchBuffer[frame]
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
             }
+
             if let id = targetId {
-                eqBassStatesByNode[id] = bassStates
-                eqMidsStatesByNode[id] = midsStates
-                eqTrebleStatesByNode[id] = trebleStates
+                eqBassVDSPDelayByNode[id] = bassDelays
+                eqMidsVDSPDelayByNode[id] = midsDelays
+                eqTrebleVDSPDelayByNode[id] = trebleDelays
                 simpleEQSmoothedGainByNode[id] = smoothedGain
             } else {
-                eqBassState = bassStates
-                eqMidsState = midsStates
-                eqTrebleState = trebleStates
+                eqBassVDSPDelay = bassDelays
+                eqMidsVDSPDelay = midsDelays
+                eqTrebleVDSPDelay = trebleDelays
                 simpleEQSmoothedGain = smoothedGain
             }
             if let id = nodeId {
@@ -535,30 +577,60 @@ extension AudioEngine {
                     )
                 )
             }
+
+            // Get or initialize vDSP delays: [band][channel][4 floats]
             let targetId = nodeId
-            var bandStates = normalizedTenBandStates(
-                targetId.flatMap { tenBandStatesByNode[$0] },
-                channelCount: channelCount
-            )
+            var vdspDelays: [[[Float]]] = targetId.flatMap { tenBandVDSPDelaysByNode[$0] } ?? tenBandVDSPDelays
+
+            // Ensure we have delays for all bands and channels
+            let bandCount = tenBandFrequencies.count
+            while vdspDelays.count < bandCount {
+                vdspDelays.append([[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount))
+            }
+            for band in 0..<bandCount {
+                while vdspDelays[band].count < channelCount {
+                    vdspDelays[band].append([Float](repeating: 0, count: 4))
+                }
+            }
+
+            if biquadScratchBuffer.count < frameLength {
+                biquadScratchBuffer = [Float](repeating: 0, count: frameLength)
+            }
+            if biquadScratchBuffer2.count < frameLength {
+                biquadScratchBuffer2 = [Float](repeating: 0, count: frameLength)
+            }
 
             for channel in 0..<channelCount {
+                // Process through all 10 bands in series using vDSP
+                // Copy input to scratch buffer first
+                for i in 0..<frameLength {
+                    biquadScratchBuffer[i] = processedAudio[channel][i]
+                }
+
+                for band in 0..<bandCount {
+                    // Alternate: scratch -> scratch2 -> scratch -> scratch2 ...
+                    if band % 2 == 0 {
+                        bandCoefficients[band].processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &vdspDelays[band][channel])
+                    } else {
+                        bandCoefficients[band].processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &vdspDelays[band][channel])
+                    }
+                }
+
+                // After 10 bands (even number), result is in biquadScratchBuffer2
+                let wetBuffer = biquadScratchBuffer2
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
-                    var wet = dry
-                    for band in 0..<tenBandFrequencies.count {
-                        var state = bandStates[band][channel]
-                        wet = bandCoefficients[band].process(x: wet, state: &state)
-                        bandStates[band][channel] = state
-                    }
+                    let wet = wetBuffer[frame]
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
             }
+
             if let id = targetId {
-                tenBandStatesByNode[id] = bandStates
+                tenBandVDSPDelaysByNode[id] = vdspDelays
                 tenBandEQSmoothedGainByNode[id] = smoothedGain
             } else {
-                tenBandStates = bandStates
+                tenBandVDSPDelays = vdspDelays
                 tenBandEQSmoothedGain = smoothedGain
             }
             if let id = nodeId {
@@ -1746,5 +1818,32 @@ struct BiquadCoefficients {
         state.y2 = state.y1
         state.y1 = y
         return y
+    }
+
+    /// Process entire buffer using vDSP_biquad (vectorized, ~3x faster)
+    /// - Parameters:
+    ///   - input: Input samples for one channel
+    ///   - output: Output buffer (will be overwritten)
+    ///   - delay: vDSP delay state, must have 4 elements, persists between calls
+    func processBuffer(_ input: [Float], output: inout [Float], delay: inout [Float]) {
+        guard input.count > 0 else { return }
+
+        // vDSP_biquad expects coefficients as [b0, b1, b2, a1, a2] in Double
+        let coefficients: [Double] = [Double(b0), Double(b1), Double(b2), Double(a1), Double(a2)]
+
+        guard let setup = vDSP_biquad_CreateSetup(coefficients, 1) else { return }
+        defer { vDSP_biquad_DestroySetup(setup) }
+
+        // Ensure output buffer is sized correctly
+        if output.count < input.count {
+            output = [Float](repeating: 0, count: input.count)
+        }
+
+        // Ensure delay buffer is sized correctly (4 elements for single section)
+        if delay.count < 4 {
+            delay = [Float](repeating: 0, count: 4)
+        }
+
+        vDSP_biquad(setup, &delay, input, 1, &output, 1, vDSP_Length(input.count))
     }
 }
