@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import AudioToolbox
 import Foundation
+import os
 
 extension AudioEngine {
 
@@ -104,18 +105,23 @@ extension AudioEngine {
             )
 
             // Create output queue
+            // Use passRetained to prevent deallocation while callback is active
             var queue: AudioQueueRef?
             let status = AudioQueueNewOutput(
                 &audioFormat,
                 audioQueueOutputCallback,
-                Unmanaged.passUnretained(self).toOpaque(),
+                Unmanaged.passRetained(self).toOpaque(),
                 nil,
                 nil,
                 0,
                 &queue
             )
+            audioQueueRetainedSelf = true
 
             guard status == noErr, let outputQueue = queue else {
+                // Release the retained reference since queue creation failed
+                Unmanaged.passUnretained(self).release()
+                audioQueueRetainedSelf = false
                 throw NSError(domain: "AudioEngine", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create AudioQueue: \(status)"])
             }
 
@@ -443,6 +449,11 @@ extension AudioEngine {
             AudioQueueStop(queue, true)
             AudioQueueDispose(queue, true)
             outputQueue = nil
+            // Release the retained reference we passed to the AudioQueue callback
+            if audioQueueRetainedSelf {
+                Unmanaged.passUnretained(self).release()
+                audioQueueRetainedSelf = false
+            }
         }
         outputQueueStartLock.lock()
         outputQueueStarted = false
@@ -450,7 +461,7 @@ extension AudioEngine {
         stopChainLogTimer()
 
         // Clear ring buffer
-        ringBufferLock.lock()
+        os_unfair_lock_lock(&ringBufferLock)
         if let buffer = ringBuffer {
             buffer.deallocate()
         }
@@ -459,7 +470,7 @@ extension AudioEngine {
         ringBufferCapacity = 0
         ringWriteIndex = 0
         ringReadIndex = 0
-        ringBufferLock.unlock()
+        os_unfair_lock_unlock(&ringBufferLock)
 
         // Stop AVAudioEngine
         engine.inputNode.removeTap(onBus: 0)

@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import CoreAudio
 import AudioToolbox
+import os
 
 struct ProcessingSnapshot {
     let useSplitGraph: Bool
@@ -876,16 +877,19 @@ class AudioEngine: ObservableObject {
     var ringBufferCapacity: Int = 0
     var ringWriteIndex: Int = 0
     var ringReadIndex: Int = 0
-    let ringBufferLock = NSLock()
+    var ringBufferLock = os_unfair_lock()  // Real-time safe lock (no priority inversion)
     let maxRingBufferSize = 10
 
+    // Track whether we have a retained reference in the AudioQueue callback
+    var audioQueueRetainedSelf = false
+
     // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
-    let audioFormat = AVAudioFormat(
+    let audioFormat: AVAudioFormat? = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: 48000,
         channels: 2,
         interleaved: false
-    )!
+    )
 
     func scheduleSnapshotUpdate() {
         if !Thread.isMainThread {
@@ -1152,16 +1156,20 @@ class AudioEngine: ObservableObject {
         if let queue = outputQueue {
             AudioQueueStop(queue, true)
             AudioQueueDispose(queue, true)
+            // Note: We don't release the retained self here because if we're in deinit,
+            // the retain count is already being decremented by ARC. Releasing here would
+            // cause a double-release. The audioQueueRetainedSelf flag tracks this for
+            // explicit stop() calls, but deinit means ARC is handling it.
         }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
 
         // Clean up ring buffer
-        ringBufferLock.lock()
+        os_unfair_lock_lock(&ringBufferLock)
         if let buffer = ringBuffer {
             buffer.deallocate()
         }
-        ringBufferLock.unlock()
+        os_unfair_lock_unlock(&ringBufferLock)
 
         NotificationCenter.default.removeObserver(self)
     }

@@ -2,6 +2,7 @@ import Accelerate
 import AVFoundation
 import AudioToolbox
 import Foundation
+import os
 
 extension AudioEngine {
     func deinterleavedInput(
@@ -53,9 +54,10 @@ extension AudioEngine {
     }
 
     func enqueueAudioData(_ data: [Float], queue: AudioQueueRef) {
+        os_unfair_lock_lock(&ringBufferLock)
+        defer { os_unfair_lock_unlock(&ringBufferLock) }
+
         guard let buffer = ringBuffer else { return }
-        ringBufferLock.lock()
-        defer { ringBufferLock.unlock() }
 
         let available = (ringReadIndex - ringWriteIndex - 1 + ringBufferCapacity) % ringBufferCapacity
         if available <= 0 {
@@ -72,10 +74,10 @@ extension AudioEngine {
     }
 
     fileprivate func getAudioDataForOutput(into destination: UnsafeMutablePointer<Float>, count: Int) -> Bool {
-        guard let buffer = ringBuffer else { return false }
-        ringBufferLock.lock()
-        defer { ringBufferLock.unlock() }
+        os_unfair_lock_lock(&ringBufferLock)
+        defer { os_unfair_lock_unlock(&ringBufferLock) }
 
+        guard let buffer = ringBuffer else { return false }
         guard ringReadIndex != ringWriteIndex else { return false }
 
         let offset = ringReadIndex * ringBufferFrameSize
@@ -369,8 +371,8 @@ extension AudioEngine {
     }
 
     func initializeRingBuffer(frameSize: Int, capacity: Int = 10) {
-        ringBufferLock.lock()
-        defer { ringBufferLock.unlock() }
+        os_unfair_lock_lock(&ringBufferLock)
+        defer { os_unfair_lock_unlock(&ringBufferLock) }
 
         if let buffer = ringBuffer {
             buffer.deallocate()
