@@ -98,7 +98,7 @@
 		D5E472E6A41744CC86549A60 /* FlowLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLine.swift; sourceTree = "<group>"; };
 		D9C93DEA747BFDF98A24E5A1 /* RubberBandWrapper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RubberBandWrapper.h; sourceTree = "<group>"; };
 		DFA2410F774D4085BA35D76B /* EffectParametersViewCompact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectParametersViewCompact.swift; sourceTree = "<group>"; };
-		E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AudioShaper-Bridging-Header.h"; sourceTree = "<group>"; };
+		E44CBC109AE6D1E8CE0252D6 /* Sonexis-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Sonexis-Bridging-Header.h"; sourceTree = "<group>"; };
 		E5BD1F558BD122C461C6973C /* Graph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Graph.swift; sourceTree = "<group>"; };
 		E5DABF5E39DB4261BE92AA6F /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialOverlay.swift; sourceTree = "<group>"; };
 		E5F410F57B093E1301CF36D3 /* Routing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Routing.swift; sourceTree = "<group>"; };
@@ -204,7 +204,7 @@
 				A19256146F90870535C89A39 /* AudioEngine */,
 				AA0000100000000000000003 /* PresetManager.swift */,
 				AA0000200000000000000001 /* Wrappers */,
-				E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */,
+				E44CBC109AE6D1E8CE0252D6 /* Sonexis-Bridging-Header.h */,
 				AA0000070000000000000001 /* Info.plist */,
 				B0A1C2D3E4F5061728394051 /* Assets.xcassets */,
 				AA0000080000000000000001 /* Sonexis.entitlements */,
@@ -529,10 +529,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.audioshaper.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sonexis.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "Sonexis/AudioShaper-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sonexis/Sonexis-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -562,10 +562,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.audioshaper.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sonexis.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "Sonexis/AudioShaper-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "Sonexis/Sonexis-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
