@@ -22,6 +22,7 @@ extension AudioEngine {
 
             // Verify setup after switching
             if !refreshSetupStatus() {
+                await restoreOriginalAudioDevices()
                 await MainActor.run {
                     errorMessage = "Failed to set System Input/Output to BlackHole 2ch."
                     isRunning = false
@@ -35,6 +36,9 @@ extension AudioEngine {
                 if granted {
                     self.startAudioEngine()
                 } else {
+                    Task {
+                        await self.restoreOriginalAudioDevices()
+                    }
                     DispatchQueue.main.async {
                         self.errorMessage = "Microphone permission denied. Please enable in System Settings > Privacy & Security > Microphone"
                         self.isRunning = false
@@ -209,10 +213,13 @@ extension AudioEngine {
             isReconfiguring = false
             scheduleSnapshotUpdate()
         } catch {
-            errorMessage = "Failed to start: \(error.localizedDescription)"
-            isRunning = false
-            isReconfiguring = false
-            scheduleSnapshotUpdate()
+            stopInternal(setReconfiguringFlag: false)
+            DispatchQueue.main.async { [weak self] in
+                self?.errorMessage = "Failed to start: \(error.localizedDescription)"
+                self?.isRunning = false
+                self?.isReconfiguring = false
+                self?.scheduleSnapshotUpdate()
+            }
             // Debug output removed.
         }
     }
@@ -446,11 +453,6 @@ extension AudioEngine {
 
     func stop() {
         stopInternal(setReconfiguringFlag: false)
-
-        // Restore original audio devices when stopping
-        Task {
-            await restoreOriginalAudioDevices()
-        }
     }
 
     private func stopInternal(setReconfiguringFlag: Bool) {
@@ -500,6 +502,9 @@ extension AudioEngine {
         isRunning = false
         if !setReconfiguringFlag {
             isReconfiguring = false
+            Task { [weak self] in
+                await self?.restoreOriginalAudioDevices()
+            }
         }
         scheduleSnapshotUpdate()
         // Debug output removed.
