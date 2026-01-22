@@ -181,6 +181,15 @@ struct HeaderView: View {
                         .buttonStyle(.bordered)
                         .font(AppTypography.caption)
                         .tint(AppColors.neonPink)
+                    } else if error.localizedCaseInsensitiveContains("Microphone") {
+                        Button("Open Microphone Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .font(AppTypography.caption)
+                        .tint(AppColors.neonPink)
                     }
                 }
             }

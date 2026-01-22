@@ -272,20 +272,6 @@ class PresetManager: ObservableObject {
 
         let newPresetsURL = sonexisDir.appendingPathComponent("presets.json")
 
-        // Migrate from Laya (most recent legacy) first, then AudioShaper
-        if let appSupport, !fileManager.fileExists(atPath: newPresetsURL.path) {
-            let audioShaperDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
-            let layaDir = appSupport.appendingPathComponent("Laya", isDirectory: true)
-            let audioShaperPresetsURL = audioShaperDir.appendingPathComponent("presets.json")
-            let layaPresetsURL = layaDir.appendingPathComponent("presets.json")
-
-            if fileManager.fileExists(atPath: layaPresetsURL.path) {
-                try? fileManager.copyItem(at: layaPresetsURL, to: newPresetsURL)
-            } else if fileManager.fileExists(atPath: audioShaperPresetsURL.path) {
-                try? fileManager.copyItem(at: audioShaperPresetsURL, to: newPresetsURL)
-            }
-        }
-
         presetsFileURL = newPresetsURL
 
         // Load presets
