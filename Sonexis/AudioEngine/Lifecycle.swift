@@ -156,9 +156,12 @@ extension AudioEngine {
             let bufferFrameCount = max(UInt32(4096), UInt32(inputFormat.sampleRate / 10.0))
             let frameLength = Int(bufferFrameCount)
             let channelCount = Int(inputFormat.channelCount)
+            updateTapFormat(frameLength: frameLength, channelCount: channelCount, sampleRate: inputFormat.sampleRate)
             initializeRingBuffer(frameSize: frameLength * channelCount, capacity: maxRingBufferSize)
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             ensureProcessingCapacity(frameLength: frameLength, channelCount: channelCount)
+            ensureDeinterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
+            initializeEffectStates(channelCount: channelCount)
 
             let bufferSize: UInt32 = bufferFrameCount * UInt32(MemoryLayout<Float>.size) * UInt32(inputFormat.channelCount)
             for i in 0..<3 {
@@ -230,7 +233,7 @@ extension AudioEngine {
                 self?.outputQueueStartLock.lock()
                 self?.outputQueueStarted = false
                 self?.outputQueueStartLock.unlock()
-                // Debug output removed.
+                self?.errorMessage = "Failed to start audio output: \(startStatus)"
             } else {
                 // Debug output removed.
             }
@@ -406,7 +409,24 @@ extension AudioEngine {
 
         // Use user-selected output device when available
         let selectedDevice = outputDevices.first { $0.id == selectedOutputDeviceID }
-        let outputDevice = selectedDevice ?? findRealOutputDevice()
+        let outputDevice: AudioDevice? = {
+            if let selectedDevice {
+                return selectedDevice
+            }
+            if let systemOutputID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice),
+               let systemOutput = AudioDevice(id: systemOutputID),
+               systemOutput.hasOutput,
+               !isVirtualOutputDevice(systemOutput) {
+                return systemOutput
+            }
+            if let originalOutputID = originalOutputDeviceID,
+               let originalOutput = AudioDevice(id: originalOutputID),
+               originalOutput.hasOutput,
+               !isVirtualOutputDevice(originalOutput) {
+                return originalOutput
+            }
+            return findRealOutputDevice()
+        }()
 
         // Find real speakers for output (not BlackHole, not Multi-Output)
         guard let speakersDevice = outputDevice else {

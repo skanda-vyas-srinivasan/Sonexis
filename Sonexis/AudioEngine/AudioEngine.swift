@@ -210,6 +210,12 @@ class AudioEngine: ObservableObject {
     private let recordingLock = NSLock()
     private var recordingSampleRate: Double = 44100
     private var recordingChannelCount: AVAudioChannelCount = 2
+    private var recordingFormat: AVAudioFormat?
+    private var recordingBuffer: AVAudioPCMBuffer?
+    private var recordingFrameCapacity: Int = 0
+    private var tapFrameLength: Int = 0
+    private var tapChannelCount: Int = 0
+    private var tapSampleRate: Double = 0
 
     init() {
         setupNotifications()
@@ -644,6 +650,8 @@ class AudioEngine: ObservableObject {
     let outputQueueStartLock = NSLock()
     var chainLogTimer: DispatchSourceTimer?
     var setupMonitorTimer: DispatchSourceTimer?
+    var setupMonitorListener: AudioObjectPropertyListenerBlock?
+    let setupMonitorQueue = DispatchQueue(label: "AudioEngine.SetupMonitor", qos: .utility)
 
     // Store original devices before switching to BlackHole
     var originalInputDeviceID: AudioDeviceID?
@@ -1058,19 +1066,47 @@ class AudioEngine: ObservableObject {
     }
 
     func updateRecordingFormat(sampleRate: Double, channelCount: AVAudioChannelCount) {
+        recordingLock.lock()
         recordingSampleRate = sampleRate
         recordingChannelCount = channelCount
+        recordingLock.unlock()
+    }
+
+    func updateTapFormat(frameLength: Int, channelCount: Int, sampleRate: Double) {
+        recordingLock.lock()
+        tapFrameLength = frameLength
+        tapChannelCount = channelCount
+        tapSampleRate = sampleRate
+        recordingLock.unlock()
+    }
+
+    func isRecordingActive() -> Bool {
+        recordingLock.lock()
+        let active = isRecording
+        recordingLock.unlock()
+        return active
     }
 
     func startRecording(url: URL) {
         recordingLock.lock()
-        defer { recordingLock.unlock() }
-        guard !isRecording else { return }
+        if isRecording {
+            recordingLock.unlock()
+            return
+        }
+        let targetSampleRate = recordingSampleRate
+        let targetChannelCount = recordingChannelCount
+        let targetFrameLength = tapFrameLength
+        recordingLock.unlock()
+
+        guard targetFrameLength > 0 else {
+            errorMessage = "Recording is not ready yet. Start audio first."
+            return
+        }
 
         guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
-            sampleRate: recordingSampleRate,
-            channels: recordingChannelCount,
+            sampleRate: targetSampleRate,
+            channels: targetChannelCount,
             interleaved: false
         ) else {
             errorMessage = "Unable to create recording format."
@@ -1078,8 +1114,21 @@ class AudioEngine: ObservableObject {
         }
 
         do {
-            recordingFile = try AVAudioFile(forWriting: url, settings: format.settings)
+            guard let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(targetFrameLength)
+            ) else {
+                errorMessage = "Unable to create recording buffer."
+                return
+            }
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            recordingLock.lock()
+            recordingFile = file
+            recordingFormat = format
+            recordingBuffer = buffer
+            recordingFrameCapacity = targetFrameLength
             isRecording = true
+            recordingLock.unlock()
         } catch {
             errorMessage = "Recording failed: \(error.localizedDescription)"
         }
@@ -1088,8 +1137,11 @@ class AudioEngine: ObservableObject {
     func stopRecording() {
         recordingLock.lock()
         recordingFile = nil
-        recordingLock.unlock()
+        recordingFormat = nil
+        recordingBuffer = nil
+        recordingFrameCapacity = 0
         isRecording = false
+        recordingLock.unlock()
     }
 
     func recordIfNeeded(
@@ -1098,10 +1150,17 @@ class AudioEngine: ObservableObject {
         channelCount: Int,
         sampleRate: Double
     ) {
-        guard isRecording else { return }
+        recordingLock.lock()
+        let active = isRecording
+        let targetSampleRate = recordingSampleRate
+        let targetChannelCount = recordingChannelCount
+        let cachedFormat = recordingFormat
+        let cachedBuffer = recordingBuffer
+        recordingLock.unlock()
+        guard active else { return }
         guard channelCount > 0, frameLength > 0 else { return }
 
-        if sampleRate != recordingSampleRate || AVAudioChannelCount(channelCount) != recordingChannelCount {
+        if sampleRate != targetSampleRate || AVAudioChannelCount(channelCount) != targetChannelCount {
             DispatchQueue.main.async {
                 self.errorMessage = "Recording format changed. Stop and start recording again."
                 self.stopRecording()
@@ -1109,15 +1168,16 @@ class AudioEngine: ObservableObject {
             return
         }
 
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sampleRate,
-            channels: AVAudioChannelCount(channelCount),
-            interleaved: false
-        ), let pcmBuffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(frameLength)
-        ) else {
+        guard let format = cachedFormat,
+              let pcmBuffer = cachedBuffer,
+              pcmBuffer.frameCapacity >= AVAudioFrameCount(frameLength),
+              format.sampleRate == sampleRate,
+              format.channelCount == AVAudioChannelCount(channelCount)
+        else {
+            DispatchQueue.main.async {
+                self.errorMessage = "Recording format changed. Stop and start recording again."
+                self.stopRecording()
+            }
             return
         }
 
@@ -1152,6 +1212,7 @@ class AudioEngine: ObservableObject {
     }
 
     deinit {
+        engine.inputNode.removeTap(onBus: 0)
         // Stop audio queue before deallocation to prevent callback accessing freed memory
         if let queue = outputQueue {
             AudioQueueStop(queue, true)
@@ -1161,7 +1222,6 @@ class AudioEngine: ObservableObject {
             // cause a double-release. The audioQueueRetainedSelf flag tracks this for
             // explicit stop() calls, but deinit means ARC is handling it.
         }
-        engine.inputNode.removeTap(onBus: 0)
         engine.stop()
 
         // Clean up ring buffer

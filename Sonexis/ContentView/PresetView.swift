@@ -79,6 +79,7 @@ struct PresetCard: View {
     let onDelete: () -> Void
     let isDisabled: Bool
     @State private var isHovered = false
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         Button(action: onApply) {
@@ -104,7 +105,7 @@ struct PresetCard: View {
             .shadow(color: AppColors.neonPink.opacity(isHovered ? 0.4 : 0), radius: 12)
             .overlay(alignment: .topTrailing) {
                 if isHovered {
-                    Button(action: onDelete) {
+                    Button(action: { showDeleteConfirm = true }) {
                         Image(systemName: "trash")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(AppColors.error)
@@ -124,6 +125,14 @@ struct PresetCard: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 isHovered = hovering
             }
+        }
+        .alert("Delete preset?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
         }
     }
 }

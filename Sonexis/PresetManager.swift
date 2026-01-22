@@ -255,26 +255,34 @@ class PresetManager: ObservableObject {
 
     init() {
         // Store presets in Application Support directory
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            fatalError("Application Support directory not available")
+        let fileManager = FileManager.default
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        if appSupport == nil {
+            saveError = "Application Support directory not available. Using temporary storage."
         }
-        let audioShaperDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
-        let layaDir = appSupport.appendingPathComponent("Laya", isDirectory: true)
-        let sonexisDir = appSupport.appendingPathComponent("Sonexis", isDirectory: true)
+        let baseDir = appSupport ?? fileManager.temporaryDirectory
+        let sonexisDir = baseDir.appendingPathComponent("Sonexis", isDirectory: true)
 
         // Create directory if needed
-        try? FileManager.default.createDirectory(at: sonexisDir, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: sonexisDir, withIntermediateDirectories: true)
+        } catch {
+            saveError = "Failed to create presets directory: \(error.localizedDescription)"
+        }
 
-        let audioShaperPresetsURL = audioShaperDir.appendingPathComponent("presets.json")
-        let layaPresetsURL = layaDir.appendingPathComponent("presets.json")
         let newPresetsURL = sonexisDir.appendingPathComponent("presets.json")
 
         // Migrate from Laya (most recent legacy) first, then AudioShaper
-        if !FileManager.default.fileExists(atPath: newPresetsURL.path) {
-            if FileManager.default.fileExists(atPath: layaPresetsURL.path) {
-                try? FileManager.default.copyItem(at: layaPresetsURL, to: newPresetsURL)
-            } else if FileManager.default.fileExists(atPath: audioShaperPresetsURL.path) {
-                try? FileManager.default.copyItem(at: audioShaperPresetsURL, to: newPresetsURL)
+        if let appSupport, !fileManager.fileExists(atPath: newPresetsURL.path) {
+            let audioShaperDir = appSupport.appendingPathComponent("AudioShaper", isDirectory: true)
+            let layaDir = appSupport.appendingPathComponent("Laya", isDirectory: true)
+            let audioShaperPresetsURL = audioShaperDir.appendingPathComponent("presets.json")
+            let layaPresetsURL = layaDir.appendingPathComponent("presets.json")
+
+            if fileManager.fileExists(atPath: layaPresetsURL.path) {
+                try? fileManager.copyItem(at: layaPresetsURL, to: newPresetsURL)
+            } else if fileManager.fileExists(atPath: audioShaperPresetsURL.path) {
+                try? fileManager.copyItem(at: audioShaperPresetsURL, to: newPresetsURL)
             }
         }
 

@@ -96,8 +96,10 @@ extension AudioEngine {
         let channelCount = Int(buffer.format.channelCount)
         let sampleRate = buffer.format.sampleRate
 
+        let recordingActive = isRecordingActive()
+
         if snapshot.isReconfiguring {
-            if isRecording {
+            if recordingActive {
                 let inputBuffer = deinterleavedInput(
                     channelData: channelData,
                     frameLength: frameLength,
@@ -120,7 +122,7 @@ extension AudioEngine {
         }
 
         if !snapshot.processingEnabled {
-            if isRecording {
+            if recordingActive {
                 let inputBuffer = deinterleavedInput(
                     channelData: channelData,
                     frameLength: frameLength,

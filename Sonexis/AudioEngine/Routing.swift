@@ -164,6 +164,71 @@ extension AudioEngine {
     }
 
     func startSetupMonitor() {
+        guard setupMonitorListener == nil else { return }
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            guard let self = self else { return }
+            let ready = self.refreshSetupStatus()
+            if !ready && self.isRunning {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Audio routing was changed. Stopped to restore your original audio setup."
+                    self.stop()
+                }
+            }
+        }
+        setupMonitorListener = listener
+
+        var addFailed = false
+        var addedAny = false
+        for address in setupMonitorAddresses() {
+            var mutableAddress = address
+            let status = AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &mutableAddress,
+                setupMonitorQueue,
+                listener
+            )
+            if status == noErr {
+                addedAny = true
+            } else {
+                addFailed = true
+            }
+        }
+
+        if addFailed {
+            if let listener = setupMonitorListener, addedAny {
+                for address in setupMonitorAddresses() {
+                    var mutableAddress = address
+                    AudioObjectRemovePropertyListenerBlock(
+                        AudioObjectID(kAudioObjectSystemObject),
+                        &mutableAddress,
+                        setupMonitorQueue,
+                        listener
+                    )
+                }
+            }
+            setupMonitorListener = nil
+            startSetupMonitorTimer()
+        }
+    }
+
+    func stopSetupMonitor() {
+        if let listener = setupMonitorListener {
+            for address in setupMonitorAddresses() {
+                var mutableAddress = address
+                AudioObjectRemovePropertyListenerBlock(
+                    AudioObjectID(kAudioObjectSystemObject),
+                    &mutableAddress,
+                    setupMonitorQueue,
+                    listener
+                )
+            }
+            setupMonitorListener = nil
+        }
+        setupMonitorTimer?.cancel()
+        setupMonitorTimer = nil
+    }
+
+    private func startSetupMonitorTimer() {
         guard setupMonitorTimer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
@@ -181,9 +246,19 @@ extension AudioEngine {
         timer.resume()
     }
 
-    func stopSetupMonitor() {
-        setupMonitorTimer?.cancel()
-        setupMonitorTimer = nil
+    private func setupMonitorAddresses() -> [AudioObjectPropertyAddress] {
+        [
+            AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+        ]
     }
 
     func findDevice(matching name: String) -> AudioDevice? {
@@ -331,6 +406,13 @@ extension AudioEngine {
 
         // Otherwise return first real device
         return realDevices.first
+    }
+
+    func isVirtualOutputDevice(_ device: AudioDevice) -> Bool {
+        let name = device.name.lowercased()
+        return name.contains("blackhole") ||
+            name.contains("multi-output") ||
+            name.contains("aggregate")
     }
 
     func getAllAudioDevices() -> [AudioDevice] {

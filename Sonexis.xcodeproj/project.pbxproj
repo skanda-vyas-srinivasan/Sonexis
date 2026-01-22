@@ -79,7 +79,7 @@
 		AA0000010000000000000002 /* Sonexis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sonexis.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000020000000000000001 /* SonexisApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonexisApp.swift; sourceTree = "<group>"; };
 		AA0000070000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AA0000080000000000000001 /* AudioShaper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudioShaper.entitlements; sourceTree = "<group>"; };
+		AA0000080000000000000001 /* Sonexis.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Sonexis.entitlements; sourceTree = "<group>"; };
 		AA0000100000000000000003 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
 		AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lifecycle.swift; sourceTree = "<group>"; };
 		AC3C35E7AD3E4E449915932A /* AdvancedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedModels.swift; sourceTree = "<group>"; };
@@ -207,7 +207,7 @@
 				E44CBC109AE6D1E8CE0252D6 /* AudioShaper-Bridging-Header.h */,
 				AA0000070000000000000001 /* Info.plist */,
 				B0A1C2D3E4F5061728394051 /* Assets.xcassets */,
-				AA0000080000000000000001 /* AudioShaper.entitlements */,
+				AA0000080000000000000001 /* Sonexis.entitlements */,
 			);
 			path = Sonexis;
 			sourceTree = "<group>";
@@ -507,7 +507,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sonexis/AudioShaper.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Sonexis/Sonexis.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -541,7 +541,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sonexis/AudioShaper.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Sonexis/Sonexis.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
