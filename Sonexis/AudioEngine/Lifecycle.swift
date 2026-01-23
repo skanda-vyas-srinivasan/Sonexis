@@ -502,6 +502,7 @@ extension AudioEngine {
         isRunning = false
         if !setReconfiguringFlag {
             isReconfiguring = false
+            recreateEngine()
             Task { [weak self] in
                 await self?.restoreOriginalAudioDevices()
             }
@@ -544,6 +545,17 @@ extension AudioEngine {
     // MARK: - Notifications
 
     func setupNotifications() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: .AVAudioEngineConfigurationChange,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSApplication.willTerminateNotification,
+            object: nil
+        )
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConfigurationChange),
@@ -557,6 +569,14 @@ extension AudioEngine {
             name: NSApplication.willTerminateNotification,
             object: nil
         )
+    }
+
+    private func recreateEngine() {
+        let oldEngine = engine
+        engine = AVAudioEngine()
+        setupNotifications()
+        oldEngine.stop()
+        oldEngine.reset()
     }
 
     @objc private func handleAppWillTerminate(notification: Notification) {
