@@ -235,12 +235,23 @@ extension AudioEngine {
         guard shouldStart else { return }
 
         DispatchQueue.main.async { [weak self] in
+            guard let self = self,
+                  self.isRunning,
+                  let currentQueue = self.outputQueue,
+                  currentQueue == queue else {
+                if let self {
+                    self.outputQueueStartLock.lock()
+                    self.outputQueueStarted = false
+                    self.outputQueueStartLock.unlock()
+                }
+                return
+            }
             let startStatus = AudioQueueStart(queue, nil)
             if startStatus != noErr {
-                self?.outputQueueStartLock.lock()
-                self?.outputQueueStarted = false
-                self?.outputQueueStartLock.unlock()
-                self?.errorMessage = "Failed to start audio output: \(startStatus)"
+                self.outputQueueStartLock.lock()
+                self.outputQueueStarted = false
+                self.outputQueueStartLock.unlock()
+                self.errorMessage = "Failed to start audio output: \(startStatus)"
             } else {
                 // Debug output removed.
             }
