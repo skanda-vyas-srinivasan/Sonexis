@@ -457,7 +457,14 @@ extension AudioEngine {
         outputDevices = devices
 
         if selectedOutputDeviceID == nil {
-            selectedOutputDeviceID = findRealOutputDevice()?.id
+            if let systemOutputID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice),
+               let systemOutput = AudioDevice(id: systemOutputID),
+               systemOutput.hasOutput,
+               !isVirtualOutputDevice(systemOutput) {
+                selectedOutputDeviceID = systemOutputID
+            } else {
+                selectedOutputDeviceID = findRealOutputDevice()?.id
+            }
         }
     }
 }
