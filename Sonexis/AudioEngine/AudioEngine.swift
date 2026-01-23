@@ -197,7 +197,7 @@ struct RubberBandScratch {
 }
 
 class AudioEngine: ObservableObject {
-    let engine = AVAudioEngine()
+    var engine = AVAudioEngine()
     @Published var isRunning = false
     @Published var errorMessage: String?
     @Published var inputDeviceName: String = "Searching..."
