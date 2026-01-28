@@ -11,7 +11,7 @@ struct EffectTray: View {
     @State private var searchText = ""
 
     private let effects: [EffectType] = [
-        .bassBoost, .clarity, .deMud,
+        .bassBoost, .enhancer, .clarity, .deMud,
         .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
         .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
         .resampling, .rubberBandPitch
@@ -210,4 +210,3 @@ struct EffectDragPreview: View {
         .frame(width: 110, height: 110)
     }
 }
-

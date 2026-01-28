@@ -79,6 +79,7 @@ extension AudioEngine {
     var defaultEffectOrder: [EffectType] {
         [
             .bassBoost,
+            .enhancer,
             .clarity,
             .deMud,
             .simpleEQ,
@@ -311,6 +312,100 @@ extension AudioEngine {
             } else {
                 bassBoostVDSPDelay = vdspDelays
                 bassBoostSmoothedGain = smoothedGain
+            }
+            if let id = nodeId {
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .enhancer:
+            let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
+            let isGlobalDisabled = nodeId == nil && !snapshot.enhancerEnabled
+            let amount = nodeParams(for: nodeId, snapshot: snapshot)?.enhancerAmount ?? snapshot.enhancerAmount
+
+            let targetGain: Float = (isNodeDisabled || isGlobalDisabled || amount <= 0) ? 0 : Float(min(max(amount, 0), 1))
+            var smoothedGain: Float = nodeId != nil ? (enhancerSmoothedGainByNode[nodeId!] ?? 0) : enhancerSmoothedGain
+
+            if smoothedGain < 0.001 && targetGain < 0.001 {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+
+            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.02)))
+            let normalizedAmount = min(max(amount, 0), 1)
+            let lowGainDb = normalizedAmount * 4.0
+            let midGainDb = -normalizedAmount * 3.0
+            let highGainDb = normalizedAmount * 6.0
+
+            let lowCoefficients = BiquadCoefficients.lowShelf(
+                sampleRate: sampleRate,
+                frequency: 120,
+                gainDb: lowGainDb,
+                q: 0.8
+            )
+            let midCoefficients = BiquadCoefficients.peakingEQ(
+                sampleRate: sampleRate,
+                frequency: 320,
+                gainDb: midGainDb,
+                q: 1.2
+            )
+            let highCoefficients = BiquadCoefficients.highShelf(
+                sampleRate: sampleRate,
+                frequency: 5500,
+                gainDb: highGainDb,
+                q: 0.7
+            )
+
+            var lowDelays: [[Float]]
+            var midDelays: [[Float]]
+            var highDelays: [[Float]]
+            if let id = nodeId {
+                lowDelays = enhancerLowVDSPDelayByNode[id] ?? [[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount)
+                midDelays = enhancerMidVDSPDelayByNode[id] ?? [[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount)
+                highDelays = enhancerHighVDSPDelayByNode[id] ?? [[Float]](repeating: [Float](repeating: 0, count: 4), count: channelCount)
+            } else {
+                lowDelays = enhancerLowVDSPDelay
+                midDelays = enhancerMidVDSPDelay
+                highDelays = enhancerHighVDSPDelay
+            }
+
+            while lowDelays.count < channelCount { lowDelays.append([Float](repeating: 0, count: 4)) }
+            while midDelays.count < channelCount { midDelays.append([Float](repeating: 0, count: 4)) }
+            while highDelays.count < channelCount { highDelays.append([Float](repeating: 0, count: 4)) }
+
+            if biquadScratchBuffer.count < frameLength {
+                biquadScratchBuffer = [Float](repeating: 0, count: frameLength)
+            }
+            if biquadScratchBuffer2.count < frameLength {
+                biquadScratchBuffer2 = [Float](repeating: 0, count: frameLength)
+            }
+
+            let drive = Float(1.0 + normalizedAmount * 4.0)
+            let driveNorm = Float(tanh(Double(drive)))
+
+            for channel in 0..<channelCount {
+                lowCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &lowDelays[channel])
+                midCoefficients.processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &midDelays[channel])
+                highCoefficients.processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &highDelays[channel])
+
+                for frame in 0..<frameLength {
+                    smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+                    let dry = processedAudio[channel][frame]
+                    let driven = biquadScratchBuffer[frame] * drive
+                    let saturated = Float(tanh(Double(driven))) / max(driveNorm, 0.0001)
+                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + saturated * smoothedGain
+                }
+            }
+
+            if let id = nodeId {
+                enhancerLowVDSPDelayByNode[id] = lowDelays
+                enhancerMidVDSPDelayByNode[id] = midDelays
+                enhancerHighVDSPDelayByNode[id] = highDelays
+                enhancerSmoothedGainByNode[id] = smoothedGain
+            } else {
+                enhancerLowVDSPDelay = lowDelays
+                enhancerMidVDSPDelay = midDelays
+                enhancerHighVDSPDelay = highDelays
+                enhancerSmoothedGain = smoothedGain
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -1572,6 +1667,14 @@ extension AudioEngine {
 
     func resetEffectStateUnlocked() {
         resetBassBoostStateUnlocked()
+        enhancerSmoothedGain = 0
+        enhancerSmoothedGainByNode.removeAll()
+        enhancerLowVDSPDelay.removeAll()
+        enhancerMidVDSPDelay.removeAll()
+        enhancerHighVDSPDelay.removeAll()
+        enhancerLowVDSPDelayByNode.removeAll()
+        enhancerMidVDSPDelayByNode.removeAll()
+        enhancerHighVDSPDelayByNode.removeAll()
         resetClarityStateUnlocked()
         resetDeMudStateUnlocked()
         resetEQStateUnlocked()

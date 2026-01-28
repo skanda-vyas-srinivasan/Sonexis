@@ -60,7 +60,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["drive": 35.0, "mix": 50.0]
         case .resampling:
             return ["rate": 1.0]
+        case .enhancer:
+            return ["intensity": 50.0]
         }
     }
 }
-

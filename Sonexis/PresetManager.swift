@@ -95,6 +95,8 @@ struct SavedPreset: Identifiable, Codable {
         var params = NodeEffectParameters.defaults()
         let values = snapshot.parameters
         switch snapshot.type {
+        case .enhancer:
+            params.enhancerAmount = values.enhancerAmount ?? params.enhancerAmount
         case .bassBoost:
             params.bassBoostAmount = values.bassBoostAmount ?? params.bassBoostAmount
         case .pitchShift:
@@ -169,6 +171,9 @@ struct EffectChainSnapshot: Codable {
     }
 
     struct EffectParameters: Codable {
+        // Enhancer
+        var enhancerAmount: Double?
+
         // Bass Boost
         var bassBoostAmount: Double?
 
@@ -191,6 +196,7 @@ struct EffectChainSnapshot: Codable {
 
         // Compressor
         var compressorStrength: Double?
+
 
         // Reverb
         var reverbMix: Double?
@@ -295,6 +301,20 @@ class PresetManager: ObservableObject {
         guard let index = presets.firstIndex(where: { $0.id == id }) else { return }
         let existing = presets[index]
         presets[index] = SavedPreset(id: existing.id, name: existing.name, graph: graph, createdDate: existing.createdDate)
+        persistPresets()
+    }
+
+    func addPreset(_ preset: SavedPreset, overwriteExistingNamed name: String? = nil) {
+        if let nameToOverwrite = name {
+            presets.removeAll { $0.name.caseInsensitiveCompare(nameToOverwrite) == .orderedSame }
+        }
+
+        var finalPreset = preset
+        if presets.contains(where: { $0.id == preset.id }) {
+            finalPreset = SavedPreset(id: UUID(), name: preset.name, graph: preset.graph, createdDate: preset.createdDate)
+        }
+
+        presets.insert(finalPreset, at: 0)
         persistPresets()
     }
 

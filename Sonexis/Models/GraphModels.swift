@@ -10,6 +10,7 @@ enum GraphLane: String, Codable {
 
 struct NodeEffectParameters: Codable, Equatable {
     var bassBoostAmount: Double
+    var enhancerAmount: Double
     var nightcoreIntensity: Double
     var clarityAmount: Double
     var deMudStrength: Double
@@ -48,6 +49,7 @@ struct NodeEffectParameters: Codable, Equatable {
 
     init(
         bassBoostAmount: Double,
+        enhancerAmount: Double,
         nightcoreIntensity: Double,
         clarityAmount: Double,
         deMudStrength: Double,
@@ -85,6 +87,7 @@ struct NodeEffectParameters: Codable, Equatable {
         rubberBandPitchSemitones: Double
     ) {
         self.bassBoostAmount = bassBoostAmount
+        self.enhancerAmount = enhancerAmount
         self.nightcoreIntensity = nightcoreIntensity
         self.clarityAmount = clarityAmount
         self.deMudStrength = deMudStrength
@@ -125,6 +128,7 @@ struct NodeEffectParameters: Codable, Equatable {
     static func defaults() -> NodeEffectParameters {
         NodeEffectParameters(
             bassBoostAmount: 0.6,
+            enhancerAmount: 0.4,
             nightcoreIntensity: 0.6,
             clarityAmount: 0.5,
             deMudStrength: 0.5,
@@ -165,6 +169,7 @@ struct NodeEffectParameters: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case bassBoostAmount
+        case enhancerAmount
         case nightcoreIntensity
         case clarityAmount
         case deMudStrength
@@ -206,6 +211,7 @@ struct NodeEffectParameters: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = NodeEffectParameters.defaults()
         bassBoostAmount = try container.decodeIfPresent(Double.self, forKey: .bassBoostAmount) ?? defaults.bassBoostAmount
+        enhancerAmount = try container.decodeIfPresent(Double.self, forKey: .enhancerAmount) ?? defaults.enhancerAmount
         nightcoreIntensity = try container.decodeIfPresent(Double.self, forKey: .nightcoreIntensity) ?? defaults.nightcoreIntensity
         clarityAmount = try container.decodeIfPresent(Double.self, forKey: .clarityAmount) ?? defaults.clarityAmount
         deMudStrength = try container.decodeIfPresent(Double.self, forKey: .deMudStrength) ?? defaults.deMudStrength
@@ -409,4 +415,3 @@ struct GraphSnapshot: Codable {
         self.hasNodeParameters = try container.decodeIfPresent(Bool.self, forKey: .hasNodeParameters) ?? false
     }
 }
-

@@ -11,6 +11,9 @@ struct EffectParametersViewCompact: View {
     var body: some View {
         VStack(spacing: 10) {
             switch effectType {
+            case .enhancer:
+                CompactSlider(label: "Intensity", value: $parameters.enhancerAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+
             case .bassBoost:
                 CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
@@ -197,4 +200,3 @@ struct CompactSlider: View {
         }
     }
 }
-

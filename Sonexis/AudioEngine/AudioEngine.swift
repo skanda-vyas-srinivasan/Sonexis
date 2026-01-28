@@ -29,6 +29,8 @@ struct ProcessingSnapshot {
     let isReconfiguring: Bool
     let bassBoostEnabled: Bool
     let bassBoostAmount: Double
+    let enhancerEnabled: Bool
+    let enhancerAmount: Double
     let nightcoreEnabled: Bool
     let nightcoreIntensity: Double
     let clarityEnabled: Bool
@@ -108,6 +110,8 @@ struct ProcessingSnapshot {
         isReconfiguring: false,
         bassBoostEnabled: false,
         bassBoostAmount: 0,
+        enhancerEnabled: false,
+        enhancerAmount: 0,
         nightcoreEnabled: false,
         nightcoreIntensity: 0,
         clarityEnabled: false,
@@ -253,6 +257,18 @@ class AudioEngine: ObservableObject {
         }
     }
 
+    // Enhancer effect
+    @Published var enhancerEnabled = false {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var enhancerAmount: Double = 0.4 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+
     // Clarity effect
     @Published var clarityEnabled = false {
         didSet {
@@ -302,6 +318,7 @@ class AudioEngine: ObservableObject {
             scheduleSnapshotUpdate()
         }
     }
+
 
     // Stereo width effect
     @Published var stereoWidthEnabled = false {
@@ -701,6 +718,17 @@ class AudioEngine: ObservableObject {
     var biquadScratchBuffer: [Float] = []  // Scratch for wet signal
     var biquadScratchBuffer2: [Float] = [] // Second scratch for multi-band EQ
 
+    // Enhancer state
+    var enhancerSmoothedGain: Float = 0
+    var enhancerSmoothedGainByNode: [UUID: Float] = [:]
+    var enhancerLowVDSPDelay: [[Float]] = []
+    var enhancerMidVDSPDelay: [[Float]] = []
+    var enhancerHighVDSPDelay: [[Float]] = []
+    var enhancerLowVDSPDelayByNode: [UUID: [[Float]]] = [:]
+    var enhancerMidVDSPDelayByNode: [UUID: [[Float]]] = [:]
+    var enhancerHighVDSPDelayByNode: [UUID: [[Float]]] = [:]
+
+
     // Clarity state (high shelf boost)
     var clarityState: [BiquadState] = []
     var clarityCoefficients = BiquadCoefficients()
@@ -992,6 +1020,8 @@ class AudioEngine: ObservableObject {
             isReconfiguring: isReconfiguring,
             bassBoostEnabled: bassBoostEnabled,
             bassBoostAmount: bassBoostAmount,
+            enhancerEnabled: enhancerEnabled,
+            enhancerAmount: enhancerAmount,
             nightcoreEnabled: nightcoreEnabled,
             nightcoreIntensity: nightcoreIntensity,
             clarityEnabled: clarityEnabled,

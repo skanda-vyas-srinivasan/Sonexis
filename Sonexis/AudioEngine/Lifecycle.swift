@@ -514,9 +514,7 @@ extension AudioEngine {
         if !setReconfiguringFlag {
             isReconfiguring = false
             recreateEngine()
-            Task { [weak self] in
-                await self?.restoreOriginalAudioDevices()
-            }
+            _ = restoreOriginalAudioDevicesSync()
         }
         scheduleSnapshotUpdate()
         // Debug output removed.

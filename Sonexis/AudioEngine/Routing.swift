@@ -163,6 +163,21 @@ extension AudioEngine {
         return success
     }
 
+    @discardableResult
+    func restoreOriginalAudioDevicesSync() -> Bool {
+        var success = true
+
+        if let originalInput = originalInputDeviceID {
+            success = setSystemDefaultInputDevice(deviceID: originalInput) && success
+        }
+
+        if let originalOutput = originalOutputDeviceID {
+            success = setSystemDefaultOutputDevice(deviceID: originalOutput) && success
+        }
+
+        return success
+    }
+
     func startSetupMonitor() {
         guard setupMonitorListener == nil else { return }
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in

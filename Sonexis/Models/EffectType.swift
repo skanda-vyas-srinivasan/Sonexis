@@ -22,6 +22,7 @@ enum EffectType: String, Codable, CaseIterable {
     case bitcrusher = "Bitcrusher"
     case tapeSaturation = "Tape Saturation"
     case resampling = "Resampling"
+    case enhancer = "Enhancer"
 
     var description: String {
         switch self {
@@ -63,6 +64,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "Warm, smooth analog saturation"
         case .resampling:
             return "Pitch and speed shift by resampling"
+        case .enhancer:
+            return "Adds clarity, warmth, and punch in one step"
         }
     }
 
@@ -106,7 +109,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "record.circle"
         case .resampling:
             return "arrow.triangle.2.circlepath"
+        case .enhancer:
+            return "flame.fill"
         }
     }
 }
-

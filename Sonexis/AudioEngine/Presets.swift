@@ -12,6 +12,12 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .bassBoost, isEnabled: true, parameters: params))
         }
 
+        // Enhancer
+        if enhancerEnabled {
+            let params = EffectChainSnapshot.EffectParameters(enhancerAmount: enhancerAmount)
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .enhancer, isEnabled: true, parameters: params))
+        }
+
         // Nightcore
         if nightcoreEnabled {
             let params = EffectChainSnapshot.EffectParameters(nightcoreIntensity: nightcoreIntensity)
@@ -47,6 +53,7 @@ extension AudioEngine {
             let params = EffectChainSnapshot.EffectParameters(compressorStrength: compressorStrength)
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .compressor, isEnabled: true, parameters: params))
         }
+
 
         // Reverb
         if reverbEnabled {
@@ -155,6 +162,7 @@ extension AudioEngine {
     func applyEffectChain(_ chain: EffectChainSnapshot) {
         // First disable all effects
         bassBoostEnabled = false
+        enhancerEnabled = false
         nightcoreEnabled = false
         clarityEnabled = false
         deMudEnabled = false
@@ -184,6 +192,12 @@ extension AudioEngine {
                 bassBoostEnabled = effect.isEnabled
                 if let amount = params.bassBoostAmount {
                     bassBoostAmount = amount
+                }
+
+            case .enhancer:
+                enhancerEnabled = effect.isEnabled
+                if let amount = params.enhancerAmount {
+                    enhancerAmount = amount
                 }
 
             case .pitchShift: // Nightcore
@@ -315,6 +329,7 @@ extension AudioEngine {
         let activeTypes = Set(chain.filter { $0.isEnabled }.map { $0.type })
 
         bassBoostEnabled = activeTypes.contains(.bassBoost)
+        enhancerEnabled = activeTypes.contains(.enhancer)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -368,6 +383,7 @@ extension AudioEngine {
 
         let activeTypes = Set(nodes.filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
+        enhancerEnabled = activeTypes.contains(.enhancer)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -417,6 +433,7 @@ extension AudioEngine {
 
         let activeTypes = Set((leftNodes + rightNodes).filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
+        enhancerEnabled = activeTypes.contains(.enhancer)
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -450,6 +467,10 @@ extension AudioEngine {
         nodeParameters = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.parameters) })
         nodeEnabled = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.isEnabled) })
         bassBoostStatesByNode = bassBoostStatesByNode.filter { ids.contains($0.key) }
+        enhancerSmoothedGainByNode = enhancerSmoothedGainByNode.filter { ids.contains($0.key) }
+        enhancerLowVDSPDelayByNode = enhancerLowVDSPDelayByNode.filter { ids.contains($0.key) }
+        enhancerMidVDSPDelayByNode = enhancerMidVDSPDelayByNode.filter { ids.contains($0.key) }
+        enhancerHighVDSPDelayByNode = enhancerHighVDSPDelayByNode.filter { ids.contains($0.key) }
         clarityStatesByNode = clarityStatesByNode.filter { ids.contains($0.key) }
         nightcoreStatesByNode = nightcoreStatesByNode.filter { ids.contains($0.key) }
         deMudStatesByNode = deMudStatesByNode.filter { ids.contains($0.key) }

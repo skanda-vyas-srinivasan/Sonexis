@@ -1176,6 +1176,8 @@ struct CanvasView: View {
             var updated = node
             var params = NodeEffectParameters.defaults()
             switch node.type {
+            case .enhancer:
+                params.enhancerAmount = audioEngine.enhancerAmount
             case .bassBoost:
                 params.bassBoostAmount = audioEngine.bassBoostAmount
             case .pitchShift:
@@ -2378,4 +2380,3 @@ struct CanvasView: View {
         node.position == .zero ? defaultNodePosition(in: size, lane: graphMode == .split ? node.lane : nil) : node.position
     }
 }
-
