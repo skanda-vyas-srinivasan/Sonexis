@@ -1413,6 +1413,21 @@ extension AudioEngine {
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
+
+        case .plugin:
+            guard let nodeId else { return }
+            if !nodeIsEnabled(nodeId, snapshot: snapshot) {
+                levelSnapshot[nodeId] = 0
+                return
+            }
+            guard let instance = pluginHost.instance(for: nodeId) else { return }
+            instance.process(
+                buffer: &processedAudio,
+                frameLength: frameLength,
+                sampleRate: sampleRate,
+                channelCount: channelCount
+            )
+            levelSnapshot[nodeId] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
         }
     }
 

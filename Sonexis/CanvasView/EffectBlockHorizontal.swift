@@ -9,10 +9,12 @@ struct EffectBlockHorizontal: View {
     let isDropAnimating: Bool
     let tileStyle: AccentStyle
     let nodeScale: CGFloat
+    let isPluginLoading: Bool
     let onRemove: () -> Void
     let onUpdate: () -> Void
     let onExpanded: () -> Void
     let onCollapsed: () -> Void
+    let onOpenPluginEditor: () -> Void
     let allowExpand: Bool
     let tutorialStep: TutorialStep
     @State private var isHovered = false
@@ -34,30 +36,54 @@ struct EffectBlockHorizontal: View {
                 // Icon and name
                 VStack(spacing: 6) {
                     ZStack {
-                        NeonTile(
-                            isEnabled: getEffectEnabled(),
-                            style: tileStyle,
-                            disabledFill: tileDisabled
-                        )
+                    NeonTile(
+                        isEnabled: getEffectEnabled(),
+                        style: tileStyle,
+                        disabledFill: tileDisabled
+                    )
 
-                        VStack(spacing: 6) {
-                            Image(systemName: effect.type.icon)
-                                .font(.system(size: 26, weight: .medium))
-                                .symbolRenderingMode(.monochrome)
-                                .foregroundColor(getEffectEnabled() ? tileStyle.text : disabledText)
-                                .shadow(color: getEffectEnabled() ? Color.white.opacity(0.6) : .clear, radius: 8)
-                                .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.5) : .clear, radius: 16)
+                    VStack(spacing: 6) {
+                        Image(systemName: effect.displayIcon)
+                            .font(.system(size: 26, weight: .medium))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundColor(getEffectEnabled() ? tileStyle.text : disabledText)
+                            .shadow(color: getEffectEnabled() ? Color.white.opacity(0.6) : .clear, radius: 8)
+                            .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.5) : .clear, radius: 16)
 
-                            Text(effect.type.rawValue.uppercased())
-                                .font(.system(size: 10, weight: .semibold))
-                                .tracking(1.2)
-                                .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.4) : .clear, radius: 10)
-                        }
-                        .padding(.horizontal, 6)
+                        Text(effect.displayName.uppercased())
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.4) : .clear, radius: 10)
                     }
+                    .overlay(alignment: .topTrailing) {
+                        if let badge = effect.displayBadge {
+                            Text(badge)
+                                .font(.system(size: 9, weight: .bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.black.opacity(0.6))
+                                .foregroundColor(.white)
+                                .clipShape(Capsule())
+                                .offset(x: 6, y: -6)
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if isPluginLoading {
+                            Text("Loading...")
+                                .font(.system(size: 9, weight: .semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.black.opacity(0.65))
+                                .foregroundColor(.white)
+                                .clipShape(Capsule())
+                                .offset(y: 6)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                }
                     .frame(width: 110, height: 110)
                 }
 
@@ -79,6 +105,10 @@ struct EffectBlockHorizontal: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture(count: 2) {
+                if effect.type == .plugin {
+                    onOpenPluginEditor()
+                    return
+                }
                 let canToggle = allowExpand || isExpanded
                 guard canToggle else { return }
                 let wasExpanded = isExpanded
@@ -107,6 +137,15 @@ struct EffectBlockHorizontal: View {
                         .background(tileStyle.fill.opacity(0.2))
 
                     HStack(spacing: 12) {
+                        if effect.type == .plugin {
+                            Button(action: onOpenPluginEditor) {
+                                Label("Open Editor", systemImage: "rectangle.inset.filled.and.person.filled")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(tileStyle.fill)
+                        }
+
                         Button(action: {
                             setEffectEnabled(!getEffectEnabled())
                         }) {

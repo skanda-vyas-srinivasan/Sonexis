@@ -4,6 +4,7 @@ import AppKit
 struct ContentView: View {
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
+    @StateObject private var pluginManager = PluginManager()
     @StateObject private var tutorial = TutorialController()
     @State private var activeScreen: AppScreen = .home
     @State private var showingSaveDialog = false
@@ -92,7 +93,7 @@ struct ContentView: View {
                                 tutorial: tutorial
                             )
                         case .beginner:
-                            CanvasView(audioEngine: audioEngine, tutorial: tutorial)
+                            CanvasView(audioEngine: audioEngine, tutorial: tutorial, pluginManager: pluginManager)
                         case .home:
                             EmptyView()
                         }
@@ -334,4 +335,3 @@ enum AppScreen {
     case presets
     case beginner
 }
-

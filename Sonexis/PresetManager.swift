@@ -154,6 +154,8 @@ struct SavedPreset: Identifiable, Codable {
             params.resampleCrossfade = values.resampleCrossfade ?? params.resampleCrossfade
         case .rubberBandPitch:
             params.rubberBandPitchSemitones = values.rubberBandPitchSemitones ?? params.rubberBandPitchSemitones
+        case .plugin:
+            break
         }
         return params
     }

@@ -1,13 +1,16 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Canvas View
 
 struct CanvasView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
+    @ObservedObject var pluginManager: PluginManager
     @Environment(\.scenePhase) private var scenePhase
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
+    @State private var draggedPlugin: PluginDescriptor?
     @State private var showSignalFlow = false
     @State private var arrowFpsIndex = 1
     @State private var canvasSize: CGSize = .zero
@@ -25,6 +28,7 @@ struct CanvasView: View {
     @State private var selectedWireID: UUID?
     @State private var selectedAutoWire: AutoWireSelection?
     @State private var autoGainOverrides: [WireKey: Double] = [:]
+    @State private var pluginStatusToken = 0
 
     @State private var startNodeID = UUID()
     @State private var endNodeID = UUID()
@@ -599,6 +603,7 @@ struct CanvasView: View {
                             isDropAnimating: isDropAnimating,
                             tileStyle: accentPalette[effectValue.accentIndex % accentPalette.count],
                             nodeScale: nodeScale,
+                            isPluginLoading: effectValue.type == .plugin && !audioEngine.isPluginReady(effectValue.id),
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     removeEffect(id: effectValue.id)
@@ -612,6 +617,9 @@ struct CanvasView: View {
                             },
                             onCollapsed: {
                                 tutorial.advanceIf(.buildCloseOverlay)
+                            },
+                            onOpenPluginEditor: {
+                                openPluginEditor(for: effectValue.id)
                             },
                             allowExpand: !tutorial.isBuildStep || tutorial.step == .buildDoubleClick || tutorial.step == .buildCloseOverlay,
                             tutorialStep: tutorial.step
@@ -810,6 +818,7 @@ struct CanvasView: View {
                 .onDrop(of: [.text], delegate: CanvasDropDelegate(
                     effectChain: $effectChain,
                     draggedEffectType: $draggedEffectType,
+                    draggedPlugin: $draggedPlugin,
                     canvasSize: geometry.size,
                     graphMode: graphMode,
                     laneProvider: { point in
@@ -871,12 +880,19 @@ struct CanvasView: View {
         HStack(spacing: 0) {
             EffectTray(
                 isCollapsed: $isTrayCollapsed,
+                pluginManager: pluginManager,
                 previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
                 onSelect: { type in
                     addEffectToChain(type)
                 },
                 onDrag: { type in
                     draggedEffectType = type
+                },
+                onSelectPlugin: { plugin in
+                    addPluginToChain(plugin)
+                },
+                onDragPlugin: { plugin in
+                    draggedPlugin = plugin
                 },
                 allowTapToAdd: !tutorial.isBuildStep || ![
                     .buildAddBass,
@@ -950,6 +966,12 @@ struct CanvasView: View {
             isAppActive = active
             showSignalFlow = active && audioEngine.isRunning
         }
+        .onReceive(audioEngine.$pluginStatusToken) { token in
+            pluginStatusToken = token
+        }
+        .onReceive(audioEngine.$pluginStatusToken) { token in
+            pluginStatusToken = token
+        }
         .onAppear {
             if flagsMonitor == nil {
                 flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
@@ -1008,11 +1030,37 @@ struct CanvasView: View {
         }
     }
 
+    private func addPluginToChain(_ plugin: PluginDescriptor) {
+        guard !tutorial.isBuildStep else { return }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            recordUndoSnapshot()
+            let lane: GraphLane? = graphMode == .split ? .left : nil
+            let position = defaultNodePosition(in: canvasSize, lane: lane)
+            let reference = plugin.toReference()
+            let newEffect = BeginnerNode(
+                type: .plugin,
+                position: position,
+                lane: lane ?? .left,
+                accentIndex: nextAccentIndex,
+                plugin: reference
+            )
+            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
+            effectChain.append(newEffect)
+            triggerDropAnimation(for: newEffect.id)
+            applyChainToEngine()
+        }
+    }
+
     private func triggerDropAnimation(for id: UUID) {
         dropAnimatedNodeIDs.insert(id)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             dropAnimatedNodeIDs.remove(id)
         }
+    }
+
+    private func openPluginEditor(for nodeId: UUID) {
+        let fallback = NSHostingView(rootView: PluginEditorFallbackView(audioEngine: audioEngine, nodeId: nodeId))
+        audioEngine.openPluginEditor(for: nodeId, fallbackView: fallback)
     }
 
 
@@ -1036,7 +1084,8 @@ struct CanvasView: View {
             lane: source.lane,
             isEnabled: source.isEnabled,
             parameters: source.parameters,
-            accentIndex: source.accentIndex
+            accentIndex: source.accentIndex,
+            plugin: source.plugin
         )
         clone.position = clamp(clone.position, to: canvasSize, lane: graphMode == .split ? clone.lane : nil)
         effectChain.append(clone)
@@ -1244,6 +1293,8 @@ struct CanvasView: View {
             case .resampling:
                 params.resampleRate = audioEngine.resampleRate
                 params.resampleCrossfade = audioEngine.resampleCrossfade
+            case .plugin:
+                break
             }
             updated.parameters = params
             return updated
@@ -1251,11 +1302,19 @@ struct CanvasView: View {
     }
 
     private func currentGraphSnapshot() -> GraphSnapshot {
-        GraphSnapshot(
+        let nodesWithState = effectChain.map { node in
+            guard node.type == .plugin, var plugin = node.plugin else { return node }
+            var updated = node
+            plugin.stateData = audioEngine.pluginStateData(for: node.id)
+            updated.plugin = plugin
+            return updated
+        }
+
+        return GraphSnapshot(
             graphMode: graphMode,
             wiringMode: wiringMode == .manual ? .manual : .automatic,
             autoConnectEnd: autoConnectEnd,
-            nodes: effectChain,
+            nodes: nodesWithState,
             connections: manualConnections,
             autoGainOverrides: autoGainOverrides.map {
                 BeginnerConnection(fromNodeId: $0.key.from, toNodeId: $0.key.to, gain: $0.value)

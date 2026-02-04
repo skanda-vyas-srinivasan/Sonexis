@@ -8,6 +8,42 @@ enum GraphLane: String, Codable {
     case right
 }
 
+enum PluginFormat: String, Codable {
+    case au
+    case vst3
+}
+
+struct PluginReference: Codable, Equatable {
+    var format: PluginFormat
+    var identifier: String
+    var name: String
+    var vendor: String
+    var componentType: UInt32?
+    var componentSubType: UInt32?
+    var componentManufacturer: UInt32?
+    var stateData: Data?
+
+    init(
+        format: PluginFormat,
+        identifier: String,
+        name: String,
+        vendor: String,
+        componentType: UInt32? = nil,
+        componentSubType: UInt32? = nil,
+        componentManufacturer: UInt32? = nil,
+        stateData: Data? = nil
+    ) {
+        self.format = format
+        self.identifier = identifier
+        self.name = name
+        self.vendor = vendor
+        self.componentType = componentType
+        self.componentSubType = componentSubType
+        self.componentManufacturer = componentManufacturer
+        self.stateData = stateData
+    }
+}
+
 struct NodeEffectParameters: Codable, Equatable {
     var bassBoostAmount: Double
     var enhancerAmount: Double
@@ -258,6 +294,7 @@ struct BeginnerNode: Identifiable, Codable {
     var isEnabled: Bool
     var parameters: NodeEffectParameters
     var accentIndex: Int
+    var plugin: PluginReference?
 
     init(
         type: EffectType,
@@ -265,7 +302,8 @@ struct BeginnerNode: Identifiable, Codable {
         lane: GraphLane = .left,
         isEnabled: Bool = true,
         parameters: NodeEffectParameters = NodeEffectParameters.defaults(),
-        accentIndex: Int = 0
+        accentIndex: Int = 0,
+        plugin: PluginReference? = nil
     ) {
         self.id = UUID()
         self.type = type
@@ -274,6 +312,7 @@ struct BeginnerNode: Identifiable, Codable {
         self.isEnabled = isEnabled
         self.parameters = parameters
         self.accentIndex = accentIndex
+        self.plugin = plugin
     }
 
     enum CodingKeys: String, CodingKey {
@@ -284,6 +323,7 @@ struct BeginnerNode: Identifiable, Codable {
         case isEnabled
         case parameters
         case accentIndex
+        case plugin
     }
 
     init(from decoder: Decoder) throws {
@@ -295,6 +335,7 @@ struct BeginnerNode: Identifiable, Codable {
         self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
         self.parameters = try container.decodeIfPresent(NodeEffectParameters.self, forKey: .parameters) ?? NodeEffectParameters.defaults()
         self.accentIndex = try container.decodeIfPresent(Int.self, forKey: .accentIndex) ?? 0
+        self.plugin = try container.decodeIfPresent(PluginReference.self, forKey: .plugin)
     }
 }
 
@@ -324,6 +365,34 @@ struct BeginnerConnection: Identifiable, Codable {
         self.fromNodeId = try container.decode(UUID.self, forKey: .fromNodeId)
         self.toNodeId = try container.decode(UUID.self, forKey: .toNodeId)
         self.gain = try container.decodeIfPresent(Double.self, forKey: .gain) ?? 1.0
+    }
+}
+
+extension BeginnerNode {
+    var displayName: String {
+        if type == .plugin {
+            return plugin?.name ?? type.rawValue
+        }
+        return type.rawValue
+    }
+
+    var displayIcon: String {
+        if type == .plugin {
+            return "puzzlepiece.extension"
+        }
+        return type.icon
+    }
+
+    var displayBadge: String? {
+        guard type == .plugin else { return nil }
+        switch plugin?.format {
+        case .au:
+            return "AU"
+        case .vst3:
+            return "VST3"
+        default:
+            return nil
+        }
     }
 }
 

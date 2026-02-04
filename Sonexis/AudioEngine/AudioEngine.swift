@@ -209,6 +209,7 @@ class AudioEngine: ObservableObject {
     @Published var signalFlowToken: Int = 0
     @Published var betaRecordingUnlocked = false
     @Published var isRecording = false
+    @Published var pluginStatusToken: Int = 0
 
     private var recordingFile: AVAudioFile?
     private let recordingLock = NSLock()
@@ -225,6 +226,11 @@ class AudioEngine: ObservableObject {
         setupNotifications()
         refreshOutputDevices()
         updateProcessingSnapshot()
+        pluginHost.onPluginReady = { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.pluginStatusToken += 1
+            }
+        }
     }
 
     // Pitch Shift effect (Nightcore) - now uses AVAudioUnitTimePitch
@@ -693,6 +699,7 @@ class AudioEngine: ObservableObject {
     var useSplitGraph = false
     var nodeParameters: [UUID: NodeEffectParameters] = [:]
     var nodeEnabled: [UUID: Bool] = [:]
+    let pluginHost = PluginHost()
     var levelUpdateCounter = 0
     let effectStateLock = NSLock()
     private let snapshotLock = NSLock()

@@ -5,6 +5,7 @@ import SwiftUI
 struct CanvasDropDelegate: DropDelegate {
     @Binding var effectChain: [BeginnerNode]
     @Binding var draggedEffectType: EffectType?
+    @Binding var draggedPlugin: PluginDescriptor?
     let canvasSize: CGSize
     let graphMode: GraphMode
     let laneProvider: (CGPoint) -> GraphLane
@@ -15,9 +16,20 @@ struct CanvasDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        guard let effectType = draggedEffectType else { return false }
         let lane = graphMode == .split ? laneProvider(info.location) : .left
         let location = clamp(info.location, to: canvasSize, lane: graphMode == .split ? lane : nil)
+        if let plugin = draggedPlugin {
+            let node = BeginnerNode(
+                type: .plugin,
+                position: location,
+                lane: lane,
+                plugin: plugin.toReference()
+            )
+            onAdd(node)
+            draggedPlugin = nil
+            return true
+        }
+        guard let effectType = draggedEffectType else { return false }
         onAdd(BeginnerNode(type: effectType, position: location, lane: lane))
         draggedEffectType = nil
         return true
@@ -38,4 +50,3 @@ struct CanvasDropDelegate: DropDelegate {
         return CGPoint(x: x, y: y)
     }
 }
-

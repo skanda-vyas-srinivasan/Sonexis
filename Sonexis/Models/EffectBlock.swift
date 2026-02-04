@@ -62,6 +62,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["rate": 1.0]
         case .enhancer:
             return ["intensity": 50.0]
+        case .plugin:
+            return [:]
         }
     }
 }

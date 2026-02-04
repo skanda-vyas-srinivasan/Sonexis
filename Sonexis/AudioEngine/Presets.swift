@@ -311,6 +311,8 @@ extension AudioEngine {
                 if let semitones = params.rubberBandPitchSemitones {
                     rubberBandPitchSemitones = semitones
                 }
+            case .plugin:
+                break
             }
         }
 
@@ -324,6 +326,7 @@ extension AudioEngine {
             useSplitGraph = false
             syncNodeState(chain)
         }
+        pluginHost.sync(nodes: chain)
         scheduleSnapshotUpdate()
 
         let activeTypes = Set(chain.filter { $0.isEnabled }.map { $0.type })
@@ -379,6 +382,7 @@ extension AudioEngine {
             useSplitGraph = false
             syncNodeState(nodes)
         }
+        pluginHost.sync(nodes: nodes)
         scheduleSnapshotUpdate()
 
         let activeTypes = Set(nodes.filter { $0.isEnabled }.map { $0.type })
@@ -429,6 +433,7 @@ extension AudioEngine {
             useManualGraph = false
             syncNodeState(leftNodes + rightNodes)
         }
+        pluginHost.sync(nodes: leftNodes + rightNodes)
         scheduleSnapshotUpdate()
 
         let activeTypes = Set((leftNodes + rightNodes).filter { $0.isEnabled }.map { $0.type })

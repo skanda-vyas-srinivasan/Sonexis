@@ -23,6 +23,7 @@ enum EffectType: String, Codable, CaseIterable {
     case tapeSaturation = "Tape Saturation"
     case resampling = "Resampling"
     case enhancer = "Enhancer"
+    case plugin = "Plugin"
 
     var description: String {
         switch self {
@@ -66,6 +67,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "Pitch and speed shift by resampling"
         case .enhancer:
             return "Adds clarity, warmth, and punch in one step"
+        case .plugin:
+            return "Third-party effect plugin"
         }
     }
 
@@ -111,6 +114,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "arrow.triangle.2.circlepath"
         case .enhancer:
             return "flame.fill"
+        case .plugin:
+            return "puzzlepiece.extension"
         }
     }
 }

@@ -99,6 +99,9 @@ struct EffectParametersViewCompact: View {
             case .resampling:
                 CompactSlider(label: "Rate", value: $parameters.resampleRate, range: 0.5...2.0, format: .ratio, tint: tint, onChange: onChange)
                 CompactSlider(label: "Smooth", value: $parameters.resampleCrossfade, range: 0.05...0.6, format: .percent, tint: tint, onChange: onChange)
+
+            case .plugin:
+                EmptyView()
             }
         }
     }
