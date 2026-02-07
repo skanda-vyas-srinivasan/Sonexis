@@ -628,7 +628,7 @@ final class AUPluginInstance: PluginInstance {
             timeStamp.mFlags = .sampleTimeValid
             timeStamp.mSampleTime = 0
 
-            for _ in 0..<3 {
+            for _ in 0..<10 {
                 _ = renderBlock(&actionFlags, &timeStamp, AUAudioFrameCount(frameLength), 0, bufferList.unsafeMutablePointer, pullInput)
                 timeStamp.mSampleTime += Double(frameLength)
             }
