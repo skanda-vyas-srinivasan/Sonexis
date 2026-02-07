@@ -404,8 +404,8 @@ struct TutorialOverlay: View {
         case .buildTrayTabs:
             return (
                 title: "Effect tray",
-                body: "Built-in are the effects Sonexis comes with.\n\nPlugins are Audio Units (AU) you have installed on your Mac. Sonexis scans and lists them here.\n\nTap Plugins once, then press Next.",
-                showNext: trayTabsVisited
+                body: "These tabs display the effects you can add to your sound. They mainly come in two categories:\n\nThe Built-in tab contains the effects that ship with Sonexis. They are ready to use right away and cover the core tools you will reach for most often.\n\nThe Plugins tab contains Audio Units you have installed on your Mac. Sonexis scans your system and lists them here so you can add them to your chain.",
+                showNext: true
             )
         case .buildHeaderIntro:
             return (

@@ -228,6 +228,7 @@ class AudioEngine: ObservableObject {
         setupNotifications()
         refreshOutputDevices()
         updateProcessingSnapshot()
+        startDeviceListMonitor()
         pluginHost.onPluginReady = { [weak self] _ in
             DispatchQueue.main.async {
                 self?.pluginStatusToken += 1
@@ -677,6 +678,9 @@ class AudioEngine: ObservableObject {
     var setupMonitorTimer: DispatchSourceTimer?
     var setupMonitorListener: AudioObjectPropertyListenerBlock?
     let setupMonitorQueue = DispatchQueue(label: "AudioEngine.SetupMonitor", qos: .utility)
+    var deviceListMonitorTimer: DispatchSourceTimer?
+    var deviceListMonitorListener: AudioObjectPropertyListenerBlock?
+    let deviceListMonitorQueue = DispatchQueue(label: "AudioEngine.DeviceListMonitor", qos: .utility)
 
     // Store original devices before switching to BlackHole
     var originalInputDeviceID: AudioDeviceID?

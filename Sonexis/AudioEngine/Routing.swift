@@ -3,6 +3,69 @@ import CoreAudio
 import Foundation
 
 extension AudioEngine {
+    func startDeviceListMonitor() {
+        guard deviceListMonitorListener == nil else { return }
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            guard let self = self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.refreshOutputDevices()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.refreshOutputDevices()
+            }
+        }
+        deviceListMonitorListener = listener
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            deviceListMonitorQueue,
+            listener
+        )
+        if status != noErr {
+            deviceListMonitorListener = nil
+            startDeviceListMonitorTimer()
+        }
+    }
+
+    func stopDeviceListMonitor() {
+        if let listener = deviceListMonitorListener {
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDevices,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                deviceListMonitorQueue,
+                listener
+            )
+            deviceListMonitorListener = nil
+        }
+        deviceListMonitorTimer?.cancel()
+        deviceListMonitorTimer = nil
+    }
+
+    private func startDeviceListMonitorTimer() {
+        guard deviceListMonitorTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.refreshOutputDevices()
+            }
+        }
+        deviceListMonitorTimer = timer
+        timer.resume()
+    }
+
     func systemDefaultInputDeviceName() -> String? {
         guard let deviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultInputDevice),
               let device = AudioDevice(id: deviceID) else {
@@ -182,6 +245,12 @@ extension AudioEngine {
         guard setupMonitorListener == nil else { return }
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             guard let self = self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.refreshOutputDevices()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.refreshOutputDevices()
+            }
             let ready = self.refreshSetupStatus()
             if !ready && self.isRunning {
                 DispatchQueue.main.async {
@@ -249,6 +318,12 @@ extension AudioEngine {
         timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.refreshOutputDevices()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.refreshOutputDevices()
+            }
             let ready = self.refreshSetupStatus()
             if !ready && self.isRunning {
                 DispatchQueue.main.async {
@@ -270,6 +345,11 @@ extension AudioEngine {
             ),
             AudioObjectPropertyAddress(
                 mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDevices,
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
