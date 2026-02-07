@@ -2,6 +2,7 @@ import SwiftUI
 
 final class TutorialController: ObservableObject {
     @Published var step: TutorialStep = .inactive
+    @Published var hasVisitedTrayTabs = false
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
     var isActive: Bool { step != .inactive }
@@ -36,6 +37,7 @@ final class TutorialController: ObservableObject {
     var isBuildStep: Bool {
         switch step {
         case .buildIntro,
+             .buildTrayTabs,
              .buildHeaderIntro,
              .buildPower,
              .buildShield,
@@ -72,11 +74,13 @@ final class TutorialController: ObservableObject {
     func startIfNeeded(isSetupVisible: Bool) {
         guard !hasSeenTutorial, !isSetupVisible else { return }
         step = .welcome
+        hasVisitedTrayTabs = false
         hasSeenTutorial = true
     }
 
     func startFromHelp() {
         step = .welcome
+        hasVisitedTrayTabs = false
     }
 
     func advance() {
@@ -92,6 +96,9 @@ final class TutorialController: ObservableObject {
         case .homeBuild:
             step = .buildIntro
         case .buildIntro:
+            step = .buildTrayTabs
+            hasVisitedTrayTabs = false
+        case .buildTrayTabs:
             step = .buildHeaderIntro
         case .buildHeaderIntro:
             step = .buildPower
@@ -186,4 +193,3 @@ final class TutorialController: ObservableObject {
         step = .inactive
     }
 }
-

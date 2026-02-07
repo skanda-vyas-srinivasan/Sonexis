@@ -10,8 +10,24 @@ struct EffectTray: View {
     let onDrag: (EffectType) -> Void
     let onSelectPlugin: (PluginDescriptor) -> Void
     let onDragPlugin: (PluginDescriptor) -> Void
+    let onTabChange: (TrayTab) -> Void
     let allowTapToAdd: Bool
+    let tutorialStep: TutorialStep
     @State private var searchText = ""
+    @State private var activeTab: TrayTab = .builtIn
+    @State private var favoriteIDs: Set<String> = []
+    private let tileWidth: CGFloat = 92
+    private let tileHeight: CGFloat = 120
+    private let labelHeight: CGFloat = 32
+    private let iconTileSize: CGFloat = 64
+
+    enum TrayTab: String, CaseIterable, Identifiable {
+        case builtIn = "Built-in"
+        case plugins = "Plugins"
+        case favorites = "Favorites"
+
+        var id: String { rawValue }
+    }
 
     private let effects: [EffectType] = [
         .bassBoost, .enhancer, .clarity, .deMud,
@@ -21,14 +37,18 @@ struct EffectTray: View {
     ]
 
     var body: some View {
+        let gridColumns = [
+            GridItem(.fixed(tileWidth), spacing: 10),
+            GridItem(.fixed(tileWidth), spacing: 10)
+        ]
         let filteredEffects = effects.filter { effect in
             searchText.isEmpty || effect.rawValue.lowercased().contains(searchText.lowercased())
         }
         let filteredPlugins = pluginManager.plugins.filter { plugin in
             plugin.format == .au && (searchText.isEmpty || plugin.name.lowercased().contains(searchText.lowercased()))
         }
-
-        let gridColumns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+        let favoriteEffects = effects.filter { favoriteIDs.contains(effectFavoriteID($0)) }
+        let favoritePlugins = pluginManager.plugins.filter { favoriteIDs.contains(pluginFavoriteID($0)) }
 
         ZStack {
             VStack(spacing: 0) {
@@ -38,6 +58,14 @@ struct EffectTray: View {
                             .font(AppTypography.technical)
                             .foregroundColor(AppColors.textMuted)
                         Spacer()
+                        if activeTab == .plugins {
+                            Button(action: { pluginManager.scanPlugins() }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Rescan")
+                        }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
@@ -62,71 +90,101 @@ struct EffectTray: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
 
+                    trayTabs
+
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVGrid(columns: gridColumns, spacing: 14) {
-                            ForEach(filteredEffects, id: \.self) { effectType in
-                                EffectPaletteButton(
-                                    effectType: effectType,
-                                    previewStyle: previewStyle,
-                                    onTap: {
-                                        if allowTapToAdd {
-                                            onSelect(effectType)
-                                        }
-                                    },
-                                    onDragStart: {
-                                        onDrag(effectType)
-                                    }
-                                )
-                                .opacity(allowTapToAdd ? 1.0 : 0.95)
-                            }
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 12)
-
-                        Divider()
-                            .background(AppColors.gridLines)
-                            .padding(.vertical, 6)
-
-                        HStack {
-                            Text("Plugins")
-                                .font(AppTypography.caption)
-                                .foregroundColor(AppColors.textMuted)
-                            Spacer()
-                            Button(action: { pluginManager.promptAddFolder() }) {
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                            .buttonStyle(.plain)
-                            .help("Add Folder")
-
-                            Button(action: { pluginManager.scanPlugins() }) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                            .buttonStyle(.plain)
-                            .help("Rescan")
-                        }
-                        .padding(.horizontal, 10)
-
-                        if filteredPlugins.isEmpty {
-                            Text("No plugins found")
-                                .font(AppTypography.caption)
-                                .foregroundColor(AppColors.textMuted)
-                                .padding(.vertical, 8)
-                        } else {
-                            LazyVGrid(columns: gridColumns, spacing: 12) {
-                                ForEach(filteredPlugins) { plugin in
-                                    PluginPaletteButton(
-                                        plugin: plugin,
+                        switch activeTab {
+                        case .builtIn:
+                            LazyVGrid(columns: gridColumns, spacing: 14) {
+                                ForEach(filteredEffects, id: \.self) { effectType in
+                                    EffectPaletteButton(
+                                        effectType: effectType,
                                         previewStyle: previewStyle,
-                                        onTap: { onSelectPlugin(plugin) },
-                                        onDragStart: { onDragPlugin(plugin) }
+                                        isFavorite: favoriteIDs.contains(effectFavoriteID(effectType)),
+                                        onToggleFavorite: { toggleFavorite(effectFavoriteID(effectType)) },
+                                        onDragStart: {
+                                            onDrag(effectType)
+                                        },
+                                        tileWidth: tileWidth,
+                                        tileHeight: tileHeight,
+                                        labelHeight: labelHeight,
+                                        iconTileSize: iconTileSize
                                     )
                                     .opacity(allowTapToAdd ? 1.0 : 0.95)
                                 }
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 12)
+
+                        case .plugins:
+                            if filteredPlugins.isEmpty {
+                                Text("No plugins found")
+                                    .font(AppTypography.caption)
+                                    .foregroundColor(AppColors.textMuted)
+                                    .padding(.vertical, 8)
+                            } else {
+                                LazyVGrid(columns: gridColumns, spacing: 12) {
+                                    ForEach(filteredPlugins) { plugin in
+                                        PluginPaletteButton(
+                                            plugin: plugin,
+                                            previewStyle: previewStyle,
+                                            isFavorite: favoriteIDs.contains(pluginFavoriteID(plugin)),
+                                            onToggleFavorite: { toggleFavorite(pluginFavoriteID(plugin)) },
+                                            onDragStart: { onDragPlugin(plugin) },
+                                            tileWidth: tileWidth,
+                                            tileHeight: tileHeight,
+                                            labelHeight: labelHeight,
+                                            iconTileSize: iconTileSize
+                                        )
+                                        .opacity(allowTapToAdd ? 1.0 : 0.95)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 12)
+                            }
+
+                        case .favorites:
+                            if favoriteEffects.isEmpty && favoritePlugins.isEmpty {
+                                Text("No favorites yet")
+                                    .font(AppTypography.caption)
+                                    .foregroundColor(AppColors.textMuted)
+                                    .padding(.vertical, 12)
+                            } else {
+                                LazyVGrid(columns: gridColumns, spacing: 12) {
+                                    ForEach(favoriteEffects, id: \.self) { effectType in
+                                        EffectPaletteButton(
+                                            effectType: effectType,
+                                            previewStyle: previewStyle,
+                                            isFavorite: true,
+                                            onToggleFavorite: { toggleFavorite(effectFavoriteID(effectType)) },
+                                            onDragStart: {
+                                                onDrag(effectType)
+                                            },
+                                            tileWidth: tileWidth,
+                                            tileHeight: tileHeight,
+                                            labelHeight: labelHeight,
+                                            iconTileSize: iconTileSize
+                                        )
+                                        .opacity(allowTapToAdd ? 1.0 : 0.95)
+                                    }
+                                    ForEach(favoritePlugins) { plugin in
+                                        PluginPaletteButton(
+                                            plugin: plugin,
+                                            previewStyle: previewStyle,
+                                            isFavorite: true,
+                                            onToggleFavorite: { toggleFavorite(pluginFavoriteID(plugin)) },
+                                            onDragStart: { onDragPlugin(plugin) },
+                                            tileWidth: tileWidth,
+                                            tileHeight: tileHeight,
+                                            labelHeight: labelHeight,
+                                            iconTileSize: iconTileSize
+                                        )
+                                        .opacity(allowTapToAdd ? 1.0 : 0.95)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 12)
+                            }
                         }
                     }
                 }
@@ -149,20 +207,113 @@ struct EffectTray: View {
             .frame(maxHeight: .infinity)
             .zIndex(2)
         }
-        .frame(width: isCollapsed ? 44 : 200)
+        .frame(width: isCollapsed ? 44 : 220)
         .background(AppColors.darkPurple.opacity(0.96))
         .overlay(
             Divider(),
             alignment: .trailing
         )
+        .onAppear(perform: loadFavorites)
+        .onChange(of: tutorialStep) { step in
+            if step == .buildTrayTabs || step == .buildAddBass {
+                activeTab = .builtIn
+            }
+        }
+        .onAppear {
+            if tutorialStep == .buildTrayTabs {
+                activeTab = .builtIn
+            }
+        }
+    }
+
+    private var trayTabs: some View {
+        HStack(spacing: 8) {
+            ForEach(TrayTab.allCases) { tab in
+                let isActive = tab == activeTab
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        activeTab = tab
+                    }
+                    onTabChange(tab)
+                }) {
+                    Text(tab.rawValue)
+                        .font(AppTypography.caption)
+                        .foregroundColor(isActive ? AppColors.textPrimary : AppColors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .minimumScaleFactor(0.85)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(isActive ? AppColors.midPurple.opacity(0.75) : AppColors.darkPurple.opacity(0.35))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(
+                                    isActive ? AppColors.neonCyan.opacity(0.65) : AppColors.midPurple.opacity(0.7),
+                                    lineWidth: 1
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TutorialTargetPreferenceKey.self,
+                    value: [.buildTrayTabs: proxy.frame(in: .global)]
+                )
+            }
+        )
+    }
+
+    private func effectFavoriteID(_ effect: EffectType) -> String {
+        "effect:\(effect.rawValue)"
+    }
+
+    private func pluginFavoriteID(_ plugin: PluginDescriptor) -> String {
+        "plugin:\(plugin.id)"
+    }
+
+    private func loadFavorites() {
+        let key = "Sonexis.TrayFavorites"
+        guard let data = UserDefaults.standard.data(forKey: key) else { return }
+        guard let list = try? JSONDecoder().decode([String].self, from: data) else { return }
+        favoriteIDs = Set(list)
+    }
+
+    private func saveFavorites() {
+        let key = "Sonexis.TrayFavorites"
+        let list = Array(favoriteIDs)
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private func toggleFavorite(_ id: String) {
+        if favoriteIDs.contains(id) {
+            favoriteIDs.remove(id)
+        } else {
+            favoriteIDs.insert(id)
+        }
+        saveFavorites()
     }
 }
 
 struct EffectPaletteButton: View {
     let effectType: EffectType
     let previewStyle: AccentStyle
-    let onTap: () -> Void
+    let isFavorite: Bool
+    let onToggleFavorite: () -> Void
     let onDragStart: () -> Void
+    let tileWidth: CGFloat
+    let tileHeight: CGFloat
+    let labelHeight: CGFloat
+    let iconTileSize: CGFloat
     @State private var isHovered = false
     @State private var isDragging = false
     private let tileBase = AppColors.midPurple
@@ -170,27 +321,52 @@ struct EffectPaletteButton: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Image(systemName: effectType.icon)
-                .font(.system(size: 20, weight: .light))
-                .symbolRenderingMode(.monochrome)
-                .foregroundColor(textColor)
-                .frame(width: 50, height: 50)
-                .background(tileBase)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(isHovered ? AppColors.neonPink : Color.clear, lineWidth: 1)
-                )
-                .scaleEffect(isHovered ? 1.05 : 1.0)
-                .opacity(isDragging ? 0.5 : 1.0)
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            colors: [tileBase.opacity(0.95), tileBase.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: iconTileSize, height: iconTileSize)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(isHovered ? AppColors.neonPink : AppColors.midPurple.opacity(0.6), lineWidth: 1)
+                    )
+
+                Image(systemName: effectType.icon)
+                    .font(.system(size: 30, weight: .light))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundColor(textColor)
+                    .shadow(color: AppColors.neonCyan.opacity(0.2), radius: 4, x: 0, y: 0)
+                    .scaleEffect(isHovered ? 1.05 : 1.0)
+                    .opacity(isDragging ? 0.5 : 1.0)
+            }
+            .overlay(alignment: .topTrailing) {
+                Button(action: onToggleFavorite) {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(isFavorite ? AppColors.neonCyan : AppColors.textMuted)
+                        .padding(4)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Circle())
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+            }
 
             Text(effectType.rawValue)
                 .font(AppTypography.caption)
                 .foregroundColor(textColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .frame(width: 62)
+                .minimumScaleFactor(0.85)
+                .allowsTightening(true)
+                .frame(width: tileWidth, height: labelHeight)
         }
+        .frame(width: tileWidth, height: tileHeight, alignment: .top)
         .background(
             GeometryReader { proxy in
                 switch effectType {
@@ -232,8 +408,13 @@ struct EffectPaletteButton: View {
 struct PluginPaletteButton: View {
     let plugin: PluginDescriptor
     let previewStyle: AccentStyle
-    let onTap: () -> Void
+    let isFavorite: Bool
+    let onToggleFavorite: () -> Void
     let onDragStart: () -> Void
+    let tileWidth: CGFloat
+    let tileHeight: CGFloat
+    let labelHeight: CGFloat
+    let iconTileSize: CGFloat
     @State private var isHovered = false
     private let tileBase = AppColors.midPurple
     private let textColor = AppColors.textPrimary
@@ -242,35 +423,59 @@ struct PluginPaletteButton: View {
         VStack(spacing: 6) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(tileBase)
-                    .frame(width: 50, height: 50)
+                    .fill(
+                        LinearGradient(
+                            colors: [tileBase.opacity(0.95), tileBase.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: iconTileSize, height: iconTileSize)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isHovered ? AppColors.neonPink : Color.clear, lineWidth: 1)
+                            .stroke(isHovered ? AppColors.neonPink : AppColors.midPurple.opacity(0.6), lineWidth: 1)
                     )
 
                 Image(systemName: "puzzlepiece.extension")
-                    .font(.system(size: 20, weight: .light))
+                    .font(.system(size: 30, weight: .light))
                     .symbolRenderingMode(.monochrome)
                     .foregroundColor(textColor)
+                    .shadow(color: AppColors.neonCyan.opacity(0.2), radius: 4, x: 0, y: 0)
             }
             .scaleEffect(isHovered ? 1.05 : 1.0)
+            .overlay(alignment: .bottomTrailing) {
+                Text(plugin.format == .au ? "AU" : "VST3")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(previewStyle.text.opacity(0.9))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Capsule())
+                    .offset(x: 5, y: -3)
+            }
+            .overlay(alignment: .topTrailing) {
+                Button(action: onToggleFavorite) {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(isFavorite ? AppColors.neonCyan : AppColors.textMuted)
+                        .padding(4)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Circle())
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+            }
 
             Text(plugin.name)
                 .font(AppTypography.caption)
                 .foregroundColor(textColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .frame(width: 70)
-
-            Text(plugin.format == .au ? "AU" : "VST3")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(previewStyle.text.opacity(0.85))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(previewStyle.fill.opacity(0.2))
-                .clipShape(Capsule())
+                .minimumScaleFactor(0.78)
+                .allowsTightening(true)
+                .frame(width: tileWidth, height: labelHeight)
         }
+        .frame(width: tileWidth, height: tileHeight, alignment: .top)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
                 isHovered = hovering

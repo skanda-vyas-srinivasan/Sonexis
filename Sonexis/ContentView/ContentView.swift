@@ -117,6 +117,7 @@ struct ContentView: View {
                     step: tutorial.step,
                     targets: tutorialTargets,
                     isSetupReady: audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") },
+                    trayTabsVisited: tutorial.hasVisitedTrayTabs,
                     onNext: { tutorial.advance() },
                     onSkip: { tutorial.endTutorial() },
                     onOpenSetup: { showSetupOverlay = true }

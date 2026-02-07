@@ -895,12 +895,18 @@ struct CanvasView: View {
                 onDragPlugin: { plugin in
                     draggedPlugin = plugin
                 },
+                onTabChange: { tab in
+                    if tutorial.step == .buildTrayTabs && tab != .builtIn {
+                        tutorial.hasVisitedTrayTabs = true
+                    }
+                },
                 allowTapToAdd: !tutorial.isBuildStep || ![
                     .buildAddBass,
                     .buildAutoAddClarity,
                     .buildParallelAddReverb,
                     .buildDualMonoAdd
-                ].contains(tutorial.step)
+                ].contains(tutorial.step),
+                tutorialStep: tutorial.step
             )
 
             VStack(spacing: 0) {

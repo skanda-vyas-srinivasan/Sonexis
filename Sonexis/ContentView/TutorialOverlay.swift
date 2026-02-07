@@ -4,6 +4,7 @@ struct TutorialOverlay: View {
     let step: TutorialStep
     let targets: [TutorialTarget: CGRect]
     let isSetupReady: Bool
+    let trayTabsVisited: Bool
     let onNext: () -> Void
     let onSkip: () -> Void
     let onOpenSetup: () -> Void
@@ -85,12 +86,20 @@ struct TutorialOverlay: View {
         case .homeBuild:
             return [convertToLocal(rect: targets[.buildButton], proxy: proxy)].compactMap { $0 }
         case .presetsBack:
-            return [convertToLocal(rect: targets[.backButton], proxy: proxy)].compactMap { $0 }
+            return [convertToLocal(rect: targets[.backButton], proxy: proxy)]
+                .compactMap { rect in
+                    rect.map { paddedHighlight($0, padding: 8) }
+                }
         case .buildAutoAddClarity:
             return [
                 convertToLocal(rect: targets[.buildClarity], proxy: proxy),
                 convertToLocal(rect: targets[.buildCanvas], proxy: proxy)
             ].compactMap { $0 }
+        case .buildTrayTabs:
+            return [convertToLocal(rect: targets[.buildTrayTabs], proxy: proxy)]
+                .compactMap { rect in
+                    rect.map { paddedHighlight($0, insets: EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 6)) }
+                }
         case .buildAutoReorder:
             return [
                 convertToLocal(rect: targets[.buildBassNode], proxy: proxy),
@@ -169,6 +178,19 @@ struct TutorialOverlay: View {
         guard let rect else { return nil }
         let global = proxy.frame(in: .global)
         return rect.offsetBy(dx: -global.minX, dy: -global.minY)
+    }
+
+    private func paddedHighlight(_ rect: CGRect, padding: CGFloat) -> CGRect {
+        rect.insetBy(dx: -padding, dy: -padding)
+    }
+
+    private func paddedHighlight(_ rect: CGRect, insets: EdgeInsets) -> CGRect {
+        CGRect(
+            x: rect.minX - insets.leading,
+            y: rect.minY - insets.top,
+            width: rect.width + insets.leading + insets.trailing,
+            height: rect.height + insets.top + insets.bottom
+        )
     }
 
     @ViewBuilder
@@ -378,6 +400,12 @@ struct TutorialOverlay: View {
                 title: "Canvas",
                 body: "This is where signal flow happens. Drag effects from the tray into this space.",
                 showNext: true
+            )
+        case .buildTrayTabs:
+            return (
+                title: "Effect tray",
+                body: "Built-in are the effects Sonexis comes with.\n\nPlugins are Audio Units (AU) you have installed on your Mac. Sonexis scans and lists them here.\n\nTap Plugins once, then press Next.",
+                showNext: trayTabsVisited
             )
         case .buildHeaderIntro:
             return (

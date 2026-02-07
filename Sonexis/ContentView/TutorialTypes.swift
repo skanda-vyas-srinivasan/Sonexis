@@ -12,6 +12,7 @@ enum TutorialTarget: Hashable {
     case buildClarity
     case buildReverb
     case buildCanvas
+    case buildTrayTabs
     case buildSave
     case buildLoad
     case buildBassNode
@@ -38,6 +39,7 @@ enum TutorialStep: Equatable {
     case presetsBack
     case homeBuild
     case buildIntro
+    case buildTrayTabs
     case buildHeaderIntro
     case buildPower
     case buildShield
@@ -69,4 +71,3 @@ enum TutorialStep: Equatable {
     case buildCloseLoad
     case buildFinish
 }
-
