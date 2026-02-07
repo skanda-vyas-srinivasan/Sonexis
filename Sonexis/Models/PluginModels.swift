@@ -9,6 +9,7 @@ struct PluginDescriptor: Identifiable, Hashable {
     let componentType: UInt32?
     let componentSubType: UInt32?
     let componentManufacturer: UInt32?
+    let hasCustomView: Bool?
     let location: URL?
 
     init(
@@ -19,6 +20,7 @@ struct PluginDescriptor: Identifiable, Hashable {
         componentType: UInt32? = nil,
         componentSubType: UInt32? = nil,
         componentManufacturer: UInt32? = nil,
+        hasCustomView: Bool? = nil,
         location: URL? = nil
     ) {
         self.format = format
@@ -28,6 +30,7 @@ struct PluginDescriptor: Identifiable, Hashable {
         self.componentType = componentType
         self.componentSubType = componentSubType
         self.componentManufacturer = componentManufacturer
+        self.hasCustomView = hasCustomView
         self.location = location
         self.id = "\(format.rawValue)|\(identifier)"
     }
@@ -41,6 +44,7 @@ struct PluginDescriptor: Identifiable, Hashable {
             componentType: componentType,
             componentSubType: componentSubType,
             componentManufacturer: componentManufacturer,
+            hasCustomView: hasCustomView,
             stateData: stateData
         )
     }

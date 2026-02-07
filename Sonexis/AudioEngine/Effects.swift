@@ -1416,17 +1416,83 @@ extension AudioEngine {
 
         case .plugin:
             guard let nodeId else { return }
-            if !nodeIsEnabled(nodeId, snapshot: snapshot) {
+            let isEnabled = nodeIsEnabled(nodeId, snapshot: snapshot)
+            if !isEnabled {
+                if let lastWet = pluginWetScratchByNode[nodeId], (pluginWasEnabledByNode[nodeId] ?? false) {
+                    let total = max(1, min(Int(sampleRate * 0.08), frameLength))
+                    if pluginCrossfadeOutRemainingByNode[nodeId] == nil || pluginCrossfadeOutRemainingByNode[nodeId] == 0 {
+                        pluginCrossfadeOutTotalByNode[nodeId] = total
+                        pluginCrossfadeOutRemainingByNode[nodeId] = total
+                    }
+                    let remaining = pluginCrossfadeOutRemainingByNode[nodeId] ?? 0
+                    if remaining > 0 {
+                        let start = max(0, total - remaining)
+                        for channel in 0..<channelCount {
+                            for frame in 0..<frameLength {
+                                let pos = min(total, start + frame)
+                                let t = Float(pos) / Float(total)
+                                processedAudio[channel][frame] = lastWet[channel][frame] * (1 - t)
+                                    + processedAudio[channel][frame] * t
+                            }
+                        }
+                        let nextRemaining = remaining - frameLength
+                        pluginCrossfadeOutRemainingByNode[nodeId] = max(0, nextRemaining)
+                    }
+                }
+                pluginWasEnabledByNode[nodeId] = false
                 levelSnapshot[nodeId] = 0
                 return
             }
             guard let instance = pluginHost.instance(for: nodeId) else { return }
+            if !instance.isReady {
+                pluginWasReadyByNode[nodeId] = false
+                return
+            }
+            let wasEnabled = pluginWasEnabledByNode[nodeId] ?? false
+            let wasReady = pluginWasReadyByNode[nodeId] ?? false
+            if !wasEnabled || !wasReady {
+                let target = Int(sampleRate * 0.08)
+                let total = max(1, min(target, frameLength))
+                pluginCrossfadeTotalByNode[nodeId] = total
+                pluginCrossfadeRemainingByNode[nodeId] = total
+            }
+            pluginWasEnabledByNode[nodeId] = true
+            pluginWasReadyByNode[nodeId] = true
+            pluginCrossfadeOutRemainingByNode[nodeId] = 0
+
+            var dryScratch = ensurePluginDryScratch(nodeId: nodeId, channelCount: channelCount, frameLength: frameLength)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    dryScratch[channel][frame] = processedAudio[channel][frame]
+                }
+            }
+            pluginDryScratchByNode[nodeId] = dryScratch
             instance.process(
                 buffer: &processedAudio,
                 frameLength: frameLength,
                 sampleRate: sampleRate,
                 channelCount: channelCount
             )
+            var wetScratch = ensurePluginWetScratch(nodeId: nodeId, channelCount: channelCount, frameLength: frameLength)
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    wetScratch[channel][frame] = processedAudio[channel][frame]
+                }
+            }
+            pluginWetScratchByNode[nodeId] = wetScratch
+            if let remaining = pluginCrossfadeRemainingByNode[nodeId], remaining > 0 {
+                let total = max(1, pluginCrossfadeTotalByNode[nodeId] ?? remaining)
+                let startIndex = max(0, total - remaining)
+                for channel in 0..<channelCount {
+                    for frame in 0..<frameLength {
+                        let pos = min(total, startIndex + frame)
+                        let t = Float(pos) / Float(total)
+                        processedAudio[channel][frame] = dryScratch[channel][frame] * (1 - t) + processedAudio[channel][frame] * t
+                    }
+                }
+                let nextRemaining = remaining - frameLength
+                pluginCrossfadeRemainingByNode[nodeId] = max(0, nextRemaining)
+            }
             levelSnapshot[nodeId] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
         }
     }
@@ -1440,6 +1506,40 @@ extension AudioEngine {
             sumRMSSquared += channelRMS * channelRMS
         }
         return sqrt(sumRMSSquared / Float(channelCount))
+    }
+
+    private func ensurePluginDryScratch(nodeId: UUID, channelCount: Int, frameLength: Int) -> [[Float]] {
+        var scratch = pluginDryScratchByNode[nodeId] ?? []
+        if scratch.count != channelCount {
+            scratch = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+            pluginDryScratchByNode[nodeId] = scratch
+            return scratch
+        }
+        let currentLength = scratch.first?.count ?? 0
+        guard currentLength < frameLength else { return scratch }
+        let extra = frameLength - currentLength
+        for index in 0..<channelCount {
+            scratch[index].append(contentsOf: repeatElement(0, count: extra))
+        }
+        pluginDryScratchByNode[nodeId] = scratch
+        return scratch
+    }
+
+    private func ensurePluginWetScratch(nodeId: UUID, channelCount: Int, frameLength: Int) -> [[Float]] {
+        var scratch = pluginWetScratchByNode[nodeId] ?? []
+        if scratch.count != channelCount {
+            scratch = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+            pluginWetScratchByNode[nodeId] = scratch
+            return scratch
+        }
+        let currentLength = scratch.first?.count ?? 0
+        guard currentLength < frameLength else { return scratch }
+        let extra = frameLength - currentLength
+        for index in 0..<channelCount {
+            scratch[index].append(contentsOf: repeatElement(0, count: extra))
+        }
+        pluginWetScratchByNode[nodeId] = scratch
+        return scratch
     }
 
     func initializeEffectStates(channelCount: Int) {

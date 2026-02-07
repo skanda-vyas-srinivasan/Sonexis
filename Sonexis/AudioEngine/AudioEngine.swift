@@ -84,6 +84,7 @@ struct ProcessingSnapshot {
     let resampleCrossfade: Double
     let rubberBandPitchEnabled: Bool
     let rubberBandPitchSemitones: Double
+    let graphSignature: Int
 
     static let empty = ProcessingSnapshot(
         useSplitGraph: false,
@@ -164,7 +165,8 @@ struct ProcessingSnapshot {
         resampleRate: 0,
         resampleCrossfade: 0,
         rubberBandPitchEnabled: false,
-        rubberBandPitchSemitones: 0
+        rubberBandPitchSemitones: 0,
+        graphSignature: 0
     )
 }
 
@@ -896,6 +898,16 @@ class AudioEngine: ObservableObject {
     var stereoWidthSmoothedGain: Float = 0
     var stereoWidthSmoothedGainByNode: [UUID: Float] = [:]
 
+    // Plugin crossfade state
+    var pluginDryScratchByNode: [UUID: [[Float]]] = [:]
+    var pluginWetScratchByNode: [UUID: [[Float]]] = [:]
+    var pluginCrossfadeRemainingByNode: [UUID: Int] = [:]
+    var pluginCrossfadeTotalByNode: [UUID: Int] = [:]
+    var pluginCrossfadeOutRemainingByNode: [UUID: Int] = [:]
+    var pluginCrossfadeOutTotalByNode: [UUID: Int] = [:]
+    var pluginWasEnabledByNode: [UUID: Bool] = [:]
+    var pluginWasReadyByNode: [UUID: Bool] = [:]
+
     // Pre-allocated buffers
     var interleavedOutputBuffer: [Float] = []
     var interleavedOutputCapacity: Int = 0
@@ -913,6 +925,11 @@ class AudioEngine: ObservableObject {
     var graphTransitionSamplesTotal: Int = 0
     var graphTransitionFromManual: Bool = false
     var lastUseManualGraph: Bool = false
+    var lastGraphSignature: Int = 0
+    var graphChangeSamplesRemaining: Int = 0
+    var graphChangeSamplesTotal: Int = 0
+    var graphChangePrevOutput: [[Float]] = []
+    var lastOutputBuffer: [[Float]] = []
 
     // Ring buffer for audio data (interleaved frames)
     var ringBuffer: UnsafeMutablePointer<Float>?
@@ -1001,6 +1018,22 @@ class AudioEngine: ObservableObject {
         }
 
         let chainOrder = chain.map { EffectNode(id: $0.id, type: $0.type) }
+        let graphSignature = computeGraphSignature(
+            manualNodes: manualNodes,
+            manualConnections: manualConnections,
+            manualStartID: manualStartID,
+            manualEndID: manualEndID,
+            splitLeftNodes: splitLeftNodes,
+            splitLeftConnections: splitLeftConnections,
+            splitLeftStartID: splitLeftStartID,
+            splitLeftEndID: splitLeftEndID,
+            splitRightNodes: splitRightNodes,
+            splitRightConnections: splitRightConnections,
+            splitRightStartID: splitRightStartID,
+            splitRightEndID: splitRightEndID,
+            chainOrder: chainOrder,
+            nodeEnabled: localNodeEnabled
+        )
 
         let snapshot = ProcessingSnapshot(
             useSplitGraph: localUseSplitGraph,
@@ -1081,7 +1114,8 @@ class AudioEngine: ObservableObject {
             resampleRate: resampleRate,
             resampleCrossfade: resampleCrossfade,
             rubberBandPitchEnabled: rubberBandPitchEnabled,
-            rubberBandPitchSemitones: rubberBandPitchSemitones
+            rubberBandPitchSemitones: rubberBandPitchSemitones,
+            graphSignature: graphSignature
         )
 
         snapshotLock.lock()
@@ -1094,6 +1128,69 @@ class AudioEngine: ObservableObject {
         let snapshot = processingSnapshot
         snapshotLock.unlock()
         return snapshot
+    }
+
+    private func computeGraphSignature(
+        manualNodes: [BeginnerNode],
+        manualConnections: [BeginnerConnection],
+        manualStartID: UUID?,
+        manualEndID: UUID?,
+        splitLeftNodes: [BeginnerNode],
+        splitLeftConnections: [BeginnerConnection],
+        splitLeftStartID: UUID?,
+        splitLeftEndID: UUID?,
+        splitRightNodes: [BeginnerNode],
+        splitRightConnections: [BeginnerConnection],
+        splitRightStartID: UUID?,
+        splitRightEndID: UUID?,
+        chainOrder: [EffectNode],
+        nodeEnabled: [UUID: Bool]
+    ) -> Int {
+        var hasher = Hasher()
+        hasher.combine(manualStartID)
+        hasher.combine(manualEndID)
+        for node in manualNodes {
+            hasher.combine(node.id)
+            hasher.combine(node.type.rawValue)
+            hasher.combine(nodeEnabled[node.id] ?? true)
+        }
+        for connection in manualConnections {
+            hasher.combine(connection.fromNodeId)
+            hasher.combine(connection.toNodeId)
+            hasher.combine(connection.gain)
+        }
+        hasher.combine(splitLeftStartID)
+        hasher.combine(splitLeftEndID)
+        for node in splitLeftNodes {
+            hasher.combine(node.id)
+            hasher.combine(node.type.rawValue)
+            hasher.combine(nodeEnabled[node.id] ?? true)
+        }
+        for connection in splitLeftConnections {
+            hasher.combine(connection.fromNodeId)
+            hasher.combine(connection.toNodeId)
+            hasher.combine(connection.gain)
+        }
+        hasher.combine(splitRightStartID)
+        hasher.combine(splitRightEndID)
+        for node in splitRightNodes {
+            hasher.combine(node.id)
+            hasher.combine(node.type.rawValue)
+            hasher.combine(nodeEnabled[node.id] ?? true)
+        }
+        for connection in splitRightConnections {
+            hasher.combine(connection.fromNodeId)
+            hasher.combine(connection.toNodeId)
+            hasher.combine(connection.gain)
+        }
+        for node in chainOrder {
+            hasher.combine(node.id)
+            hasher.combine(node.type.rawValue)
+            if let id = node.id {
+                hasher.combine(nodeEnabled[id] ?? true)
+            }
+        }
+        return hasher.finalize()
     }
 
     func enqueueReset(_ reset: ResetFlags) {

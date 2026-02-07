@@ -25,8 +25,10 @@ struct EffectTray: View {
             searchText.isEmpty || effect.rawValue.lowercased().contains(searchText.lowercased())
         }
         let filteredPlugins = pluginManager.plugins.filter { plugin in
-            searchText.isEmpty || plugin.name.lowercased().contains(searchText.lowercased())
+            plugin.format == .au && (searchText.isEmpty || plugin.name.lowercased().contains(searchText.lowercased()))
         }
+
+        let gridColumns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
         ZStack {
             VStack(spacing: 0) {
@@ -61,7 +63,7 @@ struct EffectTray: View {
                     .padding(.vertical, 10)
 
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 12) {
+                        LazyVGrid(columns: gridColumns, spacing: 14) {
                             ForEach(filteredEffects, id: \.self) { effectType in
                                 EffectPaletteButton(
                                     effectType: effectType,
@@ -78,6 +80,7 @@ struct EffectTray: View {
                                 .opacity(allowTapToAdd ? 1.0 : 0.95)
                             }
                         }
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 12)
 
                         Divider()
@@ -111,7 +114,7 @@ struct EffectTray: View {
                                 .foregroundColor(AppColors.textMuted)
                                 .padding(.vertical, 8)
                         } else {
-                            VStack(spacing: 12) {
+                            LazyVGrid(columns: gridColumns, spacing: 12) {
                                 ForEach(filteredPlugins) { plugin in
                                     PluginPaletteButton(
                                         plugin: plugin,
@@ -122,6 +125,7 @@ struct EffectTray: View {
                                     .opacity(allowTapToAdd ? 1.0 : 0.95)
                                 }
                             }
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 12)
                         }
                     }
@@ -167,10 +171,10 @@ struct EffectPaletteButton: View {
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: effectType.icon)
-                .font(.system(size: 22, weight: .light))
+                .font(.system(size: 20, weight: .light))
                 .symbolRenderingMode(.monochrome)
                 .foregroundColor(textColor)
-                .frame(width: 56, height: 56)
+                .frame(width: 50, height: 50)
                 .background(tileBase)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
@@ -185,7 +189,7 @@ struct EffectPaletteButton: View {
                 .foregroundColor(textColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .frame(width: 70)
+                .frame(width: 62)
         }
         .background(
             GeometryReader { proxy in
@@ -215,9 +219,6 @@ struct EffectPaletteButton: View {
                 isHovered = hovering
             }
         }
-        .onTapGesture {
-            onTap()
-        }
         .onDrag({
             isDragging = true
             onDragStart()
@@ -242,7 +243,7 @@ struct PluginPaletteButton: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(tileBase)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 50, height: 50)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(isHovered ? AppColors.neonPink : Color.clear, lineWidth: 1)
@@ -260,7 +261,7 @@ struct PluginPaletteButton: View {
                 .foregroundColor(textColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .frame(width: 90)
+                .frame(width: 70)
 
             Text(plugin.format == .au ? "AU" : "VST3")
                 .font(.system(size: 9, weight: .bold))
@@ -274,9 +275,6 @@ struct PluginPaletteButton: View {
             withAnimation(.easeInOut(duration: 0.2)) {
                 isHovered = hovering
             }
-        }
-        .onTapGesture {
-            onTap()
         }
         .onDrag({
             onDragStart()
@@ -307,7 +305,7 @@ struct PluginDragPreview: View {
                     .shadow(color: Color.white.opacity(0.6), radius: 8)
                     .shadow(color: tileStyle.fill.opacity(0.5), radius: 16)
 
-                Text(plugin.name.uppercased())
+                Text(plugin.name)
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(1.2)
                     .foregroundColor(tileStyle.text.opacity(0.95))
@@ -351,7 +349,7 @@ struct EffectDragPreview: View {
                     .shadow(color: Color.white.opacity(0.6), radius: 8)
                     .shadow(color: tileStyle.fill.opacity(0.5), radius: 16)
 
-                Text(effectType.rawValue.uppercased())
+                Text(effectType.rawValue)
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(1.2)
                     .foregroundColor(tileStyle.text.opacity(0.95))

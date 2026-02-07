@@ -597,6 +597,7 @@ struct CanvasView: View {
                         let isDropAnimating = dropAnimatedNodeIDs.contains(effectValue.id)
 
                         EffectBlockHorizontal(
+                            audioEngine: audioEngine,
                             effect: effect,
                             isWired: isWired,
                             isSelected: isSelected,
@@ -1059,8 +1060,7 @@ struct CanvasView: View {
     }
 
     private func openPluginEditor(for nodeId: UUID) {
-        let fallback = NSHostingView(rootView: PluginEditorFallbackView(audioEngine: audioEngine, nodeId: nodeId))
-        audioEngine.openPluginEditor(for: nodeId, fallbackView: fallback)
+        audioEngine.openPluginEditor(for: nodeId)
     }
 
 

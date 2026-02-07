@@ -21,6 +21,7 @@ struct PluginReference: Codable, Equatable {
     var componentType: UInt32?
     var componentSubType: UInt32?
     var componentManufacturer: UInt32?
+    var hasCustomView: Bool?
     var stateData: Data?
 
     init(
@@ -31,6 +32,7 @@ struct PluginReference: Codable, Equatable {
         componentType: UInt32? = nil,
         componentSubType: UInt32? = nil,
         componentManufacturer: UInt32? = nil,
+        hasCustomView: Bool? = nil,
         stateData: Data? = nil
     ) {
         self.format = format
@@ -40,6 +42,7 @@ struct PluginReference: Codable, Equatable {
         self.componentType = componentType
         self.componentSubType = componentSubType
         self.componentManufacturer = componentManufacturer
+        self.hasCustomView = hasCustomView
         self.stateData = stateData
     }
 }
@@ -384,15 +387,7 @@ extension BeginnerNode {
     }
 
     var displayBadge: String? {
-        guard type == .plugin else { return nil }
-        switch plugin?.format {
-        case .au:
-            return "AU"
-        case .vst3:
-            return "VST3"
-        default:
-            return nil
-        }
+        return nil
     }
 }
 

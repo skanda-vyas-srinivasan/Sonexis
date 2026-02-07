@@ -76,6 +76,89 @@ struct PluginEditorFallbackView: View {
     }
 }
 
+struct PluginParametersCompactView: View {
+    @ObservedObject var audioEngine: AudioEngine
+    let nodeId: UUID
+    let tint: Color
+    @State private var parameters: [PluginParameter] = []
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                if parameters.isEmpty {
+                    Text("No editable parameters.")
+                        .font(.caption)
+                        .foregroundColor(AppColors.textMuted)
+                        .padding(.vertical, 6)
+                } else {
+                    ForEach(parameters, id: \.id) { param in
+                        PluginParameterCompactRow(
+                            parameter: param,
+                            tint: tint,
+                            onChange: { newValue in
+                                updateParameter(param, value: newValue)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: 150)
+        .scrollIndicators(.visible)
+        .onAppear(perform: refreshParameters)
+        .onReceive(Timer.publish(every: 1.2, on: .main, in: .common).autoconnect()) { _ in
+            refreshParameters()
+        }
+    }
+
+    private func refreshParameters() {
+        parameters = audioEngine.pluginParameters(for: nodeId)
+    }
+
+    private func updateParameter(_ parameter: PluginParameter, value: Double) {
+        if let index = parameters.firstIndex(where: { $0.id == parameter.id }) {
+            parameters[index].value = value
+        }
+        audioEngine.setPluginParameter(for: nodeId, parameterId: parameter.id, value: value)
+    }
+}
+
+private struct PluginParameterCompactRow: View {
+    let parameter: PluginParameter
+    let tint: Color
+    let onChange: (Double) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(parameter.name)
+                    .font(.caption)
+                    .foregroundColor(tint.opacity(0.75))
+                Spacer()
+                Text(formattedValue)
+                    .font(.caption)
+                    .foregroundColor(tint)
+                    .monospacedDigit()
+            }
+
+            Slider(value: Binding(
+                get: { parameter.value },
+                set: { onChange($0) }
+            ), in: parameter.minValue...parameter.maxValue)
+            .tint(tint)
+            .controlSize(.small)
+            .disabled(parameter.isReadOnly)
+        }
+    }
+
+    private var formattedValue: String {
+        if let unit = parameter.unitName, !unit.isEmpty {
+            return String(format: "%.2f %@", parameter.value, unit)
+        }
+        return String(format: "%.2f", parameter.value)
+    }
+}
+
 private struct ParameterRow: View {
     let parameter: PluginParameter
     let onChange: (Double) -> Void

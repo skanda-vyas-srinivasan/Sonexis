@@ -26,8 +26,7 @@ final class PluginManager: ObservableObject {
         scanQueue.async { [weak self] in
             guard let self else { return }
             let auPlugins = self.scanAudioUnits()
-            let vst3Plugins = self.scanVST3Bundles()
-            let combined = (auPlugins + vst3Plugins)
+            let combined = auPlugins
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
             DispatchQueue.main.async {
@@ -111,6 +110,9 @@ final class PluginManager: ObservableObject {
             let key = "\(desc.componentType)-\(desc.componentSubType)-\(desc.componentManufacturer)"
             guard !seen.contains(key) else { continue }
             seen.insert(key)
+            if debugLogAUScan, desc.componentManufacturer == 1634758764 {
+                print("AU UI flags: name=\(component.name) hasCustomView=\(component.hasCustomView)")
+            }
             let identifier = key
             results.append(PluginDescriptor(
                 format: .au,
@@ -120,6 +122,7 @@ final class PluginManager: ObservableObject {
                 componentType: desc.componentType,
                 componentSubType: desc.componentSubType,
                 componentManufacturer: desc.componentManufacturer,
+                hasCustomView: component.hasCustomView,
                 location: component.componentURL
             ))
         }

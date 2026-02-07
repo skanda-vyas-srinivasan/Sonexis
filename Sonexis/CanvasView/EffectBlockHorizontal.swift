@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Effect Block
 
 struct EffectBlockHorizontal: View {
+    @ObservedObject var audioEngine: AudioEngine
     @Binding var effect: BeginnerNode
     let isWired: Bool
     let isSelected: Bool
@@ -50,7 +51,7 @@ struct EffectBlockHorizontal: View {
                             .shadow(color: getEffectEnabled() ? Color.white.opacity(0.6) : .clear, radius: 8)
                             .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.5) : .clear, radius: 16)
 
-                        Text(effect.displayName.uppercased())
+                        Text(effect.displayName)
                             .font(.system(size: 10, weight: .semibold))
                             .tracking(1.2)
                             .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
@@ -105,7 +106,7 @@ struct EffectBlockHorizontal: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture(count: 2) {
-                if effect.type == .plugin {
+                if effect.type == .plugin, effect.plugin?.hasCustomView == true {
                     onOpenPluginEditor()
                     return
                 }
@@ -126,26 +127,25 @@ struct EffectBlockHorizontal: View {
             if isExpanded {
                 let overlayScale = 1.0 / max(nodeScale, 0.4)
                 VStack(spacing: 12) {
-                    EffectParametersViewCompact(
-                        effectType: effect.type,
-                        parameters: $effect.parameters,
-                        tint: tileStyle.fill,
-                        onChange: onUpdate
-                    )
+                    if effect.type == .plugin {
+                        PluginParametersCompactView(
+                            audioEngine: audioEngine,
+                            nodeId: effect.id,
+                            tint: tileStyle.fill
+                        )
+                    } else {
+                        EffectParametersViewCompact(
+                            effectType: effect.type,
+                            parameters: $effect.parameters,
+                            tint: tileStyle.fill,
+                            onChange: onUpdate
+                        )
+                    }
 
                     Divider()
                         .background(tileStyle.fill.opacity(0.2))
 
                     HStack(spacing: 12) {
-                        if effect.type == .plugin {
-                            Button(action: onOpenPluginEditor) {
-                                Label("Open Editor", systemImage: "rectangle.inset.filled.and.person.filled")
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(tileStyle.fill)
-                        }
-
                         Button(action: {
                             setEffectEnabled(!getEffectEnabled())
                         }) {
