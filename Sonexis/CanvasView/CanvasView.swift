@@ -12,7 +12,7 @@ struct CanvasView: View {
     @State private var draggedEffectType: EffectType?
     @State private var draggedPlugin: PluginDescriptor?
     @State private var showSignalFlow = false
-    @State private var arrowFpsIndex = 1
+    @State private var arrowFpsIndex = 2
     @State private var canvasSize: CGSize = .zero
     @State private var draggingNodeID: UUID?
     @State private var dragStartPosition: CGPoint = .zero
