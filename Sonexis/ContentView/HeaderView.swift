@@ -138,6 +138,9 @@ struct HeaderView: View {
                 }
                 .labelsHidden()
                 .frame(width: 220)
+                .onTapGesture {
+                    audioEngine.refreshOutputDevices()
+                }
 
                 Slider(
                     value: Binding(

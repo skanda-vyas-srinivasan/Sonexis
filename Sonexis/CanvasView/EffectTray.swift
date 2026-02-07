@@ -187,9 +187,11 @@ struct EffectTray: View {
                             }
                         }
                     }
+                    .transition(.opacity)
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.12), value: activeTab)
         .overlay(alignment: .trailing) {
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -315,7 +317,6 @@ struct EffectPaletteButton: View {
     let labelHeight: CGFloat
     let iconTileSize: CGFloat
     @State private var isHovered = false
-    @State private var isDragging = false
     private let tileBase = AppColors.midPurple
     private let textColor = AppColors.textPrimary
 
@@ -342,7 +343,6 @@ struct EffectPaletteButton: View {
                     .foregroundColor(textColor)
                     .shadow(color: AppColors.neonCyan.opacity(0.2), radius: 4, x: 0, y: 0)
                     .scaleEffect(isHovered ? 1.05 : 1.0)
-                    .opacity(isDragging ? 0.5 : 1.0)
             }
             .overlay(alignment: .topTrailing) {
                 Button(action: onToggleFavorite) {
@@ -396,7 +396,6 @@ struct EffectPaletteButton: View {
             }
         }
         .onDrag({
-            isDragging = true
             onDragStart()
             return NSItemProvider(object: effectType.rawValue as NSString)
         }, preview: {
