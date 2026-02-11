@@ -58,7 +58,7 @@ extension AudioEngine {
                         graphChangePrevOutput[channel][frame] = lastOutputBuffer[channel][frame]
                     }
                 }
-                let total = max(1, min(Int(sampleRate * 0.08), frameLength))
+                let total = max(1, min(Int(sampleRate * 0.2), frameLength))
                 graphChangeSamplesTotal = total
                 graphChangeSamplesRemaining = total
             }
@@ -355,7 +355,7 @@ extension AudioEngine {
         let useManual = snapshot.useManualGraph
         if lastUseManualGraph != useManual {
             graphTransitionFromManual = lastUseManualGraph
-            graphTransitionSamplesTotal = max(1, Int(sampleRate * 0.05))
+            graphTransitionSamplesTotal = max(1, Int(sampleRate * 0.2))
             graphTransitionSamplesRemaining = graphTransitionSamplesTotal
             lastUseManualGraph = useManual
         }
