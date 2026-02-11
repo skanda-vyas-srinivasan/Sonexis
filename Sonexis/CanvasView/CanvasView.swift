@@ -56,7 +56,7 @@ struct CanvasView: View {
     @State private var betaUnlockBuffer = ""
     private let connectionSnapRadius: CGFloat = 120
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
-    private let betaUnlockPhrase = "poopymcbutt123"
+    private let betaUnlockPhrase = "poopymcbutt"
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
             fill: Color(hex: "#00F5FF"),

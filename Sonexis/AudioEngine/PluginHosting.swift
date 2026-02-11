@@ -740,6 +740,10 @@ final class PluginHost {
                 }
                 if let editorView = view ?? fallbackView {
                     PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentView: editorView)
+                    return
+                }
+                if let fallbackView {
+                    PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentView: fallbackView)
                 }
             }
             return

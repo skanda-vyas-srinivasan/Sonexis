@@ -1419,7 +1419,7 @@ extension AudioEngine {
             let isEnabled = nodeIsEnabled(nodeId, snapshot: snapshot)
             if !isEnabled {
                 if let lastWet = pluginWetScratchByNode[nodeId], (pluginWasEnabledByNode[nodeId] ?? false) {
-                    let total = max(1, min(Int(sampleRate * 0.08), frameLength))
+                    let total = max(1, min(Int(sampleRate * 0.2), frameLength))
                     if pluginCrossfadeOutRemainingByNode[nodeId] == nil || pluginCrossfadeOutRemainingByNode[nodeId] == 0 {
                         pluginCrossfadeOutTotalByNode[nodeId] = total
                         pluginCrossfadeOutRemainingByNode[nodeId] = total
@@ -1451,7 +1451,7 @@ extension AudioEngine {
             let wasEnabled = pluginWasEnabledByNode[nodeId] ?? false
             let wasReady = pluginWasReadyByNode[nodeId] ?? false
             if !wasEnabled || !wasReady {
-                let target = Int(sampleRate * 0.08)
+                let target = Int(sampleRate * 0.2)
                 let total = max(1, min(target, frameLength))
                 pluginCrossfadeTotalByNode[nodeId] = total
                 pluginCrossfadeRemainingByNode[nodeId] = total
