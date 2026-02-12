@@ -1419,7 +1419,7 @@ extension AudioEngine {
             let isEnabled = nodeIsEnabled(nodeId, snapshot: snapshot)
             if !isEnabled {
                 if let lastWet = pluginWetScratchByNode[nodeId], (pluginWasEnabledByNode[nodeId] ?? false) {
-                    let total = max(1, min(Int(sampleRate * 0.5), frameLength))
+                    let total = max(1, Int(sampleRate * 0.5))
                     if pluginCrossfadeOutRemainingByNode[nodeId] == nil || pluginCrossfadeOutRemainingByNode[nodeId] == 0 {
                         pluginCrossfadeOutTotalByNode[nodeId] = total
                         pluginCrossfadeOutRemainingByNode[nodeId] = total
@@ -1440,25 +1440,31 @@ extension AudioEngine {
                     }
                 }
                 pluginWasEnabledByNode[nodeId] = false
+                pluginWasReadyByNode[nodeId] = false
+                pluginStableOutputCountByNode[nodeId] = 0
+                pluginHasStableOutputByNode[nodeId] = false
+                pluginReadyDelaySamplesByNode[nodeId] = 0
                 levelSnapshot[nodeId] = 0
                 return
             }
             guard let instance = pluginHost.instance(for: nodeId) else { return }
             if !instance.isReady {
                 pluginWasReadyByNode[nodeId] = false
+                pluginStableOutputCountByNode[nodeId] = 0
+                pluginHasStableOutputByNode[nodeId] = false
+                pluginReadyDelaySamplesByNode[nodeId] = 0
                 return
             }
             let wasEnabled = pluginWasEnabledByNode[nodeId] ?? false
             let wasReady = pluginWasReadyByNode[nodeId] ?? false
-            if !wasEnabled || !wasReady {
-                let target = Int(sampleRate * 0.5)
-                let total = max(1, min(target, frameLength))
-                pluginCrossfadeTotalByNode[nodeId] = total
-                pluginCrossfadeRemainingByNode[nodeId] = total
-            }
             pluginWasEnabledByNode[nodeId] = true
             pluginWasReadyByNode[nodeId] = true
             pluginCrossfadeOutRemainingByNode[nodeId] = 0
+            if !wasEnabled || !wasReady {
+                pluginStableOutputCountByNode[nodeId] = 0
+                pluginHasStableOutputByNode[nodeId] = false
+                pluginReadyDelaySamplesByNode[nodeId] = max(1, Int(sampleRate * 0.35))
+            }
 
             var dryScratch = ensurePluginDryScratch(nodeId: nodeId, channelCount: channelCount, frameLength: frameLength)
             for channel in 0..<channelCount {
@@ -1480,6 +1486,34 @@ extension AudioEngine {
                 }
             }
             pluginWetScratchByNode[nodeId] = wetScratch
+            let stabilityThreshold: Float = 0.0005
+            let stableBlocksRequired = 3
+            if let delayRemaining = pluginReadyDelaySamplesByNode[nodeId], delayRemaining > 0 {
+                pluginReadyDelaySamplesByNode[nodeId] = max(0, delayRemaining - frameLength)
+                processedAudio = dryScratch
+                levelSnapshot[nodeId] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+                return
+            }
+            if !(pluginHasStableOutputByNode[nodeId] ?? false) {
+                let wetRms = computeRMS(wetScratch, frameLength: frameLength, channelCount: channelCount)
+                var stableCount = pluginStableOutputCountByNode[nodeId] ?? 0
+                if wetRms > stabilityThreshold {
+                    stableCount += 1
+                } else {
+                    stableCount = 0
+                }
+                pluginStableOutputCountByNode[nodeId] = stableCount
+                if stableCount >= stableBlocksRequired {
+                    pluginHasStableOutputByNode[nodeId] = true
+                    let total = max(1, Int(sampleRate * 0.5))
+                    pluginCrossfadeTotalByNode[nodeId] = total
+                    pluginCrossfadeRemainingByNode[nodeId] = total
+                } else {
+                    processedAudio = dryScratch
+                    levelSnapshot[nodeId] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+                    return
+                }
+            }
             if let remaining = pluginCrossfadeRemainingByNode[nodeId], remaining > 0 {
                 let total = max(1, pluginCrossfadeTotalByNode[nodeId] ?? remaining)
                 let startIndex = max(0, total - remaining)

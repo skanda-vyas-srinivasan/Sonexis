@@ -58,7 +58,7 @@ extension AudioEngine {
                         graphChangePrevOutput[channel][frame] = lastOutputBuffer[channel][frame]
                     }
                 }
-                let total = max(1, min(Int(sampleRate * 0.2), frameLength))
+                let total = max(1, Int(sampleRate * 0.2))
                 graphChangeSamplesTotal = total
                 graphChangeSamplesRemaining = total
             }

@@ -911,6 +911,9 @@ class AudioEngine: ObservableObject {
     var pluginCrossfadeOutTotalByNode: [UUID: Int] = [:]
     var pluginWasEnabledByNode: [UUID: Bool] = [:]
     var pluginWasReadyByNode: [UUID: Bool] = [:]
+    var pluginStableOutputCountByNode: [UUID: Int] = [:]
+    var pluginHasStableOutputByNode: [UUID: Bool] = [:]
+    var pluginReadyDelaySamplesByNode: [UUID: Int] = [:]
 
     // Pre-allocated buffers
     var interleavedOutputBuffer: [Float] = []
