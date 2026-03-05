@@ -66,51 +66,35 @@ struct HeaderView: View {
                 .frame(height: 30)
                 .background(AppColors.gridLines)
 
-            // Limiter toggle
+            let recordDisabled = !audioEngine.isRunning || tutorial.isActive
             Button(action: {
-                audioEngine.limiterEnabled.toggle()
+                if audioEngine.isRecording {
+                    audioEngine.stopRecording()
+                } else if let url = promptForRecordingURL() {
+                    audioEngine.startRecording(url: url)
+                }
             }) {
-                Image(systemName: audioEngine.limiterEnabled ? "shield.fill" : "shield.slash")
-                    .font(.system(size: 18))
-                    .foregroundColor(audioEngine.limiterEnabled ? AppColors.warning : AppColors.textMuted)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(audioEngine.isRecording ? AppColors.error : AppColors.textMuted)
+                        .frame(width: 8, height: 8)
+                    Text(audioEngine.isRecording ? "Recording" : "Record")
+                        .font(AppTypography.caption)
+                        .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
+                }
             }
             .buttonStyle(.plain)
-            .help(audioEngine.limiterEnabled ? "Limiter On" : "Limiter Off")
+            .disabled(recordDisabled)
+            .opacity(recordDisabled ? 0.4 : 1.0)
+            .help(audioEngine.isRecording ? "Stop Recording" : "Start Recording")
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
                         key: TutorialTargetPreferenceKey.self,
-                        value: [.buildShield: proxy.frame(in: .global)]
+                        value: [.buildRecord: proxy.frame(in: .global)]
                     )
                 }
             )
-
-            if audioEngine.betaRecordingUnlocked {
-                Divider()
-                    .frame(height: 30)
-                    .background(AppColors.gridLines)
-
-                Button(action: {
-                    if audioEngine.isRecording {
-                        audioEngine.stopRecording()
-                    } else if let url = promptForRecordingURL() {
-                        audioEngine.startRecording(url: url)
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(audioEngine.isRecording ? AppColors.error : AppColors.textMuted)
-                            .frame(width: 8, height: 8)
-                        Text(audioEngine.isRecording ? "Recording" : "Record")
-                            .font(AppTypography.caption)
-                            .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(!audioEngine.isRunning)
-                .opacity(audioEngine.isRunning ? 1.0 : 0.4)
-                .help(audioEngine.isRecording ? "Stop Recording (Beta)" : "Start Recording (Beta)")
-            }
 
             Divider()
                 .frame(height: 30)

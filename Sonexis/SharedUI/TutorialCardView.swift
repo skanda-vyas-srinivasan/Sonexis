@@ -30,7 +30,7 @@ struct TutorialCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(title)
                     .font(AppTypography.heading)
@@ -116,7 +116,7 @@ struct TutorialCardView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(18)
+        .padding(24)
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: 20)

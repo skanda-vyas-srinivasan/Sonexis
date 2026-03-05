@@ -122,8 +122,11 @@ struct TutorialOverlay: View {
             ].compactMap { $0 }
         case .buildPower:
             return [convertToLocal(rect: targets[.buildPower], proxy: proxy)].compactMap { $0 }
-        case .buildShield:
-            return [convertToLocal(rect: targets[.buildShield], proxy: proxy)].compactMap { $0 }
+        case .buildRecord:
+            return [convertToLocal(rect: targets[.buildRecord], proxy: proxy)]
+                .compactMap { rect in
+                    rect.map { paddedHighlight($0, padding: 10) }
+                }
         case .buildOutput:
             return [convertToLocal(rect: targets[.buildOutput], proxy: proxy)].compactMap { $0 }
         case .buildAddBass:
@@ -261,7 +264,7 @@ struct TutorialOverlay: View {
             )
 
             let card = cardBase
-                .frame(maxWidth: highlight == nil ? 420 : 360)
+                .frame(maxWidth: highlight == nil ? 480 : 420)
                 .background(
                     GeometryReader { cardProxy in
                         Color.clear.preference(
@@ -278,11 +281,11 @@ struct TutorialOverlay: View {
                 let position = bestCalloutPosition(
                     screen: size,
                     target: rect,
-                    cardSize: measuredCardSize == .zero ? CGSize(width: 360, height: 140) : measuredCardSize
+                    cardSize: measuredCardSize == .zero ? CGSize(width: 420, height: 160) : measuredCardSize
                 )
                 card.position(position)
             } else {
-                let fallbackSize = measuredCardSize == .zero ? CGSize(width: 420, height: 140) : measuredCardSize
+                let fallbackSize = measuredCardSize == .zero ? CGSize(width: 480, height: 160) : measuredCardSize
                 let position = clamp(
                     CGPoint(x: size.width / 2, y: size.height * 0.22),
                     screen: size,
@@ -410,7 +413,7 @@ struct TutorialOverlay: View {
         case .buildHeaderIntro:
             return (
                 title: "Header Controls",
-                body: "Up top you'll find controls for power, processing, limiter, and output device. Let's walk through them.",
+                body: "Up top you'll find controls for power, processing, recording, and output device. Let's walk through them.",
                 showNext: true
             )
         case .buildPower:
@@ -427,10 +430,10 @@ struct TutorialOverlay: View {
                     showNext: false
                 )
             }
-        case .buildShield:
+        case .buildRecord:
             return (
-                title: "Limiter (Shield)",
-                body: "The shield button enables a limiter to prevent clipping. It's on by default to protect your ears.",
+                title: "Record",
+                body: "Click Record to capture the processed audio to a WAV file. You choose where to save it.",
                 showNext: true
             )
         case .buildOutput:
