@@ -19,7 +19,7 @@ enum TutorialTarget: Hashable {
     case buildClarityNode
     case buildReverbNode
     case buildPower
-    case buildShield
+    case buildRecord
     case buildOutput
 }
 
@@ -42,7 +42,7 @@ enum TutorialStep: Equatable {
     case buildTrayTabs
     case buildHeaderIntro
     case buildPower
-    case buildShield
+    case buildRecord
     case buildOutput
     case buildAddBass
     case buildAutoExplain

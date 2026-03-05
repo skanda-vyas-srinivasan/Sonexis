@@ -636,7 +636,7 @@ class AudioEngine: ObservableObject {
             scheduleSnapshotUpdate()
         }
     }
-    @Published var limiterEnabled = true {
+    @Published private(set) var limiterEnabled = true {
         didSet {
             scheduleSnapshotUpdate()
         }

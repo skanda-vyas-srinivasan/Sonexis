@@ -40,7 +40,7 @@ final class TutorialController: ObservableObject {
              .buildTrayTabs,
              .buildHeaderIntro,
              .buildPower,
-             .buildShield,
+             .buildRecord,
              .buildOutput,
              .buildAddBass,
              .buildAutoExplain,
@@ -103,8 +103,8 @@ final class TutorialController: ObservableObject {
         case .buildHeaderIntro:
             step = .buildPower
         case .buildPower:
-            step = .buildShield
-        case .buildShield:
+            step = .buildRecord
+        case .buildRecord:
             step = .buildOutput
         case .buildOutput:
             step = .buildAddBass
