@@ -90,9 +90,21 @@ struct HomeView: View {
         }
         .overlay(alignment: .topTrailing) {
             Button(action: onTutorial) {
-                Image(systemName: "questionmark.circle")
-                    .font(.system(size: 16))
-                    .foregroundColor(AppColors.textSecondary)
+                HStack(spacing: 6) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Tutorial")
+                        .font(AppTypography.caption)
+                }
+                .foregroundColor(AppColors.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AppColors.deepBlack.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppColors.midPurple.opacity(0.7), lineWidth: 1)
+                )
+                .cornerRadius(10)
             }
             .buttonStyle(.plain)
             .padding(16)
