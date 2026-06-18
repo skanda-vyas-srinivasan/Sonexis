@@ -1,81 +1,36 @@
 import Foundation
 import AVFoundation
 
-enum SystemAudioBackend: String, CaseIterable, Identifiable {
-    case processTap
-    case blackHole
-
-    static let userDefaultsKey = "SonexisSelectedAudioBackend"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .processTap:
-            return "Process Tap"
-        case .blackHole:
-            return "BlackHole"
-        }
-    }
-
-    var startHelpText: String {
-        switch self {
-        case .processTap:
-            return "Start Processing (Process Tap)"
-        case .blackHole:
-            return "Start Processing (Auto-routes to BlackHole)"
-        }
-    }
-
-    static func initialSelection() -> SystemAudioBackend {
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" ||
-            ProcessInfo.processInfo.environment["SONEXIS_USE_PROCESS_TAP"] == "1" {
-            return .processTap
-        }
-        if ProcessInfo.processInfo.environment["SONEXIS_USE_BLACKHOLE"] == "1" {
-            return .blackHole
-        }
-        if let stored = UserDefaults.standard.string(forKey: userDefaultsKey),
-           let backend = SystemAudioBackend(rawValue: stored) {
-            return backend
-        }
-        #endif
-
-        return ProcessTapBackendFlag.defaultBackend
-    }
+private enum ProcessTapGainStage {
+    static let inputTrimGain: Float = 0.70794576 // -3 dB
+    static let softLimitThreshold: Float = 0.90
+    static let outputCeiling: Float = 0.98
 }
 
 enum ProcessTapBackendFlag {
-    static var defaultBackend: SystemAudioBackend {
+    static var isEnabled: Bool {
         #if DEBUG
         if ProcessInfo.processInfo.environment["SONEXIS_USE_BLACKHOLE"] == "1" {
-            return .blackHole
+            return false
         }
-        return .processTap
+        return true
         #else
         if ProcessInfo.processInfo.environment["SONEXIS_USE_PROCESS_TAP"] == "1" {
-            return .processTap
+            return true
         }
 
         return UserDefaults.standard.bool(forKey: "SonexisUseProcessTapEngine")
-            ? .processTap
-            : .blackHole
         #endif
-    }
-
-    static var isEnabled: Bool {
-        defaultBackend == .processTap
     }
 }
 
 extension AudioEngine {
     var isProcessTapBackendEnabled: Bool {
-        selectedAudioBackend == .processTap
+        ProcessTapBackendFlag.isEnabled
     }
 
     var setupReadyForCurrentBackend: Bool {
-        if isProcessTapBackendEnabled {
+        if ProcessTapBackendFlag.isEnabled {
             return true
         }
 
@@ -89,31 +44,9 @@ extension AudioEngine {
     }
 
     var startHelpText: String {
-        selectedAudioBackend.startHelpText
-    }
-
-    func selectAudioBackend(_ backend: SystemAudioBackend) {
-        guard selectedAudioBackend != backend else { return }
-
-        let shouldRestart = isRunning || processTapEngine != nil || processTapStopInProgress
-        selectedAudioBackend = backend
-        UserDefaults.standard.set(backend.rawValue, forKey: SystemAudioBackend.userDefaultsKey)
-        errorMessage = nil
-        scheduleSnapshotUpdate()
-
-        guard shouldRestart else { return }
-
-        if processTapEngine != nil {
-            stopProcessTapBackend(reason: "Switching backend to \(backend.displayName)") { [weak self] in
-                guard let self, self.selectedAudioBackend == backend else { return }
-                self.start()
-            }
-        } else {
-            stop()
-            if selectedAudioBackend == backend {
-                start()
-            }
-        }
+        ProcessTapBackendFlag.isEnabled
+            ? "Start Processing (Process Tap)"
+            : "Start Processing (Auto-routes to BlackHole)"
     }
 
     func startProcessTapBackend() {
@@ -140,6 +73,7 @@ extension AudioEngine {
             outputDeviceName = "Default Output"
             errorMessage = nil
             isRunning = true
+            print("Process Tap gain staging: input trim -3 dB, output ceiling -0.2 dBFS.")
             signalFlowToken += 1
             scheduleSnapshotUpdate()
         } catch {
@@ -213,14 +147,15 @@ extension AudioEngine: ProcessTapAudioProcessor {
         )
         guard let buffer,
               let channelData = buffer.floatChannelData else {
-            output.update(from: input, count: frameCount * channelCount)
+            copyProcessTapBypass(input: input, output: output, sampleCount: frameCount * channelCount)
             return
         }
 
         buffer.frameLength = AVAudioFrameCount(frameCount)
         for frame in 0..<frameCount {
             for channel in 0..<channelCount {
-                channelData[channel][frame] = input[(frame * channelCount) + channel]
+                let sampleIndex = (frame * channelCount) + channel
+                channelData[channel][frame] = input[sampleIndex] * ProcessTapGainStage.inputTrimGain
             }
         }
 
@@ -228,12 +163,14 @@ extension AudioEngine: ProcessTapAudioProcessor {
         let processed = interleavedData(from: buffer)
         processed.withUnsafeBufferPointer { processedBuffer in
             guard let processedBase = processedBuffer.baseAddress else {
-                output.update(from: input, count: sampleCount)
+                copyProcessTapBypass(input: input, output: output, sampleCount: sampleCount)
                 return
             }
 
             let copiedSamples = min(processed.count, sampleCount)
-            output.update(from: processedBase, count: copiedSamples)
+            for sampleIndex in 0..<copiedSamples {
+                output[sampleIndex] = protectProcessTapOutputSample(processedBase[sampleIndex])
+            }
             if copiedSamples < sampleCount {
                 for sampleIndex in copiedSamples..<sampleCount {
                     output[sampleIndex] = 0.0
@@ -272,5 +209,34 @@ extension AudioEngine: ProcessTapAudioProcessor {
         }
 
         return processTapPCMBuffer
+    }
+
+    private func copyProcessTapBypass(
+        input: UnsafePointer<Float>,
+        output: UnsafeMutablePointer<Float>,
+        sampleCount: Int
+    ) {
+        guard sampleCount > 0 else { return }
+        for sampleIndex in 0..<sampleCount {
+            let trimmed = input[sampleIndex] * ProcessTapGainStage.inputTrimGain
+            output[sampleIndex] = protectProcessTapOutputSample(trimmed)
+        }
+    }
+
+    private func protectProcessTapOutputSample(_ sample: Float) -> Float {
+        guard sample.isFinite else { return 0 }
+
+        let threshold = ProcessTapGainStage.softLimitThreshold
+        let ceiling = ProcessTapGainStage.outputCeiling
+
+        let magnitude = abs(sample)
+        guard magnitude > threshold else {
+            return sample
+        }
+
+        let sign: Float = sample >= 0 ? 1 : -1
+        let over = magnitude - threshold
+        let shaped = threshold + (1 - Float(exp(Double(-over * 8)))) * (ceiling - threshold)
+        return sign * min(shaped, ceiling)
     }
 }

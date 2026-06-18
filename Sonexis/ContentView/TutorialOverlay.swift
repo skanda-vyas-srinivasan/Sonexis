@@ -275,7 +275,10 @@ struct TutorialOverlay: View {
                     }
                 )
                 .onPreferenceChange(TutorialCardSizePreferenceKey.self) { newSize in
-                    measuredCardSize = newSize
+                    DispatchQueue.main.async {
+                        guard measuredCardSize != newSize else { return }
+                        measuredCardSize = newSize
+                    }
                 }
 
             if let rect = highlight {
@@ -395,8 +398,8 @@ struct TutorialOverlay: View {
             )
         case .homeBuild:
             return (
-                title: "Build",
-                body: "Build opens a fresh canvas for crafting blocks. Tap it when you’re ready.",
+                title: "Start",
+                body: "Click anywhere on the home screen to open the audio chain.",
                 showNext: false
             )
         case .buildIntro:

@@ -23,15 +23,15 @@ struct FlowLine: View {
             if isActive {
                 ZStack {
                     path
-                        .stroke(AppColors.wireActive.opacity(0.9), lineWidth: thickness + 2)
-                        .blur(radius: 6)
+                        .stroke(AppColors.wireActive.opacity(0.62), lineWidth: thickness + 2)
+                        .blur(radius: 5)
                     path
-                        .stroke(Color(hex: "#FF5FBF").opacity(0.45), lineWidth: thickness + 6)
-                        .blur(radius: 14)
+                        .stroke(Color(hex: "#FF5FBF").opacity(0.24), lineWidth: thickness + 5)
+                        .blur(radius: 12)
                     path
                         .stroke(AppColors.wireActive.opacity(baseOpacity), lineWidth: thickness)
-                        .shadow(color: AppColors.wireActive.opacity(0.8), radius: 16)
-                        .shadow(color: AppColors.wireActive.opacity(0.45), radius: 28)
+                        .shadow(color: AppColors.wireActive.opacity(0.48), radius: 12)
+                        .shadow(color: AppColors.wireActive.opacity(0.24), radius: 22)
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
                     if allowAnimation && fps > 0 {
@@ -64,20 +64,17 @@ struct FlowLine: View {
                 let inactiveOpacity = baseOpacity * 0.55
                 ZStack {
                     path
-                        .stroke(AppColors.wireActive.opacity(0.4), lineWidth: thickness + 2)
-                        .blur(radius: 5)
+                        .stroke(AppColors.wireInactive.opacity(0.28), lineWidth: thickness + 2)
+                        .blur(radius: 4)
                     path
-                        .stroke(Color(hex: "#FF5FBF").opacity(0.2), lineWidth: thickness + 5)
-                        .blur(radius: 12)
-                    path
-                        .stroke(AppColors.wireActive.opacity(inactiveOpacity), lineWidth: thickness)
-                        .shadow(color: AppColors.wireActive.opacity(0.35), radius: 12)
+                        .stroke(AppColors.wireInactive.opacity(inactiveOpacity), lineWidth: thickness)
+                        .shadow(color: AppColors.controlStroke.opacity(0.18), radius: 8)
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
                     MovingArrowheads(
                         from: from,
                         to: to,
-                        color: AppColors.neonCyan.opacity(0.35),
+                        color: AppColors.wireInactive.opacity(0.44),
                         phase: 0
                     )
                 }
@@ -159,9 +156,11 @@ struct WindowFocusReader: NSViewRepresentable {
         var onFocusChange: ((Bool) -> Void)?
         private var keyObserver: Any?
         private var resignObserver: Any?
+        private var lastFocusState: Bool?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            removeObservers()
             updateFocus()
             if let window = window {
                 keyObserver = NotificationCenter.default.addObserver(
@@ -169,29 +168,43 @@ struct WindowFocusReader: NSViewRepresentable {
                     object: window,
                     queue: .main
                 ) { [weak self] _ in
-                    self?.onFocusChange?(true)
+                    self?.deliverFocusChange(true)
                 }
                 resignObserver = NotificationCenter.default.addObserver(
                     forName: NSWindow.didResignKeyNotification,
                     object: window,
                     queue: .main
                 ) { [weak self] _ in
-                    self?.onFocusChange?(false)
+                    self?.deliverFocusChange(false)
                 }
             }
         }
 
         func updateFocus() {
-            onFocusChange?(window?.isKeyWindow ?? true)
+            deliverFocusChange(window?.isKeyWindow ?? true)
+        }
+
+        private func deliverFocusChange(_ isKeyWindow: Bool) {
+            guard lastFocusState != isKeyWindow else { return }
+            lastFocusState = isKeyWindow
+            DispatchQueue.main.async { [weak self] in
+                self?.onFocusChange?(isKeyWindow)
+            }
         }
 
         deinit {
+            removeObservers()
+        }
+
+        private func removeObservers() {
             if let keyObserver {
                 NotificationCenter.default.removeObserver(keyObserver)
             }
             if let resignObserver {
                 NotificationCenter.default.removeObserver(resignObserver)
             }
+            keyObserver = nil
+            resignObserver = nil
         }
     }
 }
@@ -511,5 +524,3 @@ struct MovingArrowheads: View {
         }
     }
 }
-
-

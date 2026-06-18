@@ -1,82 +1,77 @@
 import SwiftUI
 
 struct HomeView: View {
-    let onBuildFromScratch: () -> Void
-    let onApplyPresets: () -> Void
+    let onBuildFromScratch: (CGPoint) -> Void
     let onTutorial: () -> Void
     let allowBuild: Bool
-    let allowPresets: Bool
     @State private var isVisible = false
     @AppStorage("homeHasAppeared") private var homeHasAppeared = false
-    @State private var floatTagline = false
+    @State private var floatPrompt = false
+    @State private var isHovering = false
+    @State private var contentPulse = false
+    @State private var isStarting = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             ScanlinesOverlay()
 
-            VStack(spacing: 24) {
-            Spacer()
+            HomeSignalBackdrop(isActive: isVisible, reduceMotion: reduceMotion)
 
-            VStack(spacing: 8) {
-                Text("Sonexis")
-                    .font(.system(size: 48, weight: .black, design: .default))
-                    .foregroundColor(AppColors.neonPink)
-                    .shadow(color: AppColors.neonPink.opacity(0.6), radius: 12)
-                Text("Shape your system audio in real time")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(AppColors.textSecondary)
-            }
+            VStack(spacing: 18) {
+                Spacer()
 
-            HStack(spacing: 24) {
-                NeonActionButton(
-                    title: "Build from scratch",
-                    subtitle: "New Project",
-                    icon: "wand.and.stars",
-                    accent: AppColors.neonCyan,
-                    action: onBuildFromScratch
-                )
-                .disabled(!allowBuild)
-                .opacity(allowBuild ? 1.0 : 0.35)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TutorialTargetPreferenceKey.self,
-                            value: [.buildButton: proxy.frame(in: .global)]
+                VStack(spacing: 10) {
+                    Text("Sonexis")
+                        .font(.system(size: 56, weight: .black, design: .default))
+                        .foregroundColor(AppColors.neonPink)
+                        .shadow(
+                            color: AppColors.neonPink.opacity(contentPulse ? 0.82 : 0.58),
+                            radius: contentPulse ? 22 : 12
                         )
-                    }
-                )
 
-                NeonActionButton(
-                    title: "Browse presets",
-                    subtitle: "Saved Chains",
-                    icon: "tray.full",
-                    accent: AppColors.neonPink,
-                    action: onApplyPresets
-                )
-                .disabled(!allowPresets)
-                .opacity(allowPresets ? 1.0 : 0.35)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TutorialTargetPreferenceKey.self,
-                            value: [.presetsButton: proxy.frame(in: .global)]
+                    Text("Click anywhere to start")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(isHovering ? AppColors.neonCyan : AppColors.textSecondary)
+                        .offset(y: reduceMotion ? 0 : (floatPrompt ? -8 : 0))
+                        .shadow(
+                            color: AppColors.neonCyan.opacity(isHovering ? 0.7 : (contentPulse ? 0.46 : 0.24)),
+                            radius: isHovering ? 14 : (contentPulse ? 11 : 6)
                         )
-                    }
-                )
-            }
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: TutorialTargetPreferenceKey.self,
+                                    value: [.buildButton: proxy.frame(in: .global)]
+                                )
+                            }
+                        )
+                }
+                .scaleEffect((isHovering ? 1.02 : 1.0) * (reduceMotion ? 1.0 : (contentPulse ? 1.028 : 0.978)))
 
-            Spacer()
+                Spacer()
 
-            Text("Made by Skanda Vyas Srinivasan")
-                .font(AppTypography.caption)
-                .foregroundColor(AppColors.textMuted)
-                .offset(y: floatTagline ? -6 : 0)
-                .opacity(0.9)
+                Text("Made by Skanda Vyas Srinivasan")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+                    .opacity(0.9)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .opacity(isVisible ? 1 : 0)
         .offset(y: isVisible ? 0 : 10)
+        .contentShape(Rectangle())
+        .gesture(
+            SpatialTapGesture()
+                .onEnded { value in
+                    startFromClick(at: value.location)
+                }
+        )
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
         .onAppear {
             isVisible = false
             let duration = homeHasAppeared ? 0.45 : 0.8
@@ -84,8 +79,13 @@ struct HomeView: View {
                 isVisible = true
             }
             homeHasAppeared = true
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
-                floatTagline = true
+            if !reduceMotion {
+                withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                    floatPrompt = true
+                }
+                withAnimation(.easeInOut(duration: 1.55).repeatForever(autoreverses: true)) {
+                    contentPulse = true
+                }
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -110,53 +110,66 @@ struct HomeView: View {
             .padding(16)
         }
     }
+
+    private func startFromClick(at location: CGPoint) {
+        guard allowBuild, !isStarting else { return }
+        isStarting = true
+        onBuildFromScratch(location)
+    }
 }
 
-struct NeonActionButton: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let accent: Color
-    let action: () -> Void
-    @State private var isHovered = false
+private struct HomeSignalBackdrop: View {
+    let isActive: Bool
+    let reduceMotion: Bool
+
+    private let barHeights: [CGFloat] = [72, 128, 96, 180, 116, 148, 84, 164, 104, 136, 76]
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 40))
-                    .foregroundColor(accent)
-                    .scaleEffect(isHovered ? 1.1 : 1.0)
-                Text(title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(AppColors.textPrimary)
-                    .tracking(0.8)
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(isHovered ? AppColors.textSecondary : AppColors.textMuted)
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+
+            TimelineView(.animation) { context in
+                let pulse = reduceMotion ? 0.5 : phase(at: context.date, offset: 0)
+
+                ZStack {
+                    Circle()
+                        .stroke(AppColors.neonPink.opacity(0.22 - (0.12 * pulse)), lineWidth: 1)
+                        .frame(width: min(width, height) * 0.78)
+                        .scaleEffect(0.94 + (0.14 * pulse))
+                        .blur(radius: 1)
+
+                    Circle()
+                        .stroke(AppColors.neonCyan.opacity(0.10 + (0.14 * pulse)), lineWidth: 1)
+                        .frame(width: min(width, height) * 0.54)
+                        .scaleEffect(1.04 - (0.12 * pulse))
+                        .blur(radius: 1)
+
+                    HStack(alignment: .center, spacing: 12) {
+                        ForEach(Array(barHeights.enumerated()), id: \.offset) { index, barHeight in
+                            let barPulse = reduceMotion ? 0.5 : phase(at: context.date, offset: Double(index) * 0.08)
+                            let heightScale = 0.82 + (0.26 * barPulse)
+
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(index.isMultiple(of: 2) ? AppColors.neonCyan.opacity(0.22) : AppColors.neonPink.opacity(0.18))
+                                .frame(width: 6, height: isActive ? barHeight * heightScale : 24)
+                                .shadow(color: AppColors.neonCyan.opacity(0.18), radius: 12)
+                        }
+                    }
+                    .scaleEffect(x: 0.985 + (0.03 * pulse), y: 1.02 - (0.04 * pulse))
+                    .opacity(0.78 + (0.15 * pulse))
+                    .offset(y: 86)
+                }
+                .frame(width: width, height: height)
             }
-            .frame(width: 288, height: 176)
-            .background(AppColors.darkPurple)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(AppColors.midPurple, lineWidth: 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(accent, lineWidth: 1)
-                    .shadow(color: accent.opacity(0.19), radius: 12)
-                    .opacity(isHovered ? 1 : 0)
-            )
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 4)
+            .animation(.easeInOut(duration: 1.6), value: isActive)
+            .allowsHitTesting(false)
         }
-        .buttonStyle(.plain)
-        .scaleEffect(isHovered ? 1.02 : 1.0)
-        .offset(y: isHovered ? -4 : 0)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.2)) {
-                isHovered = hovering
-            }
-        }
+    }
+
+    private func phase(at date: Date, offset: TimeInterval) -> CGFloat {
+        let cycle = 3.4
+        let radians = ((date.timeIntervalSinceReferenceDate + offset) / cycle) * .pi * 2
+        return CGFloat((sin(radians) + 1) / 2)
     }
 }
