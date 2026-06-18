@@ -61,7 +61,7 @@ Right-click any effect to edit parameters or remove it.
 
 ## Requirements
 
-- macOS 14.4 or later
+- macOS 13.0 or later
 - BlackHole 2ch (virtual audio driver — installer included in app)
 
 ---
@@ -88,41 +88,13 @@ Build with ⌘R.
 
 ## How It Works
 
-By default, Sonexis uses BlackHole as a virtual loopback:
+Sonexis uses BlackHole as a virtual loopback:
 
 ```
 System Audio → BlackHole → Sonexis (effects) → Your Speakers/Headphones
 ```
 
 When you press power, Sonexis sets BlackHole as your system output, captures that audio, processes it through your effect chain, and sends it to your real output device. When you turn it off, your original audio routing is restored.
-
-## Experimental Process Tap Backend
-
-Sonexis now includes an experimental macOS 14.4+ Process Tap backend behind a feature flag:
-
-```bash
-SONEXIS_USE_PROCESS_TAP=1
-```
-
-When enabled, the power button starts the Process Tap engine instead of the BlackHole path:
-
-```
-System Audio → Core Audio Process Tap → Sonexis passthrough DSP → Current Default Output
-```
-
-Current state:
-
-- No virtual audio driver is required.
-- No manual output-device switching is required.
-- The backend is compiled into Sonexis but remains opt-in.
-- It currently runs unity passthrough DSP, not the full visual effect graph.
-- Manual listening and route-change tests are still required inside the full app.
-
-Build and run the hidden Process Tap smoke test with:
-
-```bash
-Scripts/smoke-process-tap.sh
-```
 
 ---
 
