@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var tutorialRestorePresetID: UUID?
     @State private var showEngineStoppedAlert = false
     @State private var hasEngineBeenOnDuringTutorial = false
+    @State private var homeTransitionRipple: HomeTransitionRipple?
 
     var body: some View {
         ZStack {
@@ -33,17 +34,11 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 if activeScreen == .home {
                     HomeView(
-                        onBuildFromScratch: {
-                            tutorial.handleBuildClick()
-                            activeScreen = .beginner
-                        },
-                        onApplyPresets: {
-                            tutorial.handlePresetsClick()
-                            activeScreen = .presets
+                        onBuildFromScratch: { location in
+                            beginHomeTransition(at: location)
                         },
                         onTutorial: { tutorial.startFromHelp() },
-                        allowBuild: tutorial.allowBuildAction,
-                        allowPresets: tutorial.allowPresetsAction
+                        allowBuild: tutorial.allowBuildAction
                     )
                 } else {
                     AppTopBar(
@@ -103,13 +98,21 @@ struct ContentView: View {
             .frame(minWidth: 800, minHeight: 700)
             .coordinateSpace(name: "tutorialRoot")
             .onPreferenceChange(TutorialTargetPreferenceKey.self) { value in
-                tutorialTargets = value
+                DispatchQueue.main.async {
+                    guard tutorialTargets != value else { return }
+                    tutorialTargets = value
+                }
             }
 
             if showGlitch {
                 GlitchOverlay {
                     showGlitch = false
                 }
+            }
+
+            if let homeTransitionRipple {
+                HomeTransitionRippleView(ripple: homeTransitionRipple)
+                    .allowsHitTesting(false)
             }
 
             if tutorial.isActive {
@@ -151,7 +154,9 @@ struct ContentView: View {
             tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
         }
         .onChange(of: activeScreen) { newValue in
-            showGlitch = true
+            if !(lastActiveScreen == .home && newValue == .beginner) {
+                showGlitch = true
+            }
             handleScreenChange(to: newValue)
         }
         .onChange(of: tutorial.step) { newStep in
@@ -296,6 +301,21 @@ struct ContentView: View {
         lastActiveScreen = newScreen
     }
 
+    private func beginHomeTransition(at location: CGPoint) {
+        guard activeScreen == .home, homeTransitionRipple == nil else { return }
+
+        tutorial.handleBuildClick()
+        homeTransitionRipple = HomeTransitionRipple(origin: location)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            activeScreen = .beginner
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.82) {
+            homeTransitionRipple = nil
+        }
+    }
+
     private func saveCurrentPreset(overwrite: Bool = false) {
         guard let graph = audioEngine.currentGraphSnapshot else {
             // No-op: missing graph snapshot.
@@ -334,4 +354,56 @@ enum AppScreen {
     case home
     case presets
     case beginner
+}
+
+private struct HomeTransitionRipple: Equatable {
+    let id = UUID()
+    let origin: CGPoint
+}
+
+private struct HomeTransitionRippleView: View {
+    let ripple: HomeTransitionRipple
+    @State private var expanded = false
+    @State private var fading = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let diameter = transitionDiameter(for: size)
+
+            Circle()
+                .fill(AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.06 : 0.22)))
+                .overlay(
+                    Circle()
+                        .stroke(AppColors.neonCyan.opacity(expanded ? 0 : 0.85), lineWidth: expanded ? 1 : 2)
+                )
+                .frame(width: expanded ? diameter : 14, height: expanded ? diameter : 14)
+                .shadow(color: AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.18 : 0.9)), radius: expanded ? 34 : 10)
+                .position(ripple.origin)
+                .ignoresSafeArea()
+                .onAppear {
+                    withAnimation(.timingCurve(0.16, 0.84, 0.24, 1.0, duration: 0.62)) {
+                        expanded = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.48) {
+                        withAnimation(.easeOut(duration: 0.26)) {
+                            fading = true
+                        }
+                    }
+                }
+        }
+    }
+
+    private func transitionDiameter(for size: CGSize) -> CGFloat {
+        let corners = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: size.width, y: 0),
+            CGPoint(x: 0, y: size.height),
+            CGPoint(x: size.width, y: size.height)
+        ]
+        let maxDistance = corners.map { corner in
+            hypot(corner.x - ripple.origin.x, corner.y - ripple.origin.y)
+        }.max() ?? max(size.width, size.height)
+        return maxDistance * 2.2
+    }
 }

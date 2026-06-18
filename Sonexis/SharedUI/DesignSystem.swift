@@ -9,9 +9,14 @@ struct AppColors {
     static let synthOrange = Color(hex: "#F72585")
     static let synthPink = Color(hex: "#FF006E")
 
-    static let deepBlack = Color(hex: "#0A0A0F")
-    static let darkPurple = Color(hex: "#1A0B2E")
-    static let midPurple = Color(hex: "#2D1B4E")
+    static let deepBlack = Color(hex: "#12071F")
+    static let darkPurple = Color(hex: "#211039")
+    static let midPurple = Color(hex: "#38215E")
+    static let panelPurple = Color(hex: "#1A0C2C")
+    static let controlPurple = Color(hex: "#271642")
+    static let controlPurpleRaised = Color(hex: "#321D55")
+    static let controlStroke = Color(hex: "#5B4678")
+    static let controlStrokeSoft = Color(hex: "#443158")
 
     static let success = Color(hex: "#00FF88")
     static let warning = Color(hex: "#FFB800")
@@ -23,8 +28,8 @@ struct AppColors {
     static let textMuted = Color(hex: "#6E6E8F")
 
     static let wireActive = neonCyan
-    static let wireInactive = Color(hex: "#3D3D5C")
-    static let gridLines = Color(hex: "#1F1F3D")
+    static let wireInactive = Color(hex: "#53406D")
+    static let gridLines = Color(hex: "#2A1B46")
     static let gridGlow = neonPink.opacity(0.4)
 }
 
@@ -42,7 +47,7 @@ struct AppTypography {
 
 struct AppGradients {
     static let background = LinearGradient(
-        colors: [AppColors.deepBlack, AppColors.darkPurple, AppColors.deepBlack],
+        colors: [AppColors.deepBlack, AppColors.darkPurple, AppColors.midPurple, AppColors.deepBlack],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )

@@ -12,7 +12,7 @@ struct HeaderView: View {
     @Binding var saveStatusText: String?
 
     var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 16) {
             // Power button with status
             VStack(spacing: 4) {
                 Button(action: {
@@ -26,6 +26,7 @@ struct HeaderView: View {
                     Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
                         .font(.system(size: 24))
                         .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
+                        .shadow(color: audioEngine.isRunning ? AppColors.success.opacity(0.18) : .clear, radius: 8)
                 }
                 .buttonStyle(.plain)
                 .help(audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)
@@ -48,7 +49,7 @@ struct HeaderView: View {
 
             Divider()
                 .frame(height: 30)
-                .background(AppColors.gridLines)
+                .background(AppColors.controlStrokeSoft.opacity(0.65))
 
             // FX bypass
             Button(action: {
@@ -57,13 +58,14 @@ struct HeaderView: View {
                 Image(systemName: audioEngine.processingEnabled ? "slider.horizontal.3" : "slider.horizontal.3")
                     .font(.system(size: 18))
                     .foregroundColor(audioEngine.processingEnabled ? AppColors.neonCyan : AppColors.textMuted)
+                    .frame(width: 34, height: 28)
             }
             .buttonStyle(.plain)
             .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
 
             Divider()
                 .frame(height: 30)
-                .background(AppColors.gridLines)
+                .background(AppColors.controlStrokeSoft.opacity(0.65))
 
             let recordDisabled = !audioEngine.isRunning || tutorial.isActive
             Button(action: {
@@ -81,6 +83,7 @@ struct HeaderView: View {
                         .font(AppTypography.caption)
                         .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
                 }
+                .frame(width: 108, height: 28)
             }
             .buttonStyle(.plain)
             .disabled(recordDisabled)
@@ -97,49 +100,10 @@ struct HeaderView: View {
 
             Divider()
                 .frame(height: 30)
-                .background(AppColors.gridLines)
+                .background(AppColors.controlStrokeSoft.opacity(0.65))
 
-            #if DEBUG
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Backend")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-
-                Picker(
-                    "",
-                    selection: Binding(
-                        get: { audioEngine.selectedAudioBackend },
-                        set: { audioEngine.selectAudioBackend($0) }
-                    )
-                ) {
-                    ForEach(SystemAudioBackend.allCases) { backend in
-                        Text(backend.displayName).tag(backend)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 190)
-                .disabled(audioEngine.processTapStopInProgress)
-                .help("Debug only: switch between the Process Tap and BlackHole backends.")
-            }
-
-            Divider()
-                .frame(height: 30)
-                .background(AppColors.gridLines)
-            #endif
-
-            // Capture source
+            // Output route
             VStack(alignment: .leading, spacing: 2) {
-                Text(audioEngine.isProcessTapBackendEnabled ? "Capture" : "Input")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-                Text(audioEngine.isProcessTapBackendEnabled ? "System Audio" : audioEngine.inputDeviceName)
-                    .font(AppTypography.technical)
-                    .foregroundColor(AppColors.textSecondary)
-            }
-
-            // Output device picker + volume
-            VStack(alignment: .leading, spacing: 6) {
                 Text("Output")
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textMuted)
@@ -162,17 +126,15 @@ struct HeaderView: View {
                         audioEngine.refreshOutputDevices()
                     }
                 }
-
-                Slider(
-                    value: Binding(
-                        get: { Double(audioEngine.outputVolume) },
-                        set: { audioEngine.outputVolume = Float($0) }
-                    ),
-                    in: 0...1
-                )
-                .tint(AppColors.neonCyan)
-                .frame(width: 220)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AppColors.controlPurple.opacity(0.48))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(AppColors.controlStroke.opacity(0.56), lineWidth: 1)
+            )
+            .cornerRadius(8)
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -230,6 +192,7 @@ struct HeaderView: View {
                         .padding(.vertical, 6)
                         .disabled(!allowSave)
                         .opacity(allowSave ? 1.0 : 0.4)
+                        .foregroundColor(AppColors.textPrimary)
                         .background(
                             GeometryReader { proxy in
                                 Color.clear.preference(
@@ -241,7 +204,7 @@ struct HeaderView: View {
 
                         Divider()
                             .frame(height: 16)
-                            .background(AppColors.neonCyan.opacity(0.6))
+                            .background(AppColors.controlStroke.opacity(0.62))
 
                         Menu {
                             Button("Save As…") {
@@ -262,19 +225,29 @@ struct HeaderView: View {
                         .buttonStyle(.plain)
                         .disabled(!allowSave)
                         .opacity(allowSave ? 1.0 : 0.4)
+                        .foregroundColor(AppColors.textPrimary)
                     }
-                    .background(AppColors.neonCyan.opacity(0.18))
+                    .background(AppColors.controlPurple.opacity(0.70))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(AppColors.neonCyan, lineWidth: 1)
+                            .stroke(AppColors.controlStroke.opacity(0.76), lineWidth: 1)
                 )
                     .cornerRadius(8)
 
                     Button("Load Preset") {
                         onLoad()
                     }
-                    .buttonStyle(.bordered)
-                    .tint(AppColors.neonPink)
+                    .buttonStyle(.plain)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(AppColors.controlPurple.opacity(0.70))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(AppColors.controlStroke.opacity(0.76), lineWidth: 1)
+                    )
+                    .cornerRadius(8)
                     .disabled(!allowLoad)
                     .opacity(allowLoad ? 1.0 : 0.4)
                     .background(
@@ -296,7 +269,16 @@ struct HeaderView: View {
             }
         }
         .padding()
-        .background(AppColors.midPurple.opacity(0.9))
+        .background(AppColors.panelPurple.opacity(0.84))
+        .overlay(
+            LinearGradient(
+                colors: [AppColors.controlStroke.opacity(0.42), AppColors.neonCyan.opacity(0.16), AppColors.neonPink.opacity(0.12)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 1),
+            alignment: .bottom
+        )
         .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
     }
 

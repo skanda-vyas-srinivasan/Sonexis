@@ -56,12 +56,13 @@ struct EffectTray: View {
                     HStack(spacing: 8) {
                         Text("Effects")
                             .font(AppTypography.technical)
-                            .foregroundColor(AppColors.textMuted)
+                            .foregroundColor(AppColors.textSecondary.opacity(0.82))
                         Spacer()
                         if activeTab == .plugins {
                             Button(action: { pluginManager.scanPlugins() }) {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(AppColors.textSecondary)
                             }
                             .buttonStyle(.plain)
                             .help("Rescan")
@@ -71,20 +72,20 @@ struct EffectTray: View {
                     .padding(.vertical, 8)
 
                     Divider()
-                        .background(AppColors.gridLines)
+                        .background(AppColors.controlStrokeSoft.opacity(0.58))
 
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
-                            .foregroundColor(AppColors.neonCyan)
+                            .foregroundColor(AppColors.textMuted)
                         TextField("Search effects...", text: $searchText)
                             .textFieldStyle(.plain)
                             .foregroundColor(AppColors.textPrimary)
                     }
                     .padding(8)
-                    .background(AppColors.darkPurple)
+                    .background(AppColors.controlPurple.opacity(0.42))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(AppColors.neonCyan.opacity(0.5), lineWidth: 1)
+                            .stroke(AppColors.controlStroke.opacity(0.48), lineWidth: 1)
                     )
                     .cornerRadius(8)
                     .padding(.horizontal, 10)
@@ -201,7 +202,12 @@ struct EffectTray: View {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.left")
                     .font(.system(size: 12, weight: .semibold))
                     .padding(6)
-                    .background(AppColors.midPurple.opacity(0.95))
+                    .foregroundColor(AppColors.textSecondary)
+                    .background(AppColors.controlPurple.opacity(0.80))
+                    .overlay(
+                        Circle()
+                            .stroke(AppColors.controlStroke.opacity(0.58), lineWidth: 1)
+                    )
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -210,9 +216,17 @@ struct EffectTray: View {
             .zIndex(2)
         }
         .frame(width: isCollapsed ? 44 : 220)
-        .background(AppColors.darkPurple.opacity(0.96))
+        .background(AppColors.panelPurple.opacity(0.86))
         .overlay(
-            Divider(),
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [AppColors.controlStroke.opacity(0.54), AppColors.neonCyan.opacity(0.16), AppColors.neonPink.opacity(0.12)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 1),
             alignment: .trailing
         )
         .onAppear(perform: loadFavorites)
@@ -248,12 +262,12 @@ struct EffectTray: View {
                         .padding(.horizontal, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(isActive ? AppColors.midPurple.opacity(0.75) : AppColors.darkPurple.opacity(0.35))
+                                .fill(isActive ? AppColors.controlPurpleRaised.opacity(0.70) : AppColors.controlPurple.opacity(0.30))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(
-                                    isActive ? AppColors.neonCyan.opacity(0.65) : AppColors.midPurple.opacity(0.7),
+                                    isActive ? AppColors.neonCyan.opacity(0.58) : AppColors.controlStroke.opacity(0.34),
                                     lineWidth: 1
                                 )
                         )
@@ -317,7 +331,6 @@ struct EffectPaletteButton: View {
     let labelHeight: CGFloat
     let iconTileSize: CGFloat
     @State private var isHovered = false
-    private let tileBase = AppColors.midPurple
     private let textColor = AppColors.textPrimary
 
     var body: some View {
@@ -326,7 +339,7 @@ struct EffectPaletteButton: View {
                 RoundedRectangle(cornerRadius: 14)
                     .fill(
                         LinearGradient(
-                            colors: [tileBase.opacity(0.95), tileBase.opacity(0.7)],
+                            colors: [AppColors.controlPurpleRaised.opacity(0.82), AppColors.controlPurple.opacity(0.72)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -334,14 +347,14 @@ struct EffectPaletteButton: View {
                     .frame(width: iconTileSize, height: iconTileSize)
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(isHovered ? AppColors.neonPink : AppColors.midPurple.opacity(0.6), lineWidth: 1)
+                            .stroke(isHovered ? AppColors.neonCyan.opacity(0.58) : AppColors.controlStroke.opacity(0.38), lineWidth: 1)
                     )
 
                 Image(systemName: effectType.icon)
                     .font(.system(size: 30, weight: .light))
                     .symbolRenderingMode(.monochrome)
                     .foregroundColor(textColor)
-                    .shadow(color: AppColors.neonCyan.opacity(0.2), radius: 4, x: 0, y: 0)
+                    .shadow(color: AppColors.neonCyan.opacity(isHovered ? 0.18 : 0.06), radius: 4, x: 0, y: 0)
                     .scaleEffect(isHovered ? 1.05 : 1.0)
             }
             .overlay(alignment: .topTrailing) {
@@ -415,7 +428,6 @@ struct PluginPaletteButton: View {
     let labelHeight: CGFloat
     let iconTileSize: CGFloat
     @State private var isHovered = false
-    private let tileBase = AppColors.midPurple
     private let textColor = AppColors.textPrimary
 
     var body: some View {
@@ -424,7 +436,7 @@ struct PluginPaletteButton: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(
                         LinearGradient(
-                            colors: [tileBase.opacity(0.95), tileBase.opacity(0.7)],
+                            colors: [AppColors.controlPurpleRaised.opacity(0.82), AppColors.controlPurple.opacity(0.72)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -432,14 +444,14 @@ struct PluginPaletteButton: View {
                     .frame(width: iconTileSize, height: iconTileSize)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isHovered ? AppColors.neonPink : AppColors.midPurple.opacity(0.6), lineWidth: 1)
+                            .stroke(isHovered ? AppColors.neonCyan.opacity(0.58) : AppColors.controlStroke.opacity(0.38), lineWidth: 1)
                     )
 
                 Image(systemName: "puzzlepiece.extension")
                     .font(.system(size: 30, weight: .light))
                     .symbolRenderingMode(.monochrome)
                     .foregroundColor(textColor)
-                    .shadow(color: AppColors.neonCyan.opacity(0.2), radius: 4, x: 0, y: 0)
+                    .shadow(color: AppColors.neonCyan.opacity(isHovered ? 0.18 : 0.06), radius: 4, x: 0, y: 0)
             }
             .scaleEffect(isHovered ? 1.05 : 1.0)
             .overlay(alignment: .bottomTrailing) {

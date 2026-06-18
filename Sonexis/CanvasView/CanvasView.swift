@@ -246,6 +246,14 @@ struct CanvasView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(AppColors.textSecondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AppColors.controlPurple.opacity(0.56))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(arrowFps == 0 ? AppColors.controlStroke.opacity(0.50) : AppColors.neonCyan.opacity(0.42), lineWidth: 1)
+                )
+                .cornerRadius(8)
                 .disabled(tutorial.isBuildStep)
             }
 
@@ -255,6 +263,13 @@ struct CanvasView: View {
                 } label: {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 24)
+                        .background(AppColors.controlPurple.opacity(0.50))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(undoStack.isEmpty ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
+                        )
+                        .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(undoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
@@ -265,6 +280,13 @@ struct CanvasView: View {
                 } label: {
                     Image(systemName: "arrow.uturn.forward")
                         .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 24)
+                        .background(AppColors.controlPurple.opacity(0.50))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(redoStack.isEmpty ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
+                        )
+                        .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(redoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
@@ -285,6 +307,14 @@ struct CanvasView: View {
                 Text("Canvas")
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppColors.controlPurple.opacity(0.56))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(AppColors.controlStroke.opacity(0.58), lineWidth: 1)
+                    )
+                    .cornerRadius(8)
             }
             .background(
                 GeometryReader { proxy in
@@ -298,7 +328,16 @@ struct CanvasView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(AppColors.midPurple.opacity(0.9))
+        .background(AppColors.panelPurple.opacity(0.72))
+        .overlay(
+            LinearGradient(
+                colors: [AppColors.controlStroke.opacity(0.30), AppColors.neonCyan.opacity(0.10), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 1),
+            alignment: .bottom
+        )
     }
 
     private var leftAutoPath: [BeginnerNode] {
@@ -330,7 +369,10 @@ struct CanvasView: View {
                     AppGradients.background
                         .ignoresSafeArea()
 
+                    CanvasWaveLinesBackground()
+
                     StaticGrid()
+                        .opacity(0.34)
 
                     Rectangle()
                         .fill(Color.clear)
@@ -763,14 +805,25 @@ struct CanvasView: View {
                     }
 
                     if effectChain.isEmpty && graphMode != .split {
-                        VStack(spacing: 8) {
+                        VStack(spacing: 7) {
                             Image(systemName: "waveform.path")
-                                .font(.system(size: 40))
-                                .foregroundColor(.secondary.opacity(0.3))
-                            Text("Drop effects anywhere")
-                                .font(.title3)
-                                .foregroundColor(.secondary.opacity(0.5))
+                                .font(.system(size: 30, weight: .light))
+                                .foregroundColor(AppColors.neonCyan.opacity(0.32))
+                            Text("Drop effects here")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(AppColors.textSecondary.opacity(0.62))
+                            Text("Build a chain from left to right")
+                                .font(AppTypography.caption)
+                                .foregroundColor(AppColors.textMuted.opacity(0.72))
                         }
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 18)
+                        .background(AppColors.controlPurple.opacity(0.20))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(AppColors.controlStroke.opacity(0.28), lineWidth: 1)
+                        )
+                        .cornerRadius(10)
                     }
                 }
     }
@@ -792,16 +845,13 @@ struct CanvasView: View {
                     updateCursor()
                 }
                 .onAppear {
-                    canvasSize = geometry.size
+                    updateCanvasSizeIfNeeded(geometry.size)
                 }
                 .onChange(of: geometry.size) { newSize in
-                    canvasSize = newSize
+                    updateCanvasSizeIfNeeded(newSize)
                 }
                 .background(WindowFocusReader { isKey in
-                    isWindowKey = isKey
-                    let active = scenePhase == .active && isWindowKey
-                    isAppActive = active
-                    showSignalFlow = active && audioEngine.isRunning
+                    updateFocusState(isKeyWindow: isKey)
                 })
                 .contentShape(Rectangle())
                 .overlay(
@@ -928,7 +978,7 @@ struct CanvasView: View {
             .hidden()
         )
         .onAppear {
-            showSignalFlow = audioEngine.isRunning
+            updateSignalFlowVisibility()
         }
         .onChange(of: tutorial.step) { step in
             if step == .buildWiringManual && wiringMode == .manual {
@@ -939,44 +989,30 @@ struct CanvasView: View {
             }
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
-            showSignalFlow = isRunning
+            updateSignalFlowVisibility(isRunning: isRunning)
         }
         .onChange(of: scenePhase) { phase in
-            let active = phase == .active && isWindowKey
-            isAppActive = active
-            showSignalFlow = active && audioEngine.isRunning
+            updateSignalFlowVisibility(scenePhase: phase)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            isWindowKey = true
-            let active = scenePhase == .active
-            isAppActive = active && isWindowKey
-            showSignalFlow = isAppActive && audioEngine.isRunning
+            updateFocusState(isKeyWindow: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
-            isWindowKey = false
-            isAppActive = false
-            showSignalFlow = false
+            updateFocusState(isKeyWindow: false)
         }
         .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
             guard let snapshot else { return }
-            isRestoringSnapshot = true
-            applyGraphSnapshot(snapshot)
             DispatchQueue.main.async {
-                isRestoringSnapshot = false
+                restorePendingGraphSnapshot(snapshot)
+                audioEngine.pendingGraphSnapshot = nil
             }
-            audioEngine.pendingGraphSnapshot = nil
         }
         .onReceive(audioEngine.$signalFlowToken) { _ in
             let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
-            isWindowKey = keyWindow
-            let active = scenePhase == .active && isWindowKey
-            isAppActive = active
-            showSignalFlow = active && audioEngine.isRunning
+            updateFocusState(isKeyWindow: keyWindow)
         }
         .onReceive(audioEngine.$pluginStatusToken) { token in
-            pluginStatusToken = token
-        }
-        .onReceive(audioEngine.$pluginStatusToken) { token in
+            guard pluginStatusToken != token else { return }
             pluginStatusToken = token
         }
         .onAppear {
@@ -993,6 +1029,45 @@ struct CanvasView: View {
                 NSEvent.removeMonitor(monitor)
                 flagsMonitor = nil
             }
+        }
+    }
+
+    private func updateCanvasSizeIfNeeded(_ newSize: CGSize) {
+        guard canvasSize != newSize else { return }
+        canvasSize = newSize
+    }
+
+    private func updateFocusState(isKeyWindow: Bool) {
+        let active = scenePhase == .active && isKeyWindow
+        let shouldShowSignalFlow = active && audioEngine.isRunning
+        guard isWindowKey != isKeyWindow ||
+            isAppActive != active ||
+            showSignalFlow != shouldShowSignalFlow else {
+            return
+        }
+        isWindowKey = isKeyWindow
+        isAppActive = active
+        showSignalFlow = shouldShowSignalFlow
+    }
+
+    private func updateSignalFlowVisibility(
+        scenePhase phase: ScenePhase? = nil,
+        isRunning running: Bool? = nil
+    ) {
+        let resolvedPhase = phase ?? scenePhase
+        let resolvedRunning = running ?? audioEngine.isRunning
+        let active = resolvedPhase == .active && isWindowKey
+        let shouldShowSignalFlow = active && resolvedRunning
+        guard isAppActive != active || showSignalFlow != shouldShowSignalFlow else { return }
+        isAppActive = active
+        showSignalFlow = shouldShowSignalFlow
+    }
+
+    private func restorePendingGraphSnapshot(_ snapshot: GraphSnapshot) {
+        isRestoringSnapshot = true
+        applyGraphSnapshot(snapshot)
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
         }
     }
 
@@ -2443,5 +2518,53 @@ struct CanvasView: View {
 
     private func nodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
         node.position == .zero ? defaultNodePosition(in: size, lane: graphMode == .split ? node.lane : nil) : node.position
+    }
+}
+
+private struct CanvasWaveLinesBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+
+            Canvas { context, size in
+                let width = max(size.width, 1)
+                let height = max(size.height, 1)
+                let centerY = height * 0.5
+                let offsets: [CGFloat] = [-0.34, -0.17, 0.17, 0.34]
+                let colors: [Color] = [
+                    AppColors.neonCyan,
+                    AppColors.neonPink,
+                    AppColors.neonPink,
+                    AppColors.neonCyan
+                ]
+
+                for index in offsets.indices {
+                    var path = Path()
+                    let drift = CGFloat(sin((time * 0.28) + Double(index) * 1.7)) * height * 0.018
+                    let yBase = centerY + (height * offsets[index]) + drift
+                    let amplitude = height * (index.isMultiple(of: 2) ? 0.021 : 0.017)
+                    let wavelength = width * (index.isMultiple(of: 2) ? 0.68 : 0.74)
+                    let phase = CGFloat(time * 0.22) + CGFloat(index) * 1.35
+
+                    for x in stride(from: CGFloat(0), through: width, by: 12) {
+                        let y = yBase + sin((x / wavelength * .pi * 2) + phase) * amplitude
+                        if x == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+
+                    context.stroke(
+                        path,
+                        with: .color(colors[index].opacity(0.20)),
+                        style: StrokeStyle(lineWidth: 1.35, lineCap: .round, lineJoin: .round)
+                    )
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

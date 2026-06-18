@@ -17,12 +17,7 @@ final class TutorialController: ObservableObject {
     }
 
     var allowPresetsAction: Bool {
-        switch step {
-        case .inactive, .homePresets:
-            return true
-        default:
-            return false
-        }
+        step == .inactive
     }
 
     var allowBackAction: Bool {
@@ -86,7 +81,7 @@ final class TutorialController: ObservableObject {
     func advance() {
         switch step {
         case .welcome:
-            step = .homePresets
+            step = .homeBuild
         case .homePresets:
             step = .presetsExplore
         case .presetsExplore:
@@ -166,9 +161,7 @@ final class TutorialController: ObservableObject {
     }
 
     func handlePresetsClick() {
-        if step == .homePresets {
-            step = .presetsExplore
-        }
+        if step == .homePresets { step = .presetsExplore }
     }
 
     func handleBuildClick() {
