@@ -9,6 +9,11 @@ extension AudioEngine {
     // MARK: - Engine Control
 
     func start() {
+        if ProcessTapBackendFlag.isEnabled {
+            startProcessTapBackend()
+            return
+        }
+
         Task {
             // Automatically set system input and output to BlackHole
             let switched = await switchSystemAudioToBlackHole()
@@ -463,10 +468,20 @@ extension AudioEngine {
     }
 
     func stop() {
+        if processTapEngine != nil {
+            stopProcessTapBackend()
+            return
+        }
+
         stopInternal(setReconfiguringFlag: false)
     }
 
     private func stopInternal(setReconfiguringFlag: Bool) {
+        if processTapEngine != nil {
+            stopProcessTapBackend()
+            return
+        }
+
         stopRecording()
         nightcoreRestartWorkItem?.cancel()
         nightcoreRestartWorkItem = nil
@@ -589,6 +604,11 @@ extension AudioEngine {
     }
 
     @objc private func handleAppWillTerminate(notification: Notification) {
+        if processTapEngine != nil {
+            stopProcessTapBackendImmediately(reason: "Sonexis terminate")
+            return
+        }
+
         // Synchronously restore audio devices before app terminates
         if isRunning {
             stopInternal(setReconfiguringFlag: false)
