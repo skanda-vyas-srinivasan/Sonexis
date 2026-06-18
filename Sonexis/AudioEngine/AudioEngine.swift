@@ -205,6 +205,7 @@ struct RubberBandScratch {
 class AudioEngine: ObservableObject {
     var engine = AVAudioEngine()
     var processTapEngine: ProcessTapDSPEngine?
+    var processTapStopInProgress = false
     @Published var isRunning = false
     @Published var errorMessage: String?
     @Published var inputDeviceName: String = "Searching..."
