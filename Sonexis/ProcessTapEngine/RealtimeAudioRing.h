@@ -15,9 +15,21 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
     const AudioBufferList *inputData
 );
 
+uint32_t SonexisAudioRingBufferWriteInterleaved(
+    SonexisAudioRingBuffer *ringBuffer,
+    const float *inputSamples,
+    uint32_t frames
+);
+
 uint32_t SonexisAudioRingBufferReadToAudioBufferList(
     SonexisAudioRingBuffer *ringBuffer,
     AudioBufferList *outputData
+);
+
+uint32_t SonexisAudioRingBufferReadInterleaved(
+    SonexisAudioRingBuffer *ringBuffer,
+    float *outputSamples,
+    uint32_t frames
 );
 
 void SonexisAudioRingBufferSetReadEnabled(SonexisAudioRingBuffer *ringBuffer, bool enabled);

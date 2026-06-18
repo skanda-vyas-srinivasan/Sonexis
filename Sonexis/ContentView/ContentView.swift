@@ -116,7 +116,8 @@ struct ContentView: View {
                 TutorialOverlay(
                     step: tutorial.step,
                     targets: tutorialTargets,
-                    isSetupReady: audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") },
+                    isSetupReady: audioEngine.setupReadyForCurrentBackend,
+                    usesProcessTapBackend: audioEngine.isProcessTapBackendEnabled,
                     trayTabsVisited: tutorial.hasVisitedTrayTabs,
                     onNext: { tutorial.advance() },
                     onSkip: { tutorial.endTutorial() },
@@ -144,9 +145,7 @@ struct ContentView: View {
         .onAppear {
             guard !hasShownSetupThisSession else { return }
             hasShownSetupThisSession = true
-            // Only show setup if BlackHole is not installed
-            let blackHoleInstalled = audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
-            if !blackHoleInstalled {
+            if !audioEngine.setupReadyForCurrentBackend {
                 showSetupOverlay = true
             }
             tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)

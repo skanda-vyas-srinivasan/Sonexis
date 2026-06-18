@@ -26,9 +26,19 @@ final class RealtimeRingBuffer {
         return SonexisAudioRingBufferWriteFromAudioBufferList(pointer, inputData)
     }
 
+    func writeInterleaved(_ samples: UnsafePointer<Float>, frames: UInt32) -> UInt32 {
+        guard let pointer else { return 0 }
+        return SonexisAudioRingBufferWriteInterleaved(pointer, samples, frames)
+    }
+
     func read(outputData: UnsafeMutablePointer<AudioBufferList>) -> UInt32 {
         guard let pointer else { return 0 }
         return SonexisAudioRingBufferReadToAudioBufferList(pointer, outputData)
+    }
+
+    func readInterleaved(_ samples: UnsafeMutablePointer<Float>, frames: UInt32) -> UInt32 {
+        guard let pointer else { return 0 }
+        return SonexisAudioRingBufferReadInterleaved(pointer, samples, frames)
     }
 
     func setGainImmediate(_ gain: Float) {

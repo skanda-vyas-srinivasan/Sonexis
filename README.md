@@ -62,7 +62,8 @@ Right-click any effect to edit parameters or remove it.
 ## Requirements
 
 - macOS 14.4 or later
-- BlackHole 2ch (virtual audio driver — installer included in app)
+- BlackHole 2ch for the legacy virtual-device backend
+- No virtual audio driver is required when the experimental Process Tap backend is enabled
 
 ---
 
@@ -88,7 +89,9 @@ Build with ⌘R.
 
 ## How It Works
 
-By default, Sonexis uses BlackHole as a virtual loopback:
+Sonexis has two system-audio backends.
+
+The legacy backend uses BlackHole as a virtual loopback:
 
 ```
 System Audio → BlackHole → Sonexis (effects) → Your Speakers/Headphones
@@ -96,27 +99,33 @@ System Audio → BlackHole → Sonexis (effects) → Your Speakers/Headphones
 
 When you press power, Sonexis sets BlackHole as your system output, captures that audio, processes it through your effect chain, and sends it to your real output device. When you turn it off, your original audio routing is restored.
 
-## Experimental Process Tap Backend
+The experimental backend uses macOS Process Taps:
 
-Sonexis now includes an experimental macOS 14.4+ Process Tap backend behind a feature flag:
+```
+System Audio → Core Audio Process Tap → Sonexis effect graph → Current macOS Default Output
+```
+
+On the `process-tap-backend` branch, Debug builds use the Process Tap backend by default so it can be tested directly from Xcode. To force the old BlackHole backend in Debug:
+
+```bash
+SONEXIS_USE_BLACKHOLE=1
+```
+
+Release builds keep the Process Tap backend opt-in:
 
 ```bash
 SONEXIS_USE_PROCESS_TAP=1
-```
-
-When enabled, the power button starts the Process Tap engine instead of the BlackHole path:
-
-```
-System Audio → Core Audio Process Tap → Sonexis passthrough DSP → Current Default Output
 ```
 
 Current state:
 
 - No virtual audio driver is required.
 - No manual output-device switching is required.
-- The backend is compiled into Sonexis but remains opt-in.
-- It currently runs unity passthrough DSP, not the full visual effect graph.
-- Manual listening and route-change tests are still required inside the full app.
+- System audio is captured with `AudioHardwareCreateProcessTap`.
+- The original output path is muted while tapped, then processed audio is played through the current macOS default output.
+- The captured signal is processed through Sonexis's existing visual effect graph.
+- Process Tap playback follows the macOS default output device. The old in-app output picker applies to the BlackHole backend, not this backend yet.
+- Manual listening and route-change tests are still required before treating this as production-ready.
 
 Build and run the hidden Process Tap smoke test with:
 

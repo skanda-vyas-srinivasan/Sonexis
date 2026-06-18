@@ -1,7 +1,7 @@
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var processTapSmokeEngine: ProcessTapDSPEngine?
+    private var processTapSmokeAudioEngine: AudioEngine?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
@@ -18,25 +18,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let engine = ProcessTapDSPEngine(configuration: .productBaseline)
-        processTapSmokeEngine = engine
+        let audioEngine = AudioEngine()
+        processTapSmokeAudioEngine = audioEngine
+        audioEngine.startProcessTapBackend()
 
-        do {
-            try engine.start()
-            print("Sonexis Process Tap smoke test started.")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
-                engine.stop(reason: "Sonexis Process Tap smoke test") {
-                    DispatchQueue.main.async {
-                        print("Sonexis Process Tap smoke test stopped.")
-                        self?.processTapSmokeEngine = nil
-                        NSApp.terminate(nil)
-                    }
-                }
-            }
-        } catch {
-            print("Sonexis Process Tap smoke test failed: \(error)")
-            processTapSmokeEngine = nil
+        guard audioEngine.isRunning else {
+            print("Sonexis Process Tap smoke test failed: \(audioEngine.errorMessage ?? "unknown error")")
+            processTapSmokeAudioEngine = nil
             NSApp.terminate(nil)
+            return
+        }
+
+        print("Sonexis Process Tap smoke test started.")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+            audioEngine.stopProcessTapBackend(reason: "Sonexis Process Tap smoke test") {
+                print("Sonexis Process Tap smoke test stopped.")
+                self?.processTapSmokeAudioEngine = nil
+                NSApp.terminate(nil)
+            }
         }
     }
 }
@@ -47,7 +46,11 @@ struct SonexisApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" {
+                EmptyView()
+            } else {
+                ContentView()
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)

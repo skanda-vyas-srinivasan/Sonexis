@@ -349,6 +349,113 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
     return framesToWrite;
 }
 
+uint32_t SonexisAudioRingBufferWriteInterleaved(
+    SonexisAudioRingBuffer *ringBuffer,
+    const float *inputSamples,
+    uint32_t frames
+) {
+    if (ringBuffer == NULL || inputSamples == NULL || frames == 0) {
+        return 0;
+    }
+
+    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_relaxed);
+    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
+    uint32_t readableFrames = writeFrame - readFrame;
+    uint32_t writableFrames = ringBuffer->capacityFrames - readableFrames;
+    uint32_t framesToWrite = frames < writableFrames ? frames : writableFrames;
+
+    if (framesToWrite < frames) {
+        atomic_fetch_add_explicit(
+            &ringBuffer->droppedFrames,
+            (unsigned long long)(frames - framesToWrite),
+            memory_order_relaxed
+        );
+    }
+
+    float peak = 0.0f;
+    bool pitchShiftEnabled = atomic_load_explicit(
+        &ringBuffer->pitchShiftEnabled,
+        memory_order_acquire
+    );
+    uint32_t requestID = atomic_load_explicit(&ringBuffer->gainRampRequestID, memory_order_acquire);
+    if (requestID != ringBuffer->appliedGainRampRequestID) {
+        ringBuffer->appliedGainRampRequestID = requestID;
+        ringBuffer->rampTargetGain = ppmToGain(
+            atomic_load_explicit(&ringBuffer->requestedTargetGainPPM, memory_order_relaxed)
+        );
+        ringBuffer->rampRemainingFrames = atomic_load_explicit(
+            &ringBuffer->requestedRampFrames,
+            memory_order_relaxed
+        );
+        if (ringBuffer->rampRemainingFrames == 0) {
+            ringBuffer->currentGain = ringBuffer->rampTargetGain;
+        }
+    }
+
+    for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
+        uint32_t outputFrame = (writeFrame + frame) % ringBuffer->capacityFrames;
+        uint32_t outputBase = outputFrame * ringBuffer->channels;
+        float frameGain = ringBuffer->currentGain;
+        float pitchPhase = ringBuffer->pitchPhase;
+
+        if (ringBuffer->rampRemainingFrames > 0) {
+            float step = (ringBuffer->rampTargetGain - ringBuffer->currentGain) /
+                (float)ringBuffer->rampRemainingFrames;
+            ringBuffer->currentGain += step;
+            ringBuffer->rampRemainingFrames -= 1;
+            frameGain = ringBuffer->currentGain;
+
+            if (ringBuffer->rampRemainingFrames == 0) {
+                ringBuffer->currentGain = ringBuffer->rampTargetGain;
+                frameGain = ringBuffer->currentGain;
+            }
+        }
+
+        for (uint32_t channel = 0; channel < ringBuffer->channels; ++channel) {
+            float inputSample = inputSamples[(frame * ringBuffer->channels) + channel];
+            float absoluteSample = fabsf(inputSample);
+            if (absoluteSample > peak) {
+                peak = absoluteSample;
+            }
+
+            float processedSample = inputSample;
+            if (pitchShiftEnabled) {
+                processedSample = processPitchShiftSample(
+                    ringBuffer,
+                    inputSample,
+                    channel,
+                    pitchPhase
+                );
+            }
+            ringBuffer->samples[outputBase + channel] = processedSample * frameGain;
+        }
+
+        if (pitchShiftEnabled) {
+            ringBuffer->pitchWriteFrame =
+                (ringBuffer->pitchWriteFrame + 1) % ringBuffer->pitchDelayLineFrames;
+            ringBuffer->pitchPhase += ringBuffer->pitchPhaseIncrement;
+            while (ringBuffer->pitchPhase >= 1.0f) {
+                ringBuffer->pitchPhase -= 1.0f;
+            }
+        }
+    }
+
+    uint32_t peakPPM = (uint32_t)fminf(peak * 1000000.0f, 1000000.0f);
+    atomic_store_explicit(&ringBuffer->lastInputPeakPPM, peakPPM, memory_order_relaxed);
+    atomic_fetch_add_explicit(
+        &ringBuffer->writtenFrames,
+        (unsigned long long)framesToWrite,
+        memory_order_relaxed
+    );
+    atomic_store_explicit(
+        &ringBuffer->currentGainPPM,
+        gainToPPM(ringBuffer->currentGain),
+        memory_order_relaxed
+    );
+    atomic_store_explicit(&ringBuffer->writeFrame, writeFrame + framesToWrite, memory_order_release);
+    return framesToWrite;
+}
+
 uint32_t SonexisAudioRingBufferReadToAudioBufferList(
     SonexisAudioRingBuffer *ringBuffer,
     AudioBufferList *outputData
@@ -404,6 +511,52 @@ uint32_t SonexisAudioRingBufferReadToAudioBufferList(
                     ringBuffer->samples[inputBase + inputChannel];
                 inputChannel += 1;
             }
+        }
+    }
+
+    atomic_fetch_add_explicit(
+        &ringBuffer->readFrames,
+        (unsigned long long)framesToRead,
+        memory_order_relaxed
+    );
+    atomic_store_explicit(&ringBuffer->readFrame, readFrame + framesToRead, memory_order_release);
+    return framesToRead;
+}
+
+uint32_t SonexisAudioRingBufferReadInterleaved(
+    SonexisAudioRingBuffer *ringBuffer,
+    float *outputSamples,
+    uint32_t frames
+) {
+    if (ringBuffer == NULL || outputSamples == NULL || frames == 0) {
+        return 0;
+    }
+
+    memset(outputSamples, 0, (size_t)frames * ringBuffer->channels * sizeof(float));
+    if (!atomic_load_explicit(&ringBuffer->readEnabled, memory_order_acquire)) {
+        return 0;
+    }
+
+    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
+    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_relaxed);
+    uint32_t readableFrames = writeFrame - readFrame;
+    uint32_t framesToRead = frames < readableFrames ? frames : readableFrames;
+
+    if (framesToRead < frames) {
+        atomic_fetch_add_explicit(
+            &ringBuffer->underflowFrames,
+            (unsigned long long)(frames - framesToRead),
+            memory_order_relaxed
+        );
+    }
+
+    for (uint32_t frame = 0; frame < framesToRead; ++frame) {
+        uint32_t inputFrame = (readFrame + frame) % ringBuffer->capacityFrames;
+        uint32_t inputBase = inputFrame * ringBuffer->channels;
+
+        for (uint32_t channel = 0; channel < ringBuffer->channels; ++channel) {
+            outputSamples[(frame * ringBuffer->channels) + channel] =
+                ringBuffer->samples[inputBase + channel];
         }
     }
 

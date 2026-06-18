@@ -67,6 +67,7 @@
 		5A0000000000000000000019 /* TapCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000009 /* TapCaptureEngine.swift */; };
 		5A000000000000000000001A /* RealtimeAudioRing.c in Sources */ = {isa = PBXBuildFile; fileRef = 5A000000000000000000000A /* RealtimeAudioRing.c */; };
 		5A000000000000000000001B /* ProcessTapBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A000000000000000000000C /* ProcessTapBackend.swift */; };
+		5A000000000000000000001C /* ProcessTapProcessingWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A000000000000000000000D /* ProcessTapProcessingWorker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -136,6 +137,7 @@
 		5A000000000000000000000A /* RealtimeAudioRing.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = RealtimeAudioRing.c; sourceTree = "<group>"; };
 		5A000000000000000000000B /* RealtimeAudioRing.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RealtimeAudioRing.h; sourceTree = "<group>"; };
 		5A000000000000000000000C /* ProcessTapBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTapBackend.swift; sourceTree = "<group>"; };
+		5A000000000000000000000D /* ProcessTapProcessingWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTapProcessingWorker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -217,6 +219,7 @@
 				5A0000000000000000000005 /* DSPProcessor.swift */,
 				5A0000000000000000000006 /* ProcessTapDSPApp.swift */,
 				5A0000000000000000000007 /* ProcessTapDSPEngine.swift */,
+				5A000000000000000000000D /* ProcessTapProcessingWorker.swift */,
 				5A000000000000000000000A /* RealtimeAudioRing.c */,
 				5A000000000000000000000B /* RealtimeAudioRing.h */,
 				5A0000000000000000000008 /* RealtimeRingBuffer.swift */,
@@ -445,6 +448,7 @@
 				5A0000000000000000000019 /* TapCaptureEngine.swift in Sources */,
 				5A000000000000000000001A /* RealtimeAudioRing.c in Sources */,
 				5A000000000000000000001B /* ProcessTapBackend.swift in Sources */,
+				5A000000000000000000001C /* ProcessTapProcessingWorker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

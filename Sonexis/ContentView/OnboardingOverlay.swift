@@ -9,7 +9,9 @@ struct OnboardingOverlay: View {
     @State private var animateIn = false
 
     var body: some View {
+        let processTapEnabled = audioEngine.isProcessTapBackendEnabled
         let blackHoleInstalled = audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
+        let setupReady = processTapEnabled || blackHoleInstalled
 
         ZStack {
             Color.black.opacity(backdropVisible ? 0.6 : 0.0)
@@ -19,7 +21,11 @@ struct OnboardingOverlay: View {
                 HStack {
                     Spacer()
                     Button {
-                        showSkipConfirm = true
+                        if processTapEnabled {
+                            onDone()
+                        } else {
+                            showSkipConfirm = true
+                        }
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .semibold))
@@ -31,20 +37,31 @@ struct OnboardingOverlay: View {
                     .buttonStyle(.plain)
                 }
 
-                Text(blackHoleInstalled ? "Almost Ready!" : "BlackHole Required")
+                Text(processTapEnabled ? "Process Tap Ready" : (blackHoleInstalled ? "Almost Ready!" : "BlackHole Required"))
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
 
                 VStack(spacing: 12) {
-                    Text(blackHoleInstalled
-                        ? "BlackHole is installed! You're ready to go."
-                        : "Sonexis needs BlackHole to route your system audio. Install it to get started.")
+                    Text(processTapEnabled
+                        ? "This build captures system audio with macOS Process Taps. No BlackHole setup is required."
+                        : (blackHoleInstalled
+                            ? "BlackHole is installed! You're ready to go."
+                            : "Sonexis needs BlackHole to route your system audio. Install it to get started."))
                         .font(AppTypography.body)
                         .foregroundColor(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
 
-                    if blackHoleInstalled {
+                    if processTapEnabled {
+                        Text("When you press the power button, Sonexis captures system audio through a Process Tap and plays processed audio through the current macOS default output.")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.warning)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                            .background(AppColors.deepBlack.opacity(0.5))
+                            .cornerRadius(8)
+                    } else if blackHoleInstalled {
                         Text("⚠️ When you press the power button, Sonexis will automatically switch your system input/output to BlackHole. It will switch back when you turn it off.")
                             .font(AppTypography.caption)
                             .foregroundColor(AppColors.warning)
@@ -57,7 +74,7 @@ struct OnboardingOverlay: View {
                 }
                 .padding(.horizontal, 20)
 
-                if !blackHoleInstalled {
+                if !setupReady {
                     Button {
                         downloadAndOpenBlackHole()
                     } label: {
@@ -71,11 +88,11 @@ struct OnboardingOverlay: View {
                     .padding(.top, 8)
                 }
 
-                Button(blackHoleInstalled ? "Continue" : "Skip Setup") {
+                Button(setupReady ? "Continue" : "Skip Setup") {
                     onDone()
                 }
                 .buttonStyle(.bordered)
-                .tint(blackHoleInstalled ? AppColors.neonCyan : AppColors.textSecondary)
+                .tint(setupReady ? AppColors.neonCyan : AppColors.textSecondary)
             }
             .padding(22)
             .background(
