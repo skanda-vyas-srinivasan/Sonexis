@@ -99,6 +99,35 @@ struct HeaderView: View {
                 .frame(height: 30)
                 .background(AppColors.gridLines)
 
+            #if DEBUG
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Backend")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { audioEngine.selectedAudioBackend },
+                        set: { audioEngine.selectAudioBackend($0) }
+                    )
+                ) {
+                    ForEach(SystemAudioBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+                .disabled(audioEngine.processTapStopInProgress)
+                .help("Debug only: switch between the Process Tap and BlackHole backends.")
+            }
+
+            Divider()
+                .frame(height: 30)
+                .background(AppColors.gridLines)
+            #endif
+
             // Capture source
             VStack(alignment: .leading, spacing: 2) {
                 Text(audioEngine.isProcessTapBackendEnabled ? "Capture" : "Input")

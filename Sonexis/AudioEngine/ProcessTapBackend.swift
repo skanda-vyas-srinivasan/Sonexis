@@ -1,30 +1,81 @@
 import Foundation
 import AVFoundation
 
+enum SystemAudioBackend: String, CaseIterable, Identifiable {
+    case processTap
+    case blackHole
+
+    static let userDefaultsKey = "SonexisSelectedAudioBackend"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .processTap:
+            return "Process Tap"
+        case .blackHole:
+            return "BlackHole"
+        }
+    }
+
+    var startHelpText: String {
+        switch self {
+        case .processTap:
+            return "Start Processing (Process Tap)"
+        case .blackHole:
+            return "Start Processing (Auto-routes to BlackHole)"
+        }
+    }
+
+    static func initialSelection() -> SystemAudioBackend {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" ||
+            ProcessInfo.processInfo.environment["SONEXIS_USE_PROCESS_TAP"] == "1" {
+            return .processTap
+        }
+        if ProcessInfo.processInfo.environment["SONEXIS_USE_BLACKHOLE"] == "1" {
+            return .blackHole
+        }
+        if let stored = UserDefaults.standard.string(forKey: userDefaultsKey),
+           let backend = SystemAudioBackend(rawValue: stored) {
+            return backend
+        }
+        #endif
+
+        return ProcessTapBackendFlag.defaultBackend
+    }
+}
+
 enum ProcessTapBackendFlag {
-    static var isEnabled: Bool {
+    static var defaultBackend: SystemAudioBackend {
         #if DEBUG
         if ProcessInfo.processInfo.environment["SONEXIS_USE_BLACKHOLE"] == "1" {
-            return false
+            return .blackHole
         }
-        return true
+        return .processTap
         #else
         if ProcessInfo.processInfo.environment["SONEXIS_USE_PROCESS_TAP"] == "1" {
-            return true
+            return .processTap
         }
 
         return UserDefaults.standard.bool(forKey: "SonexisUseProcessTapEngine")
+            ? .processTap
+            : .blackHole
         #endif
+    }
+
+    static var isEnabled: Bool {
+        defaultBackend == .processTap
     }
 }
 
 extension AudioEngine {
     var isProcessTapBackendEnabled: Bool {
-        ProcessTapBackendFlag.isEnabled
+        selectedAudioBackend == .processTap
     }
 
     var setupReadyForCurrentBackend: Bool {
-        if ProcessTapBackendFlag.isEnabled {
+        if isProcessTapBackendEnabled {
             return true
         }
 
@@ -38,9 +89,31 @@ extension AudioEngine {
     }
 
     var startHelpText: String {
-        ProcessTapBackendFlag.isEnabled
-            ? "Start Processing (Process Tap)"
-            : "Start Processing (Auto-routes to BlackHole)"
+        selectedAudioBackend.startHelpText
+    }
+
+    func selectAudioBackend(_ backend: SystemAudioBackend) {
+        guard selectedAudioBackend != backend else { return }
+
+        let shouldRestart = isRunning || processTapEngine != nil || processTapStopInProgress
+        selectedAudioBackend = backend
+        UserDefaults.standard.set(backend.rawValue, forKey: SystemAudioBackend.userDefaultsKey)
+        errorMessage = nil
+        scheduleSnapshotUpdate()
+
+        guard shouldRestart else { return }
+
+        if processTapEngine != nil {
+            stopProcessTapBackend(reason: "Switching backend to \(backend.displayName)") { [weak self] in
+                guard let self, self.selectedAudioBackend == backend else { return }
+                self.start()
+            }
+        } else {
+            stop()
+            if selectedAudioBackend == backend {
+                start()
+            }
+        }
     }
 
     func startProcessTapBackend() {
