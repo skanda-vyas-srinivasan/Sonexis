@@ -9,7 +9,7 @@ extension AudioEngine {
     // MARK: - Engine Control
 
     func start() {
-        if ProcessTapBackendFlag.isEnabled {
+        if isProcessTapBackendEnabled {
             startProcessTapBackend()
             return
         }
