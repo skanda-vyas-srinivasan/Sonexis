@@ -57,6 +57,16 @@
 		F4652A9B977E40049F4D1E23 /* CanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C15E7511CA4796A695E13F /* CanvasView.swift */; };
 		F0C1A1B2C3D4E5F607182943 /* PluginEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C1A1B2C3D4E5F607182933 /* PluginEditorView.swift */; };
 		F47E53D00947C3D4B881E35C /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CD68673030CDE14EBC9571 /* Effects.swift */; };
+		5A0000000000000000000012 /* AudioOutputEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000002 /* AudioOutputEngine.swift */; };
+		5A0000000000000000000013 /* CoreAudioSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000003 /* CoreAudioSupport.swift */; };
+		5A0000000000000000000014 /* DSPConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000004 /* DSPConfiguration.swift */; };
+		5A0000000000000000000015 /* DSPProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000005 /* DSPProcessor.swift */; };
+		5A0000000000000000000016 /* ProcessTapDSPApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000006 /* ProcessTapDSPApp.swift */; };
+		5A0000000000000000000017 /* ProcessTapDSPEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000007 /* ProcessTapDSPEngine.swift */; };
+		5A0000000000000000000018 /* RealtimeRingBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000008 /* RealtimeRingBuffer.swift */; };
+		5A0000000000000000000019 /* TapCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000000009 /* TapCaptureEngine.swift */; };
+		5A000000000000000000001A /* RealtimeAudioRing.c in Sources */ = {isa = PBXBuildFile; fileRef = 5A000000000000000000000A /* RealtimeAudioRing.c */; };
+		5A000000000000000000001B /* ProcessTapBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A000000000000000000000C /* ProcessTapBackend.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -115,6 +125,17 @@
 		F59EDFF342354984ACA34430 /* PresetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetView.swift; sourceTree = "<group>"; };
 		F71BED35F430413B92B0ABA9 /* HeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderView.swift; sourceTree = "<group>"; };
 		F97866D212E0442DB54A08E0 /* OverlayKeyCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayKeyCapture.swift; sourceTree = "<group>"; };
+		5A0000000000000000000002 /* AudioOutputEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputEngine.swift; sourceTree = "<group>"; };
+		5A0000000000000000000003 /* CoreAudioSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAudioSupport.swift; sourceTree = "<group>"; };
+		5A0000000000000000000004 /* DSPConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPConfiguration.swift; sourceTree = "<group>"; };
+		5A0000000000000000000005 /* DSPProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPProcessor.swift; sourceTree = "<group>"; };
+		5A0000000000000000000006 /* ProcessTapDSPApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTapDSPApp.swift; sourceTree = "<group>"; };
+		5A0000000000000000000007 /* ProcessTapDSPEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTapDSPEngine.swift; sourceTree = "<group>"; };
+		5A0000000000000000000008 /* RealtimeRingBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRingBuffer.swift; sourceTree = "<group>"; };
+		5A0000000000000000000009 /* TapCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapCaptureEngine.swift; sourceTree = "<group>"; };
+		5A000000000000000000000A /* RealtimeAudioRing.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = RealtimeAudioRing.c; sourceTree = "<group>"; };
+		5A000000000000000000000B /* RealtimeAudioRing.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RealtimeAudioRing.h; sourceTree = "<group>"; };
+		5A000000000000000000000C /* ProcessTapBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessTapBackend.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,9 +202,27 @@
 				B30616271FFD0E7417F8DCF0 /* IO.swift */,
 				AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */,
 				7687CE20D496432330108900 /* Presets.swift */,
+				5A000000000000000000000C /* ProcessTapBackend.swift */,
 				E5F410F57B093E1301CF36D3 /* Routing.swift */,
 			);
 			path = AudioEngine;
+			sourceTree = "<group>";
+		};
+		5A0000000000000000000001 /* ProcessTapEngine */ = {
+			isa = PBXGroup;
+			children = (
+				5A0000000000000000000002 /* AudioOutputEngine.swift */,
+				5A0000000000000000000003 /* CoreAudioSupport.swift */,
+				5A0000000000000000000004 /* DSPConfiguration.swift */,
+				5A0000000000000000000005 /* DSPProcessor.swift */,
+				5A0000000000000000000006 /* ProcessTapDSPApp.swift */,
+				5A0000000000000000000007 /* ProcessTapDSPEngine.swift */,
+				5A000000000000000000000A /* RealtimeAudioRing.c */,
+				5A000000000000000000000B /* RealtimeAudioRing.h */,
+				5A0000000000000000000008 /* RealtimeRingBuffer.swift */,
+				5A0000000000000000000009 /* TapCaptureEngine.swift */,
+			);
+			path = ProcessTapEngine;
 			sourceTree = "<group>";
 		};
 		A783C7BC4BD2E924BA1E782C /* rubberband/single */ = {
@@ -213,6 +252,7 @@
 				58F8F7EC791A4AC5AB40AF98 /* Models */,
 				25CE615C807643DEA2CF34D8 /* SharedUI */,
 				A19256146F90870535C89A39 /* AudioEngine */,
+				5A0000000000000000000001 /* ProcessTapEngine */,
 				AA0000100000000000000003 /* PresetManager.swift */,
 				AA0000200000000000000001 /* Wrappers */,
 				E44CBC109AE6D1E8CE0252D6 /* Sonexis-Bridging-Header.h */,
@@ -395,6 +435,16 @@
 				AA0000090000000000000003 /* PresetManager.swift in Sources */,
 				23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */,
 				0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */,
+				5A0000000000000000000012 /* AudioOutputEngine.swift in Sources */,
+				5A0000000000000000000013 /* CoreAudioSupport.swift in Sources */,
+				5A0000000000000000000014 /* DSPConfiguration.swift in Sources */,
+				5A0000000000000000000015 /* DSPProcessor.swift in Sources */,
+				5A0000000000000000000016 /* ProcessTapDSPApp.swift in Sources */,
+				5A0000000000000000000017 /* ProcessTapDSPEngine.swift in Sources */,
+				5A0000000000000000000018 /* RealtimeRingBuffer.swift in Sources */,
+				5A0000000000000000000019 /* TapCaptureEngine.swift in Sources */,
+				5A000000000000000000001A /* RealtimeAudioRing.c in Sources */,
+				5A000000000000000000001B /* ProcessTapBackend.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,7 +505,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -513,7 +563,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
