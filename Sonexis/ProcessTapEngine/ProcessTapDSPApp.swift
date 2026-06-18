@@ -45,6 +45,18 @@ final class ProcessTapDSPApp {
         self.audioProcessor = audioProcessor
     }
 
+    deinit {
+        routeChangeWorkItem?.cancel()
+        recoveryWorkItem?.cancel()
+        smoothTeardownWorkItem?.cancel()
+        routeChangeWorkItem = nil
+        recoveryWorkItem = nil
+        smoothTeardownWorkItem = nil
+        removeSleepWakeObservers(log: false)
+        removeDefaultOutputListener(log: false)
+        teardownPipeline(log: false, reason: "deinit fallback")
+    }
+
     func start() throws {
         isStopped = false
         isSuspendedForSleep = false

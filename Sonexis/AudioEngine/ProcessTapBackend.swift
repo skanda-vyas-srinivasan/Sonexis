@@ -32,7 +32,9 @@ extension AudioEngine {
     }
 
     var activeRouteLabel: String {
-        processTapEngine != nil ? "Process Tap" : "Routed to BlackHole"
+        processTapEngine != nil
+            ? (processTapStopInProgress ? "Stopping Process Tap" : "Process Tap")
+            : "Routed to BlackHole"
     }
 
     var startHelpText: String {
@@ -42,6 +44,10 @@ extension AudioEngine {
     }
 
     func startProcessTapBackend() {
+        guard processTapEngine == nil, !processTapStopInProgress else {
+            return
+        }
+
         guard #available(macOS 14.4, *) else {
             errorMessage = "Process Tap system audio requires macOS 14.4 or newer."
             isRunning = false
@@ -56,6 +62,7 @@ extension AudioEngine {
 
         do {
             try engine.start()
+            processTapStopInProgress = false
             inputDeviceName = "System Audio"
             outputDeviceName = "Default Output"
             errorMessage = nil
@@ -64,6 +71,7 @@ extension AudioEngine {
             scheduleSnapshotUpdate()
         } catch {
             processTapEngine = nil
+            processTapStopInProgress = false
             errorMessage = "Failed to start Process Tap engine: \(error)"
             isRunning = false
             scheduleSnapshotUpdate()
@@ -79,11 +87,26 @@ extension AudioEngine {
             return
         }
 
-        processTapEngine = nil
+        guard !processTapStopInProgress else {
+            completion?()
+            return
+        }
+
+        processTapStopInProgress = true
+        scheduleSnapshotUpdate()
         engine.stop(reason: reason) { [weak self] in
             DispatchQueue.main.async {
-                self?.isRunning = false
-                self?.scheduleSnapshotUpdate()
+                guard let self else {
+                    completion?()
+                    return
+                }
+
+                if self.processTapEngine === engine {
+                    self.processTapEngine = nil
+                }
+                self.processTapStopInProgress = false
+                self.isRunning = false
+                self.scheduleSnapshotUpdate()
                 completion?()
             }
         }
@@ -93,6 +116,7 @@ extension AudioEngine {
         guard let engine = processTapEngine else { return }
 
         processTapEngine = nil
+        processTapStopInProgress = false
         engine.stopImmediately(reason: reason)
         isRunning = false
         scheduleSnapshotUpdate()
