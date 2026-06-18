@@ -12,10 +12,13 @@ private let rebuildRetryLimit = 4
 
 final class ProcessTapDSPApp {
     private let dspProcessor: DSPProcessor
+    private weak var audioProcessor: ProcessTapAudioProcessor?
 
     private var tapCaptureEngine: TapCaptureEngine?
     private var audioOutputEngine: AudioOutputEngine?
     private var ringBuffer: RealtimeRingBuffer?
+    private var captureRingBuffer: RealtimeRingBuffer?
+    private var processingWorker: ProcessTapProcessingWorker?
 
     private var statusTimer: DispatchSourceTimer?
     private var defaultOutputListenerBlock: AudioObjectPropertyListenerBlock?
@@ -34,8 +37,12 @@ final class ProcessTapDSPApp {
     private var isStopped = true
     private var isSuspendedForSleep = false
 
-    init(configuration: DSPConfiguration = .productBaseline) {
+    init(
+        configuration: DSPConfiguration = .productBaseline,
+        audioProcessor: ProcessTapAudioProcessor? = nil
+    ) {
         self.dspProcessor = DSPProcessor(configuration: configuration)
+        self.audioProcessor = audioProcessor
     }
 
     func start() throws {
@@ -106,7 +113,7 @@ final class ProcessTapDSPApp {
             teardownPipeline(log: reason != "initial start", reason: "rebuild cleanup")
             try buildPipeline()
             printRouteDiagnostics(context: "after rebuild")
-            print("Started Process Tap -> \(dspProcessor.processingDescription) -> default output playback.")
+            print("Started Process Tap -> \(processingDescription) -> default output playback.")
             print("Play system audio in another app. Press Control-C to stop.")
         } catch {
             teardownPipeline(log: true, reason: "rebuild failure cleanup")
@@ -153,17 +160,45 @@ final class ProcessTapDSPApp {
         }
 
         let ringCapacityFrames = max(UInt32(tapFormat.mSampleRate * 2.0), 4_096)
-        let createdRingBuffer = try RealtimeRingBuffer(
+        let playbackRingBuffer = try RealtimeRingBuffer(
             capacityFrames: ringCapacityFrames,
             channels: channelCount
         )
-        dspProcessor.configureInitialGain(on: createdRingBuffer)
-        dspProcessor.configurePitchShift(on: createdRingBuffer)
-        createdRingBuffer.setReadEnabled(false)
-        ringBuffer = createdRingBuffer
+        dspProcessor.configureInitialGain(on: playbackRingBuffer)
+        dspProcessor.configurePitchShift(on: playbackRingBuffer)
+        playbackRingBuffer.setReadEnabled(false)
+        ringBuffer = playbackRingBuffer
+
+        let tapInputRingBuffer: RealtimeRingBuffer
+        if let audioProcessor {
+            let rawCaptureRingBuffer = try RealtimeRingBuffer(
+                capacityFrames: ringCapacityFrames,
+                channels: channelCount
+            )
+            rawCaptureRingBuffer.setGainImmediate(dspProcessor.unityGain)
+            rawCaptureRingBuffer.configurePitchShift(enabled: false, semitones: 0.0)
+            rawCaptureRingBuffer.setReadEnabled(true)
+            captureRingBuffer = rawCaptureRingBuffer
+            tapInputRingBuffer = rawCaptureRingBuffer
+            processingWorker = ProcessTapProcessingWorker(
+                inputRingBuffer: rawCaptureRingBuffer,
+                outputRingBuffer: playbackRingBuffer,
+                processor: audioProcessor,
+                sampleRate: tapFormat.mSampleRate,
+                channels: channelCount
+            )
+        } else {
+            captureRingBuffer = nil
+            tapInputRingBuffer = playbackRingBuffer
+            processingWorker = nil
+        }
         print("Created realtime ring buffer: \(ringCapacityFrames) frames, \(channelCount) channels")
+        if audioProcessor != nil {
+            print("Created raw capture ring buffer for Sonexis DSP worker.")
+        }
         print("Initial gain: \(dspProcessor.unityGain); hardcoded target gain: \(dspProcessor.processingGain)")
         print("Pitch shift: enabled=\(dspProcessor.pitchShiftEnabled), semitones=\(dspProcessor.pitchShiftSemitones)")
+        print("DSP processor: \(processingDescription)")
         print("Startup preroll target: \(startupPrerollTargetFrames) frames")
 
         let outputEngine = AudioOutputEngine()
@@ -171,9 +206,9 @@ final class ProcessTapDSPApp {
         try outputEngine.createIOProc(
             deviceID: defaultOutputDeviceID,
             deviceSummary: defaultOutput,
-            ringBuffer: createdRingBuffer
+            ringBuffer: playbackRingBuffer
         )
-        try tapEngine.createIOProc(ringBuffer: createdRingBuffer)
+        try tapEngine.createIOProc(ringBuffer: tapInputRingBuffer)
         try installActiveDeviceAliveListener(deviceID: defaultOutputDeviceID)
         try startIO()
         scheduleStartupPreroll(context: "pipeline start")
@@ -186,10 +221,12 @@ final class ProcessTapDSPApp {
         }
 
         try audioOutputEngine.start()
+        processingWorker?.start()
 
         do {
             try tapCaptureEngine.start()
         } catch {
+            processingWorker?.stop(log: false)
             audioOutputEngine.stop(log: false)
             throw error
         }
@@ -319,6 +356,8 @@ final class ProcessTapDSPApp {
         }
         statusTimer = nil
 
+        processingWorker?.stop(log: log)
+        processingWorker = nil
         tapCaptureEngine?.stop(log: log)
         audioOutputEngine?.stop(log: log)
         tapCaptureEngine?.destroyIOProc(log: log)
@@ -328,6 +367,12 @@ final class ProcessTapDSPApp {
 
         tapCaptureEngine = nil
         audioOutputEngine = nil
+
+        if let captureRingBuffer {
+            captureRingBuffer.destroy()
+            self.captureRingBuffer = nil
+            if log { print("Cleanup: freed raw capture ring buffer.") }
+        }
 
         if let ringBuffer {
             ringBuffer.destroy()
@@ -506,7 +551,7 @@ final class ProcessTapDSPApp {
             do {
                 try self.buildPipeline()
                 self.printRouteDiagnostics(context: "after rebuild")
-                print("Started Process Tap -> \(self.dspProcessor.processingDescription) -> default output playback.")
+                print("Started Process Tap -> \(self.processingDescription) -> default output playback.")
                 print("Play system audio in another app. Press Control-C to stop.")
             } catch {
                 self.handleRebuildFailure(
@@ -584,12 +629,13 @@ final class ProcessTapDSPApp {
         timer.setEventHandler { [weak self] in
             guard let self, let ringBuffer else { return }
 
+            let inputMetricsRing = captureRingBuffer ?? ringBuffer
             let fill = ringBuffer.fillFrames
-            let dropped = ringBuffer.droppedFrames
+            let dropped = inputMetricsRing.droppedFrames + ringBuffer.droppedFrames
             let underflows = ringBuffer.underflowFrames
-            let written = ringBuffer.writtenFrames
+            let written = inputMetricsRing.writtenFrames
             let read = ringBuffer.readFrames
-            let peakPPM = ringBuffer.lastInputPeakPPM
+            let peakPPM = inputMetricsRing.lastInputPeakPPM
             let gainPPM = ringBuffer.currentGainPPM
             let writtenDelta = written - lastWrittenFrames
             let readDelta = read - lastReadFrames
@@ -658,5 +704,13 @@ final class ProcessTapDSPApp {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
+    }
+
+    private var processingDescription: String {
+        if audioProcessor != nil {
+            return "Sonexis effect graph DSP"
+        }
+
+        return dspProcessor.processingDescription
     }
 }

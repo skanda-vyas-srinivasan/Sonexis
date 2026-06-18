@@ -3,8 +3,14 @@ import Foundation
 final class ProcessTapDSPEngine {
     private let app: ProcessTapDSPApp
 
-    init(configuration: DSPConfiguration = .productBaseline) {
-        self.app = ProcessTapDSPApp(configuration: configuration)
+    init(
+        configuration: DSPConfiguration = .productBaseline,
+        audioProcessor: ProcessTapAudioProcessor? = nil
+    ) {
+        self.app = ProcessTapDSPApp(
+            configuration: configuration,
+            audioProcessor: audioProcessor
+        )
     }
 
     func start() throws {

@@ -19,7 +19,6 @@ struct HeaderView: View {
                     if audioEngine.isRunning {
                         audioEngine.stop()
                     } else {
-                        // Let start() handle BlackHole setup automatically
                         audioEngine.start()
                         tutorial.advanceIf(.buildPower)
                     }
@@ -29,7 +28,7 @@ struct HeaderView: View {
                         .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
                 }
                 .buttonStyle(.plain)
-                .help(audioEngine.isRunning ? "Stop Processing" : "Start Processing (Auto-routes to BlackHole)")
+                .help(audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -40,7 +39,7 @@ struct HeaderView: View {
                 )
 
                 if audioEngine.isRunning {
-                    Text("Routed to BlackHole")
+                    Text(audioEngine.activeRouteLabel)
                         .font(.system(size: 9))
                         .foregroundColor(AppColors.success.opacity(0.8))
                         .transition(.opacity)
@@ -100,12 +99,12 @@ struct HeaderView: View {
                 .frame(height: 30)
                 .background(AppColors.gridLines)
 
-            // Input device (read-only, shows BlackHole)
+            // Capture source
             VStack(alignment: .leading, spacing: 2) {
-                Text("Input")
+                Text(audioEngine.isProcessTapBackendEnabled ? "Capture" : "Input")
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textMuted)
-                Text(audioEngine.inputDeviceName)
+                Text(audioEngine.isProcessTapBackendEnabled ? "System Audio" : audioEngine.inputDeviceName)
                     .font(AppTypography.technical)
                     .foregroundColor(AppColors.textSecondary)
             }
@@ -115,15 +114,24 @@ struct HeaderView: View {
                 Text("Output")
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textMuted)
-                Picker("", selection: $audioEngine.selectedOutputDeviceID) {
-                    ForEach(audioEngine.outputDevices, id: \.id) { device in
-                        Text(device.name).tag(Optional(device.id))
+
+                if audioEngine.isProcessTapBackendEnabled {
+                    Text("macOS Default")
+                        .font(AppTypography.technical)
+                        .foregroundColor(AppColors.textSecondary)
+                        .frame(width: 220, alignment: .leading)
+                        .help("Process Tap playback follows the current macOS default output device.")
+                } else {
+                    Picker("", selection: $audioEngine.selectedOutputDeviceID) {
+                        ForEach(audioEngine.outputDevices, id: \.id) { device in
+                            Text(device.name).tag(Optional(device.id))
+                        }
                     }
-                }
-                .labelsHidden()
-                .frame(width: 220)
-                .onTapGesture {
-                    audioEngine.refreshOutputDevices()
+                    .labelsHidden()
+                    .frame(width: 220)
+                    .onTapGesture {
+                        audioEngine.refreshOutputDevices()
+                    }
                 }
 
                 Slider(

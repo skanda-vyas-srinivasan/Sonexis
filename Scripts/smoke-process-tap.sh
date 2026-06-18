@@ -20,7 +20,7 @@ SONEXIS_PROCESS_TAP_SMOKE=1 "$APP" >"$LOG_FILE" 2>&1
 cat "$LOG_FILE"
 
 grep -F "Sonexis Process Tap smoke test started." "$LOG_FILE" >/dev/null
-grep -F "Started Process Tap -> unity passthrough DSP -> default output playback." "$LOG_FILE" >/dev/null
+grep -F "Started Process Tap -> Sonexis effect graph DSP -> default output playback." "$LOG_FILE" >/dev/null
 grep -F "Pitch shift: enabled=false" "$LOG_FILE" >/dev/null
 grep -F "Shutdown complete. Normal system audio should be restored." "$LOG_FILE" >/dev/null
 grep -F "Sonexis Process Tap smoke test stopped." "$LOG_FILE" >/dev/null

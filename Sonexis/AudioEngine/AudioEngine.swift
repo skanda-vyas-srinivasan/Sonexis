@@ -923,6 +923,10 @@ class AudioEngine: ObservableObject {
     var processingFrameCapacity: Int = 0
     var deinterleavedInputBuffer: [[Float]] = []
     var deinterleavedInputCapacity: Int = 0
+    var processTapPCMBuffer: AVAudioPCMBuffer?
+    var processTapPCMBufferFrameCapacity: Int = 0
+    var processTapPCMBufferChannelCount: Int = 0
+    var processTapPCMBufferSampleRate: Double = 0
     // Graph processing scratch buffers (reused to avoid allocations)
     var graphOutEdges: [UUID: [UUID]] = [:]
     var graphInEdges: [UUID: [(UUID, Double)]] = [:]
