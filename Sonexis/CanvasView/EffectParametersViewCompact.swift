@@ -166,15 +166,15 @@ struct CompactSlider: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(label)
-                    .font(.caption)
-                    .foregroundColor(tint.opacity(0.75))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textSecondary)
                 Spacer()
                 Text(formattedValue)
-                    .font(.caption)
-                    .foregroundColor(tint)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(tint.opacity(0.95))
                     .monospacedDigit()
             }
 
