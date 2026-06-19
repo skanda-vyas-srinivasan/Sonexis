@@ -52,6 +52,11 @@ struct ProcessingSnapshot {
     let delayTime: Double
     let delayFeedback: Double
     let delayMix: Double
+    let ampEnabled: Bool
+    let ampInputGain: Double
+    let ampDrive: Double
+    let ampOutputGain: Double
+    let ampMix: Double
     let distortionEnabled: Bool
     let distortionDrive: Double
     let distortionMix: Double
@@ -134,6 +139,11 @@ struct ProcessingSnapshot {
         delayTime: 0,
         delayFeedback: 0,
         delayMix: 0,
+        ampEnabled: false,
+        ampInputGain: 0,
+        ampDrive: 0,
+        ampOutputGain: 0,
+        ampMix: 0,
         distortionEnabled: false,
         distortionDrive: 0,
         distortionMix: 0,
@@ -443,6 +453,33 @@ class AudioEngine: ObservableObject {
         }
     }
     @Published var delayMix: Double = 0.3 { // 0 to 1
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+
+    // Amp effect
+    @Published var ampEnabled = false {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampInputGain: Double = 0.0 { // dB
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampDrive: Double = 0.25 { // 0 to 1
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampOutputGain: Double = 0.0 { // dB
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampMix: Double = 1.0 { // 0 to 1
         didSet {
             scheduleSnapshotUpdate()
         }
@@ -893,6 +930,8 @@ class AudioEngine: ObservableObject {
     var bitcrusherSmoothedGainByNode: [UUID: Float] = [:]
 
     // Distortion state (stateless effect, but needs smoothing)
+    var ampSmoothedGain: Float = 0
+    var ampSmoothedGainByNode: [UUID: Float] = [:]
     var distortionSmoothedGain: Float = 0
     var distortionSmoothedGainByNode: [UUID: Float] = [:]
 
@@ -941,6 +980,8 @@ class AudioEngine: ObservableObject {
     var lastGraphSignature: Int = 0
     var graphChangeSamplesRemaining: Int = 0
     var graphChangeSamplesTotal: Int = 0
+    var graphChangeFadeOutSamplesTotal: Int = 0
+    var graphChangeFadeInSamplesTotal: Int = 0
     var graphChangePrevOutput: [[Float]] = []
     var lastOutputBuffer: [[Float]] = []
 
@@ -1096,6 +1137,11 @@ class AudioEngine: ObservableObject {
             delayTime: delayTime,
             delayFeedback: delayFeedback,
             delayMix: delayMix,
+            ampEnabled: ampEnabled,
+            ampInputGain: ampInputGain,
+            ampDrive: ampDrive,
+            ampOutputGain: ampOutputGain,
+            ampMix: ampMix,
             distortionEnabled: distortionEnabled,
             distortionDrive: distortionDrive,
             distortionMix: distortionMix,

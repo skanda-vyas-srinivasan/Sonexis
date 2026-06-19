@@ -64,6 +64,10 @@ struct NodeEffectParameters: Codable, Equatable {
     var delayTime: Double
     var delayFeedback: Double
     var delayMix: Double
+    var ampInputGain: Double
+    var ampDrive: Double
+    var ampOutputGain: Double
+    var ampMix: Double
     var distortionDrive: Double
     var distortionMix: Double
     var tremoloRate: Double
@@ -103,6 +107,10 @@ struct NodeEffectParameters: Codable, Equatable {
         delayTime: Double,
         delayFeedback: Double,
         delayMix: Double,
+        ampInputGain: Double,
+        ampDrive: Double,
+        ampOutputGain: Double,
+        ampMix: Double,
         distortionDrive: Double,
         distortionMix: Double,
         tremoloRate: Double,
@@ -141,6 +149,10 @@ struct NodeEffectParameters: Codable, Equatable {
         self.delayTime = delayTime
         self.delayFeedback = delayFeedback
         self.delayMix = delayMix
+        self.ampInputGain = ampInputGain
+        self.ampDrive = ampDrive
+        self.ampOutputGain = ampOutputGain
+        self.ampMix = ampMix
         self.distortionDrive = distortionDrive
         self.distortionMix = distortionMix
         self.tremoloRate = tremoloRate
@@ -182,6 +194,10 @@ struct NodeEffectParameters: Codable, Equatable {
             delayTime: 0.25,
             delayFeedback: 0.4,
             delayMix: 0.3,
+            ampInputGain: 0.0,
+            ampDrive: 0.25,
+            ampOutputGain: 0.0,
+            ampMix: 1.0,
             distortionDrive: 0.5,
             distortionMix: 0.5,
             tremoloRate: 5.0,
@@ -223,6 +239,10 @@ struct NodeEffectParameters: Codable, Equatable {
         case delayTime
         case delayFeedback
         case delayMix
+        case ampInputGain
+        case ampDrive
+        case ampOutputGain
+        case ampMix
         case distortionDrive
         case distortionMix
         case tremoloRate
@@ -265,6 +285,10 @@ struct NodeEffectParameters: Codable, Equatable {
         delayTime = try container.decodeIfPresent(Double.self, forKey: .delayTime) ?? defaults.delayTime
         delayFeedback = try container.decodeIfPresent(Double.self, forKey: .delayFeedback) ?? defaults.delayFeedback
         delayMix = try container.decodeIfPresent(Double.self, forKey: .delayMix) ?? defaults.delayMix
+        ampInputGain = try container.decodeIfPresent(Double.self, forKey: .ampInputGain) ?? defaults.ampInputGain
+        ampDrive = try container.decodeIfPresent(Double.self, forKey: .ampDrive) ?? defaults.ampDrive
+        ampOutputGain = try container.decodeIfPresent(Double.self, forKey: .ampOutputGain) ?? defaults.ampOutputGain
+        ampMix = try container.decodeIfPresent(Double.self, forKey: .ampMix) ?? defaults.ampMix
         distortionDrive = try container.decodeIfPresent(Double.self, forKey: .distortionDrive) ?? defaults.distortionDrive
         distortionMix = try container.decodeIfPresent(Double.self, forKey: .distortionMix) ?? defaults.distortionMix
         tremoloRate = try container.decodeIfPresent(Double.self, forKey: .tremoloRate) ?? defaults.tremoloRate

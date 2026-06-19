@@ -124,6 +124,11 @@ struct SavedPreset: Identifiable, Codable {
             params.delayTime = values.delayTime ?? params.delayTime
             params.delayFeedback = values.delayFeedback ?? params.delayFeedback
             params.delayMix = values.delayMix ?? params.delayMix
+        case .amp:
+            params.ampInputGain = values.ampInputGain ?? params.ampInputGain
+            params.ampDrive = values.ampDrive ?? params.ampDrive
+            params.ampOutputGain = values.ampOutputGain ?? params.ampOutputGain
+            params.ampMix = values.ampMix ?? params.ampMix
         case .distortion:
             params.distortionDrive = values.distortionDrive ?? params.distortionDrive
             params.distortionMix = values.distortionMix ?? params.distortionMix
@@ -211,6 +216,12 @@ struct EffectChainSnapshot: Codable {
         var delayTime: Double?
         var delayFeedback: Double?
         var delayMix: Double?
+
+        // Amp
+        var ampInputGain: Double?
+        var ampDrive: Double?
+        var ampOutputGain: Double?
+        var ampMix: Double?
 
         // Distortion
         var distortionDrive: Double?

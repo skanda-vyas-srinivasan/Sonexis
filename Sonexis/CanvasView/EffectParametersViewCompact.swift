@@ -64,6 +64,12 @@ struct EffectParametersViewCompact: View {
                 CompactSlider(label: "Feedback", value: $parameters.delayFeedback, range: 0...1, format: .percent, tint: tint, onChange: onChange)
                 CompactSlider(label: "Mix", value: $parameters.delayMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
+            case .amp:
+                CompactSlider(label: "Input", value: $parameters.ampInputGain, range: -24...24, format: .dbValue, tint: tint, onChange: onChange)
+                CompactSlider(label: "Drive", value: $parameters.ampDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Gain", value: $parameters.ampOutputGain, range: -24...24, format: .dbValue, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.ampMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+
             case .distortion:
                 CompactSlider(label: "Drive", value: $parameters.distortionDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
                 CompactSlider(label: "Mix", value: $parameters.distortionMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)

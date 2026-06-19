@@ -51,29 +51,30 @@ extension AudioEngine {
     ) {
         if lastGraphSignature != signature {
             if lastGraphSignature != 0 {
-                ensureGraphOutputBuffer(&graphChangePrevOutput, channelCount: channelCount, frameLength: frameLength)
-                ensureGraphOutputBuffer(&lastOutputBuffer, channelCount: channelCount, frameLength: frameLength)
-                for channel in 0..<channelCount {
-                    for frame in 0..<frameLength {
-                        graphChangePrevOutput[channel][frame] = lastOutputBuffer[channel][frame]
-                    }
-                }
-                let total = max(1, Int(sampleRate * 0.2))
-                graphChangeSamplesTotal = total
-                graphChangeSamplesRemaining = total
+                graphChangeFadeOutSamplesTotal = max(1, Int(sampleRate * 0.02))
+                graphChangeFadeInSamplesTotal = max(1, Int(sampleRate * 0.12))
+                graphChangeSamplesTotal = graphChangeFadeOutSamplesTotal + graphChangeFadeInSamplesTotal
+                graphChangeSamplesRemaining = graphChangeSamplesTotal
             }
             lastGraphSignature = signature
         }
 
         if graphChangeSamplesRemaining > 0 {
             let total = max(graphChangeSamplesTotal, 1)
+            let fadeOutTotal = max(graphChangeFadeOutSamplesTotal, 1)
+            let fadeInTotal = max(graphChangeFadeInSamplesTotal, 1)
             let start = max(0, total - graphChangeSamplesRemaining)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     let pos = min(total, start + frame)
-                    let t = Float(pos) / Float(total)
-                    processed[channel][frame] = graphChangePrevOutput[channel][frame] * (1 - t)
-                        + processed[channel][frame] * t
+                    if pos < fadeOutTotal {
+                        processed[channel][frame] = 0
+                    } else {
+                        let fadeInPosition = min(fadeInTotal, pos - fadeOutTotal)
+                        let t = Double(fadeInPosition) / Double(fadeInTotal)
+                        let gain = Float(sin(t * 0.5 * Double.pi))
+                        processed[channel][frame] *= gain
+                    }
                 }
             }
             graphChangeSamplesRemaining = max(0, graphChangeSamplesRemaining - frameLength)

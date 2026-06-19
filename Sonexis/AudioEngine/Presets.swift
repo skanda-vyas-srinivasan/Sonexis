@@ -71,6 +71,17 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .delay, isEnabled: true, parameters: params))
         }
 
+        // Amp
+        if ampEnabled {
+            let params = EffectChainSnapshot.EffectParameters(
+                ampInputGain: ampInputGain,
+                ampDrive: ampDrive,
+                ampOutputGain: ampOutputGain,
+                ampMix: ampMix
+            )
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .amp, isEnabled: true, parameters: params))
+        }
+
         // Distortion
         if distortionEnabled {
             let params = EffectChainSnapshot.EffectParameters(
@@ -172,6 +183,7 @@ extension AudioEngine {
         reverbEnabled = false
         stereoWidthEnabled = false
         delayEnabled = false
+        ampEnabled = false
         distortionEnabled = false
         tremoloEnabled = false
         chorusEnabled = false
@@ -262,6 +274,13 @@ extension AudioEngine {
                 if let feedback = params.delayFeedback { delayFeedback = feedback }
                 if let mix = params.delayMix { delayMix = mix }
 
+            case .amp:
+                ampEnabled = effect.isEnabled
+                if let input = params.ampInputGain { ampInputGain = input }
+                if let drive = params.ampDrive { ampDrive = drive }
+                if let gain = params.ampOutputGain { ampOutputGain = gain }
+                if let mix = params.ampMix { ampMix = mix }
+
             case .distortion:
                 distortionEnabled = effect.isEnabled
                 if let drive = params.distortionDrive { distortionDrive = drive }
@@ -342,6 +361,7 @@ extension AudioEngine {
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)
         delayEnabled = activeTypes.contains(.delay)
+        ampEnabled = activeTypes.contains(.amp)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
         chorusEnabled = activeTypes.contains(.chorus)
@@ -397,6 +417,7 @@ extension AudioEngine {
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)
         delayEnabled = activeTypes.contains(.delay)
+        ampEnabled = activeTypes.contains(.amp)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
         chorusEnabled = activeTypes.contains(.chorus)
@@ -448,6 +469,7 @@ extension AudioEngine {
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)
         delayEnabled = activeTypes.contains(.delay)
+        ampEnabled = activeTypes.contains(.amp)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
         chorusEnabled = activeTypes.contains(.chorus)
@@ -505,6 +527,7 @@ extension AudioEngine {
         resampleCrossfadeTotalByNode = resampleCrossfadeTotalByNode.filter { ids.contains($0.key) }
         resampleCrossfadeStartPhaseByNode = resampleCrossfadeStartPhaseByNode.filter { ids.contains($0.key) }
         resampleCrossfadeTargetPhaseByNode = resampleCrossfadeTargetPhaseByNode.filter { ids.contains($0.key) }
+        ampSmoothedGainByNode = ampSmoothedGainByNode.filter { ids.contains($0.key) }
         rubberBandNodes = rubberBandNodes.filter { ids.contains($0.key) }
     }
 }
