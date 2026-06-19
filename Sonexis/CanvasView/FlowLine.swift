@@ -124,6 +124,12 @@ struct CustomContextMenu {
         let title: String
         let role: ButtonRole?
         let action: () -> Void
+
+        init(title: String, role: ButtonRole? = nil, action: @escaping () -> Void) {
+            self.title = title
+            self.role = role
+            self.action = action
+        }
     }
 
     let anchor: CGPoint
@@ -132,9 +138,9 @@ struct CustomContextMenu {
     let items: [Item]
 
     var size: CGSize {
-        let rowHeight: CGFloat = 24
-        let height = CGFloat(items.count) * rowHeight + 16
-        return CGSize(width: 180, height: height)
+        let rowHeight: CGFloat = 32
+        let height = CGFloat(items.count) * rowHeight + 12
+        return CGSize(width: 196, height: height)
     }
 }
 
@@ -214,41 +220,57 @@ struct CustomContextMenuView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        let itemFont = Font.system(size: 12, weight: .medium, design: .rounded)
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(menu.items.enumerated()), id: \.offset) { index, item in
-                Button(role: item.role) {
-                    item.action()
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(menu.items.enumerated()), id: \.offset) { _, item in
+                ContextMenuRow(item: item, tint: menu.tint) {
                     onDismiss()
-                } label: {
-                    HStack {
-                        Text(item.title)
-                            .font(itemFont)
-                            .foregroundColor(menu.tint)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if index < menu.items.count - 1 {
-                    Divider()
-                        .background(menu.tint.opacity(0.2))
                 }
             }
         }
-        .padding(8)
-        .background(AppColors.deepBlack.opacity(0.88))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(menu.tint.opacity(0.7), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
+        .padding(5)
+        .sonexisFloatingPanel(tint: menu.tint, cornerRadius: 8, glowOpacity: 0)
         .fixedSize()
         .position(menu.position)
+    }
+}
+
+private struct ContextMenuRow: View {
+    let item: CustomContextMenu.Item
+    let tint: Color
+    let onSelect: () -> Void
+    @State private var isHovered = false
+
+    private var isDestructive: Bool {
+        if case .destructive? = item.role { return true }
+        return false
+    }
+
+    var body: some View {
+        Button(role: item.role) {
+            item.action()
+            onSelect()
+        } label: {
+            HStack {
+                Text(item.title)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(isDestructive ? AppColors.neonPink.opacity(0.92) : AppColors.textPrimary.opacity(0.92))
+
+                Spacer(minLength: 16)
+            }
+            .padding(.horizontal, 10)
+            .frame(width: 184, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.62) : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
@@ -258,11 +280,11 @@ struct GainPopoverView: View {
     let onDone: () -> Void
 
     var body: some View {
-        let itemFont = Font.system(size: 12, weight: .medium, design: .rounded)
-        VStack(spacing: 6) {
+        let itemFont = Font.system(size: 12, weight: .semibold, design: .rounded)
+        VStack(spacing: 8) {
             Text("Gain")
                 .font(itemFont)
-                .foregroundColor(tint)
+                .foregroundColor(AppColors.textPrimary)
                 .frame(maxWidth: .infinity)
             Slider(value: value, in: 0...1)
                 .tint(tint)
@@ -271,25 +293,27 @@ struct GainPopoverView: View {
             Text(String(format: "%.0f%%", value.wrappedValue * 100))
                 .font(.caption2)
                 .monospacedDigit()
-                .foregroundColor(tint.opacity(0.7))
+                .foregroundColor(tint.opacity(0.86))
                 .frame(maxWidth: .infinity)
             Button("Done") {
                 onDone()
             }
             .buttonStyle(.plain)
             .font(itemFont)
-            .foregroundColor(tint)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+            .foregroundColor(AppColors.textPrimary)
+            .frame(width: 160, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppColors.controlPurple.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppColors.controlStrokeSoft.opacity(0.5), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .padding(8)
-        .background(AppColors.deepBlack.opacity(0.88))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(0.7), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
+        .padding(10)
+        .sonexisFloatingPanel(tint: tint, cornerRadius: 8, glowOpacity: 0)
         .fixedSize()
     }
 }

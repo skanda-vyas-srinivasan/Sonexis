@@ -1598,17 +1598,17 @@ struct CanvasView: View {
             }
             var items: [CustomContextMenu.Item] = [
                 CustomContextMenu.Item(
-                    title: "Delete Node",
+                    title: "Delete",
                     role: .destructive,
                     action: { removeEffect(id: hitNode.id) }
                 ),
                 CustomContextMenu.Item(
-                    title: "Duplicate Node",
+                    title: "Duplicate",
                     role: nil,
                     action: { duplicateEffect(id: hitNode.id) }
                 ),
                 CustomContextMenu.Item(
-                    title: "Reset Node Params",
+                    title: "Reset Params",
                     role: nil,
                     action: { resetEffectParameters(id: hitNode.id) }
                 )
@@ -1616,7 +1616,7 @@ struct CanvasView: View {
             if wiringMode == .manual {
                 items.insert(
                     CustomContextMenu.Item(
-                        title: "Delete Node Wires",
+                        title: "Clear Wires",
                         role: nil,
                         action: { removeWires(for: hitNode.id) }
                     ),
@@ -1648,7 +1648,7 @@ struct CanvasView: View {
                             action: { deleteManualConnection(hit.id) }
                         ),
                         CustomContextMenu.Item(
-                            title: "Set Gain…",
+                            title: "Wire Gain",
                             role: nil,
                             action: {
                                 selectedAutoWire = nil
@@ -1677,7 +1677,7 @@ struct CanvasView: View {
                     tint: AppColors.neonCyan,
                     items: [
                         CustomContextMenu.Item(
-                            title: "Set Gain…",
+                            title: "Wire Gain",
                             role: nil,
                             action: {
                                 selectedWireID = nil
@@ -1705,7 +1705,7 @@ struct CanvasView: View {
                     tint: AppColors.neonCyan,
                     items: [
                         CustomContextMenu.Item(
-                            title: "Delete Node Wires",
+                            title: "Clear Wires",
                             role: nil,
                             action: { removeWires(for: startNodeID) }
                         )
@@ -1723,7 +1723,7 @@ struct CanvasView: View {
                     tint: AppColors.neonPink,
                     items: [
                         CustomContextMenu.Item(
-                            title: "Delete Node Wires",
+                            title: "Clear Wires",
                             role: nil,
                             action: { removeWires(for: endNodeID) }
                         )

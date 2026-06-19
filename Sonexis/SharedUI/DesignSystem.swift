@@ -66,6 +66,36 @@ struct AppGradients {
     )
 }
 
+struct SonexisFloatingPanelStyle: ViewModifier {
+    let tint: Color
+    var cornerRadius: CGFloat = 12
+    var glowOpacity: Double = 0.16
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(AppColors.panelPurple.opacity(0.96))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(AppColors.controlStrokeSoft.opacity(0.85), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(color: Color.black.opacity(0.28), radius: 8, y: 4)
+    }
+}
+
+extension View {
+    func sonexisFloatingPanel(
+        tint: Color,
+        cornerRadius: CGFloat = 12,
+        glowOpacity: Double = 0.16
+    ) -> some View {
+        modifier(SonexisFloatingPanelStyle(tint: tint, cornerRadius: cornerRadius, glowOpacity: glowOpacity))
+    }
+}
+
 struct AnimatedGrid: View {
     let intensity: Double
 

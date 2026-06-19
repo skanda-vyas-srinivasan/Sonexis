@@ -127,6 +127,20 @@ struct EffectBlockHorizontal: View {
             if isExpanded {
                 let overlayScale = 1.0 / max(nodeScale, 0.4)
                 VStack(spacing: 12) {
+                    HStack {
+                        Text(effect.displayName)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppColors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+
+                        Spacer()
+                    }
+
+                    Rectangle()
+                        .fill(AppColors.controlStrokeSoft.opacity(0.45))
+                        .frame(height: 1)
+
                     if effect.type == .plugin {
                         PluginParametersCompactView(
                             audioEngine: audioEngine,
@@ -142,39 +156,28 @@ struct EffectBlockHorizontal: View {
                         )
                     }
 
-                    Divider()
-                        .background(tileStyle.fill.opacity(0.2))
-
                     HStack(spacing: 12) {
                         Button(action: {
                             setEffectEnabled(!getEffectEnabled())
                         }) {
                             Label(getEffectEnabled() ? "On" : "Off", systemImage: "power")
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(tileStyle.fill)
+                        .buttonStyle(PanelPillButtonStyle(tint: tileStyle.fill, isActive: getEffectEnabled()))
 
                         Button(role: .destructive, action: onRemove) {
                             Label("Delete", systemImage: "trash")
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(tileStyle.fill)
+                        .buttonStyle(PanelPillButtonStyle(tint: AppColors.neonPink, isActive: false))
                     }
                 }
-                .padding()
-                .frame(width: 220)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(AppColors.deepBlack.opacity(0.88))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(tileStyle.fill.opacity(0.7), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
-                )
-                .foregroundColor(tileStyle.fill)
+                .padding(12)
+                .frame(width: 226)
+                .sonexisFloatingPanel(tint: tileStyle.fill, cornerRadius: 8, glowOpacity: 0)
+                .foregroundColor(AppColors.textPrimary)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .padding(.top, 8)
                 .scaleEffect(overlayScale, anchor: .top)
@@ -216,5 +219,26 @@ struct EffectBlockHorizontal: View {
     private func setEffectEnabled(_ enabled: Bool) {
         effect.isEnabled = enabled
         onUpdate()
+    }
+}
+
+private struct PanelPillButtonStyle: ButtonStyle {
+    let tint: Color
+    let isActive: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(AppColors.textPrimary.opacity(configuration.isPressed ? 0.78 : 0.95))
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isActive ? tint.opacity(0.16) : AppColors.controlPurple.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isActive ? tint.opacity(0.34) : AppColors.controlStrokeSoft.opacity(0.5), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
