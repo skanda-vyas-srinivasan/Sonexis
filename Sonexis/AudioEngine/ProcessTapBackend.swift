@@ -2,9 +2,12 @@ import Foundation
 import AVFoundation
 
 private enum ProcessTapGainStage {
-    static let inputTrimGain: Float = 0.70794576 // -3 dB
-    static let softLimitThreshold: Float = 0.90
-    static let outputCeiling: Float = 0.98
+    // Process Taps see the system mix before the user's output-device volume.
+    // Keep conservative headroom and avoid makeup gain while validating quality.
+    static let dspInputHeadroomGain: Float = 0.5011872 // -6 dB before effects
+    static let outputMakeupGain: Float = 1.4125376 // +3 dB after effects; net -3 dB
+    static let softLimitThreshold: Float = 0.86
+    static let outputCeiling: Float = 0.95
 }
 
 enum ProcessTapBackendFlag {
@@ -73,7 +76,7 @@ extension AudioEngine {
             outputDeviceName = "Default Output"
             errorMessage = nil
             isRunning = true
-            print("Process Tap gain staging: input trim -3 dB, output ceiling -0.2 dBFS.")
+            print("Process Tap gain staging: DSP input -6 dB, output makeup +3 dB, output ceiling -0.45 dBFS.")
             signalFlowToken += 1
             scheduleSnapshotUpdate()
         } catch {
@@ -155,7 +158,7 @@ extension AudioEngine: ProcessTapAudioProcessor {
         for frame in 0..<frameCount {
             for channel in 0..<channelCount {
                 let sampleIndex = (frame * channelCount) + channel
-                channelData[channel][frame] = input[sampleIndex] * ProcessTapGainStage.inputTrimGain
+                channelData[channel][frame] = input[sampleIndex] * ProcessTapGainStage.dspInputHeadroomGain
             }
         }
 
@@ -169,7 +172,8 @@ extension AudioEngine: ProcessTapAudioProcessor {
 
             let copiedSamples = min(processed.count, sampleCount)
             for sampleIndex in 0..<copiedSamples {
-                output[sampleIndex] = protectProcessTapOutputSample(processedBase[sampleIndex])
+                let madeUp = processedBase[sampleIndex] * ProcessTapGainStage.outputMakeupGain
+                output[sampleIndex] = protectProcessTapOutputSample(madeUp)
             }
             if copiedSamples < sampleCount {
                 for sampleIndex in copiedSamples..<sampleCount {
@@ -218,8 +222,10 @@ extension AudioEngine: ProcessTapAudioProcessor {
     ) {
         guard sampleCount > 0 else { return }
         for sampleIndex in 0..<sampleCount {
-            let trimmed = input[sampleIndex] * ProcessTapGainStage.inputTrimGain
-            output[sampleIndex] = protectProcessTapOutputSample(trimmed)
+            let staged = input[sampleIndex]
+                * ProcessTapGainStage.dspInputHeadroomGain
+                * ProcessTapGainStage.outputMakeupGain
+            output[sampleIndex] = protectProcessTapOutputSample(staged)
         }
     }
 
