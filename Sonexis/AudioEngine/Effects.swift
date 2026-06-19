@@ -379,8 +379,10 @@ extension AudioEngine {
                 biquadScratchBuffer2 = [Float](repeating: 0, count: frameLength)
             }
 
-            let drive = Float(1.0 + normalizedAmount * 4.0)
+            let drive = Float(1.0 + normalizedAmount * 2.0)
             let driveNorm = Float(tanh(Double(drive)))
+            let exciterMix = Float(normalizedAmount) * 0.16
+            let wetTrim = Float(1.0 - normalizedAmount * 0.12)
 
             for channel in 0..<channelCount {
                 lowCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &lowDelays[channel])
@@ -390,9 +392,12 @@ extension AudioEngine {
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
-                    let driven = biquadScratchBuffer[frame] * drive
-                    let saturated = Float(tanh(Double(driven))) / max(driveNorm, 0.0001)
-                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + saturated * smoothedGain
+                    let toneShaped = biquadScratchBuffer[frame] * wetTrim
+                    let highBand = biquadScratchBuffer[frame] - biquadScratchBuffer2[frame]
+                    let excitedHighBand = Float(tanh(Double(highBand * drive))) / max(driveNorm, 0.0001)
+                    let exciter = (excitedHighBand - highBand) * exciterMix
+                    let wet = toneShaped + exciter
+                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
             }
 
