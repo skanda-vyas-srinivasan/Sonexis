@@ -44,6 +44,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["strength": 50.0] // 0-100 scale
         case .delay:
             return ["time": 250.0, "feedback": 40.0, "mix": 30.0] // time in ms, feedback/mix 0-100
+        case .amp:
+            return ["input": 0.0, "drive": 25.0, "gain": 0.0, "mix": 100.0]
         case .distortion:
             return ["drive": 50.0, "mix": 50.0] // 0-100 scale
         case .tremolo:

@@ -87,6 +87,7 @@ extension AudioEngine {
             .compressor,
             .reverb,
             .delay,
+            .amp,
             .distortion,
             .tremolo,
             .chorus,
@@ -881,6 +882,51 @@ extension AudioEngine {
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            }
+
+        case .amp:
+            let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
+            let isGlobalDisabled = nodeId == nil && !snapshot.ampEnabled
+            let params = nodeParams(for: nodeId, snapshot: snapshot)
+            let inputGainDb = params?.ampInputGain ?? snapshot.ampInputGain
+            let driveValue = params?.ampDrive ?? snapshot.ampDrive
+            let outputGainDb = params?.ampOutputGain ?? snapshot.ampOutputGain
+            let mixValue = params?.ampMix ?? snapshot.ampMix
+
+            let normalizedDrive = min(max(driveValue, 0), 1)
+            let active = !(isNodeDisabled || isGlobalDisabled)
+                && (abs(inputGainDb) > 0.001 || normalizedDrive > 0.001 || abs(outputGainDb) > 0.001)
+            let targetGain: Float = active ? 1 : 0
+
+            var smoothedGain: Float = nodeId != nil ? (ampSmoothedGainByNode[nodeId!] ?? 0) : ampSmoothedGain
+
+            if smoothedGain < 0.001 && targetGain < 0.001 {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+
+            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
+            let inputGain = Float(pow(10.0, inputGainDb / 20.0))
+            let outputGain = Float(pow(10.0, outputGainDb / 20.0))
+            let drive = Float(1.0 + normalizedDrive * 11.0)
+            let driveNorm = max(tanhf(drive), 0.0001)
+            let mix = Float(min(max(mixValue, 0), 1))
+
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+                    let dry = processedAudio[channel][frame]
+                    let preamped = dry * inputGain
+                    let driven = normalizedDrive > 0.001 ? tanhf(preamped * drive) / driveNorm : preamped
+                    let wet = (preamped * (1.0 - mix) + driven * mix) * outputGain
+                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
+                }
+            }
+            if let id = nodeId {
+                ampSmoothedGainByNode[id] = smoothedGain
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            } else {
+                ampSmoothedGain = smoothedGain
             }
 
         case .distortion:
@@ -1841,6 +1887,12 @@ extension AudioEngine {
         resetFlangerStateUnlocked()
         phaserPhase = 0
         resetBitcrusherStateUnlocked()
+        ampSmoothedGain = 0
+        ampSmoothedGainByNode.removeAll()
+        distortionSmoothedGain = 0
+        distortionSmoothedGainByNode.removeAll()
+        tapeSaturationSmoothedGain = 0
+        tapeSaturationSmoothedGainByNode.removeAll()
         resampleBuffer.removeAll()
         resampleWriteIndex = 0
         resampleReadPhase = 0

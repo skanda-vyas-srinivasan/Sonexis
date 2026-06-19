@@ -1346,6 +1346,11 @@ struct CanvasView: View {
                 params.delayTime = audioEngine.delayTime
                 params.delayFeedback = audioEngine.delayFeedback
                 params.delayMix = audioEngine.delayMix
+            case .amp:
+                params.ampInputGain = audioEngine.ampInputGain
+                params.ampDrive = audioEngine.ampDrive
+                params.ampOutputGain = audioEngine.ampOutputGain
+                params.ampMix = audioEngine.ampMix
             case .distortion:
                 params.distortionDrive = audioEngine.distortionDrive
                 params.distortionMix = audioEngine.distortionMix

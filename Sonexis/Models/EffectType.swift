@@ -14,6 +14,7 @@ enum EffectType: String, Codable, CaseIterable {
     case tenBandEQ = "10-Band EQ"
     case deMud = "De-Mud"
     case delay = "Delay"
+    case amp = "Amp"
     case distortion = "Distortion"
     case tremolo = "Tremolo"
     case chorus = "Chorus"
@@ -49,6 +50,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "Removes muddiness and boxiness"
         case .delay:
             return "Repeating echoes and rhythmic delays"
+        case .amp:
+            return "Adds preamp drive and output gain"
         case .distortion:
             return "Adds warmth, grit, and harmonic saturation"
         case .tremolo:
@@ -96,6 +99,8 @@ enum EffectType: String, Codable, CaseIterable {
             return "bandage"
         case .delay:
             return "arrow.3.trianglepath"
+        case .amp:
+            return "dial.high"
         case .distortion:
             return "waveform.path.badge.plus"
         case .tremolo:

@@ -32,7 +32,7 @@ struct EffectTray: View {
     private let effects: [EffectType] = [
         .bassBoost, .enhancer, .clarity, .deMud,
         .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
-        .delay, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
+        .delay, .amp, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
         .resampling, .rubberBandPitch
     ]
 
