@@ -225,6 +225,9 @@ class AudioEngine: ObservableObject {
     @Published var betaRecordingUnlocked = false
     @Published var isRecording = false
     @Published var pluginStatusToken: Int = 0
+    @Published var outputMeterLevel: Float = 0
+    @Published var outputMeterPeakDBFS: Float = -96
+    @Published var processTapWarningText: String?
 
     private var recordingFile: AVAudioFile?
     private let recordingLock = NSLock()
@@ -236,6 +239,7 @@ class AudioEngine: ObservableObject {
     private var tapFrameLength: Int = 0
     private var tapChannelCount: Int = 0
     private var tapSampleRate: Double = 0
+    private var processTapWarningClearTask: DispatchWorkItem?
 
     init() {
         setupNotifications()
@@ -246,6 +250,80 @@ class AudioEngine: ObservableObject {
             DispatchQueue.main.async {
                 self?.pluginStatusToken += 1
             }
+        }
+    }
+
+    func publishOutputMeter(sumSquares: Float, peak: Float, sampleCount: Int) {
+        guard sampleCount > 0 else {
+            publishOutputMeter(rms: 0, peak: 0)
+            return
+        }
+
+        let safeSum = sumSquares.isFinite ? max(0, sumSquares) : 0
+        let rms = sqrtf(safeSum / Float(sampleCount))
+        publishOutputMeter(rms: rms, peak: peak)
+    }
+
+    func publishOutputMeter(rms: Float, peak: Float) {
+        let safeRMS = rms.isFinite ? min(max(rms, 0), 1.5) : 0
+        let safePeak = peak.isFinite ? min(max(peak, 0), 1.5) : 0
+
+        let rmsCoefficient: Float = safeRMS > outputMeterSmoothedRMS ? 0.34 : 0.12
+        let peakCoefficient: Float = safePeak > outputMeterSmoothedPeak ? 0.55 : 0.08
+        outputMeterSmoothedRMS += (safeRMS - outputMeterSmoothedRMS) * rmsCoefficient
+        outputMeterSmoothedPeak += (safePeak - outputMeterSmoothedPeak) * peakCoefficient
+
+        outputMeterUpdateCounter += 1
+        guard outputMeterUpdateCounter % 4 == 0 else { return }
+
+        let level = outputMeterSmoothedRMS
+        let peakDBFS = 20 * log10f(max(outputMeterSmoothedPeak, 0.000_001))
+        DispatchQueue.main.async { [weak self] in
+            self?.outputMeterLevel = level
+            self?.outputMeterPeakDBFS = peakDBFS
+        }
+    }
+
+    func publishOutputMeter(samples: [Float], sampleCount: Int) {
+        let count = min(sampleCount, samples.count)
+        guard count > 0 else {
+            publishOutputMeter(rms: 0, peak: 0)
+            return
+        }
+
+        var sumSquares: Float = 0
+        var peak: Float = 0
+        for index in 0..<count {
+            let sample = samples[index]
+            guard sample.isFinite else { continue }
+            let magnitude = abs(sample)
+            peak = max(peak, magnitude)
+            sumSquares += sample * sample
+        }
+        publishOutputMeter(sumSquares: sumSquares, peak: peak, sampleCount: count)
+    }
+
+    func resetOutputMeter() {
+        outputMeterSmoothedRMS = 0
+        outputMeterSmoothedPeak = 0
+        outputMeterUpdateCounter = 0
+        DispatchQueue.main.async { [weak self] in
+            self?.outputMeterLevel = 0
+            self?.outputMeterPeakDBFS = -96
+        }
+    }
+
+    func publishProcessTapWarning(_ message: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            processTapWarningClearTask?.cancel()
+            processTapWarningText = message
+
+            let clearTask = DispatchWorkItem { [weak self] in
+                self?.processTapWarningText = nil
+            }
+            processTapWarningClearTask = clearTask
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: clearTask)
         }
     }
 
@@ -747,6 +825,9 @@ class AudioEngine: ObservableObject {
     var nodeEnabled: [UUID: Bool] = [:]
     let pluginHost = PluginHost()
     var levelUpdateCounter = 0
+    var outputMeterUpdateCounter = 0
+    var outputMeterSmoothedRMS: Float = 0
+    var outputMeterSmoothedPeak: Float = 0
     let effectStateLock = NSLock()
     private let snapshotLock = NSLock()
     private var snapshotUpdateScheduled = false

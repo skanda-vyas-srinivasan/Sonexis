@@ -8,6 +8,12 @@ protocol ProcessTapAudioProcessor: AnyObject {
         channelCount: Int,
         sampleRate: Double
     )
+
+    func processTapAudioGapDetected(
+        fillFrames: UInt32,
+        droppedFrames: UInt64,
+        underflowFrames: UInt64
+    )
 }
 
 final class ProcessTapProcessingWorker {

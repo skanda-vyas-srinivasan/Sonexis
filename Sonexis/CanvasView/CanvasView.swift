@@ -805,25 +805,14 @@ struct CanvasView: View {
                     }
 
                     if effectChain.isEmpty && graphMode != .split {
-                        VStack(spacing: 7) {
+                        VStack(spacing: 8) {
                             Image(systemName: "waveform.path")
                                 .font(.system(size: 30, weight: .light))
                                 .foregroundColor(AppColors.neonCyan.opacity(0.32))
                             Text("Drop effects here")
                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 .foregroundColor(AppColors.textSecondary.opacity(0.62))
-                            Text("Build a chain from left to right")
-                                .font(AppTypography.caption)
-                                .foregroundColor(AppColors.textMuted.opacity(0.72))
                         }
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 18)
-                        .background(AppColors.controlPurple.opacity(0.20))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(AppColors.controlStroke.opacity(0.28), lineWidth: 1)
-                        )
-                        .cornerRadius(10)
                     }
                 }
     }

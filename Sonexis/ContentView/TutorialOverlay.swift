@@ -448,8 +448,8 @@ struct TutorialOverlay: View {
             )
         case .buildOutput:
             return (
-                title: "Output Device",
-                body: "Choose where you want to hear the processed audio. Select your headphones or speakers from the Output dropdown.",
+                title: "Output Meter",
+                body: "This meter shows the processed signal leaving Sonexis. Routing follows your current macOS output device.",
                 showNext: true
             )
         case .buildAddBass:
