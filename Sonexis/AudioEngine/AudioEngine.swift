@@ -195,7 +195,8 @@ struct ResetFlags: OptionSet {
     static let flanger = ResetFlags(rawValue: 1 << 9)
     static let phaser = ResetFlags(rawValue: 1 << 10)
     static let bitcrusher = ResetFlags(rawValue: 1 << 11)
-    static let all = ResetFlags(rawValue: 1 << 12)
+    static let rubberBand = ResetFlags(rawValue: 1 << 12)
+    static let all = ResetFlags(rawValue: 1 << 13)
 }
 
 struct RubberBandScratch {
@@ -984,6 +985,8 @@ class AudioEngine: ObservableObject {
     var graphChangeFadeInSamplesTotal: Int = 0
     var graphChangePrevOutput: [[Float]] = []
     var lastOutputBuffer: [[Float]] = []
+    var dspFaultCountsByEffect: [EffectType: Int] = [:]
+    var dspFaultCountsByNode: [UUID: Int] = [:]
 
     // Ring buffer for audio data (interleaved frames)
     var ringBuffer: UnsafeMutablePointer<Float>?
@@ -1114,8 +1117,8 @@ class AudioEngine: ObservableObject {
             isReconfiguring: isReconfiguring,
             bassBoostEnabled: bassBoostEnabled,
             bassBoostAmount: bassBoostAmount,
-            enhancerEnabled: enhancerEnabled,
-            enhancerAmount: enhancerAmount,
+            enhancerEnabled: false,
+            enhancerAmount: 0,
             nightcoreEnabled: nightcoreEnabled,
             nightcoreIntensity: nightcoreIntensity,
             clarityEnabled: clarityEnabled,
@@ -1169,9 +1172,9 @@ class AudioEngine: ObservableObject {
             tapeSaturationMix: tapeSaturationMix,
             stereoWidthEnabled: stereoWidthEnabled,
             stereoWidthAmount: stereoWidthAmount,
-            resampleEnabled: resampleEnabled,
-            resampleRate: resampleRate,
-            resampleCrossfade: resampleCrossfade,
+            resampleEnabled: false,
+            resampleRate: 1.0,
+            resampleCrossfade: 0,
             rubberBandPitchEnabled: rubberBandPitchEnabled,
             rubberBandPitchSemitones: rubberBandPitchSemitones,
             graphSignature: graphSignature

@@ -17,7 +17,9 @@ final class ProcessTapProcessingWorker {
     private let sampleRate: Double
     private let channels: UInt32
     private let maxFramesPerChunk: UInt32
-    private let queue = DispatchQueue(label: "Sonexis.ProcessTapProcessingWorker", qos: .userInitiated)
+    private let maxChunksPerWake: Int
+    private let queue = DispatchQueue(label: "Sonexis.ProcessTapProcessingWorker", qos: .userInteractive)
+    private let queueSpecificKey = DispatchSpecificKey<Bool>()
 
     private var timer: DispatchSourceTimer?
     private var inputScratch: [Float]
@@ -30,7 +32,8 @@ final class ProcessTapProcessingWorker {
         processor: ProcessTapAudioProcessor?,
         sampleRate: Double,
         channels: UInt32,
-        maxFramesPerChunk: UInt32 = 512
+        maxFramesPerChunk: UInt32 = 1_024,
+        maxChunksPerWake: Int = 32
     ) {
         self.inputRingBuffer = inputRingBuffer
         self.outputRingBuffer = outputRingBuffer
@@ -38,16 +41,45 @@ final class ProcessTapProcessingWorker {
         self.sampleRate = sampleRate
         self.channels = channels
         self.maxFramesPerChunk = maxFramesPerChunk
+        self.maxChunksPerWake = max(1, maxChunksPerWake)
         self.inputScratch = [Float](repeating: 0, count: Int(maxFramesPerChunk * channels))
         self.outputScratch = [Float](repeating: 0, count: Int(maxFramesPerChunk * channels))
+        queue.setSpecific(key: queueSpecificKey, value: true)
     }
 
     func start() {
+        if DispatchQueue.getSpecific(key: queueSpecificKey) == true {
+            startOnWorkerQueue()
+        } else {
+            queue.sync {
+                startOnWorkerQueue()
+            }
+        }
+    }
+
+    func stop(log: Bool) {
+        let stoppedTimer: Bool
+        if DispatchQueue.getSpecific(key: queueSpecificKey) == true {
+            stoppedTimer = stopOnWorkerQueue()
+        } else {
+            stoppedTimer = queue.sync {
+                stopOnWorkerQueue()
+            }
+        }
+
+        if stoppedTimer {
+            if log { print("Cleanup: stopped Process Tap DSP processing worker.") }
+        } else if log {
+            print("Cleanup: no Process Tap DSP processing worker to stop.")
+        }
+    }
+
+    private func startOnWorkerQueue() {
         guard timer == nil else { return }
         isRunning = true
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(2), leeway: .milliseconds(1))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(1), leeway: .microseconds(250))
         timer.setEventHandler { [weak self] in
             self?.processAvailableInput()
         }
@@ -55,22 +87,22 @@ final class ProcessTapProcessingWorker {
         timer.resume()
     }
 
-    func stop(log: Bool) {
+    private func stopOnWorkerQueue() -> Bool {
         isRunning = false
-        if timer != nil {
-            timer?.cancel()
-            timer = nil
-            if log { print("Cleanup: stopped Process Tap DSP processing worker.") }
-        } else if log {
-            print("Cleanup: no Process Tap DSP processing worker to stop.")
+        guard let timer else {
+            return false
         }
+        timer.setEventHandler {}
+        timer.cancel()
+        self.timer = nil
+        return true
     }
 
     private func processAvailableInput() {
         guard isRunning else { return }
 
         var chunksProcessed = 0
-        while chunksProcessed < 8 {
+        while chunksProcessed < maxChunksPerWake {
             let availableFrames = inputRingBuffer.fillFrames
             if availableFrames == 0 {
                 break

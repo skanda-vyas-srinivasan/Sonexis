@@ -2,9 +2,10 @@ import AppKit
 import CoreAudio
 import Foundation
 
-private let startupPrerollTargetFrames: UInt32 = 1_024
+private let startupPrerollTargetFrames: UInt32 = 4_096
+private let startupPartialPrerollMinimumFrames: UInt32 = 1_024
 private let startupPrerollPollInterval: TimeInterval = 0.005
-private let startupPartialPrerollTimeout: TimeInterval = 0.35
+private let startupPartialPrerollTimeout: TimeInterval = 0.75
 private let rampSettleDuration: TimeInterval = 0.03
 private let wakeRebuildDelay: TimeInterval = 1.0
 private let rebuildRetryDelay: TimeInterval = 1.5
@@ -33,6 +34,8 @@ final class ProcessTapDSPApp {
     private var activeSampleRate: Double = 48_000.0
     private var lastWrittenFrames: UInt64 = 0
     private var lastReadFrames: UInt64 = 0
+    private var lastDroppedFrames: UInt64 = 0
+    private var lastUnderflowFrames: UInt64 = 0
     private var statusTick: UInt64 = 0
     private var isStopped = true
     private var isSuspendedForSleep = false
@@ -252,7 +255,7 @@ final class ProcessTapDSPApp {
         let partialTimeoutNanoseconds = UInt64(startupPartialPrerollTimeout * 1_000_000_000.0)
 
         print(
-            "Startup: holding processed output until ring fill reaches \(startupPrerollTargetFrames) frames; partial fill accepted \(Int(startupPartialPrerollTimeout * 1000.0)) ms after capture begins."
+            "Startup: holding processed output until ring fill reaches \(startupPrerollTargetFrames) frames; fallback requires at least \(startupPartialPrerollMinimumFrames) frames after \(Int(startupPartialPrerollTimeout * 1000.0)) ms."
         )
 
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -271,6 +274,7 @@ final class ProcessTapDSPApp {
                 }
 
                 if let firstFillTime,
+                   fill >= startupPartialPrerollMinimumFrames,
                    now.uptimeNanoseconds - firstFillTime.uptimeNanoseconds >= partialTimeoutNanoseconds {
                     self.finishStartupPreroll(context: context, reason: "partial ring fill \(fill) frames")
                 }
@@ -397,6 +401,8 @@ final class ProcessTapDSPApp {
         activeSampleRate = 48_000.0
         lastWrittenFrames = 0
         lastReadFrames = 0
+        lastDroppedFrames = 0
+        lastUnderflowFrames = 0
         statusTick = 0
     }
 
@@ -636,6 +642,12 @@ final class ProcessTapDSPApp {
     }
 
     private func startStatusTimer() {
+        lastWrittenFrames = 0
+        lastReadFrames = 0
+        lastDroppedFrames = 0
+        lastUnderflowFrames = 0
+        statusTick = 0
+
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
         timer.setEventHandler { [weak self] in
@@ -647,33 +659,22 @@ final class ProcessTapDSPApp {
             let underflows = ringBuffer.underflowFrames
             let written = inputMetricsRing.writtenFrames
             let read = ringBuffer.readFrames
-            let peakPPM = inputMetricsRing.lastInputPeakPPM
-            let gainPPM = ringBuffer.currentGainPPM
             let writtenDelta = written - lastWrittenFrames
             let readDelta = read - lastReadFrames
+            let droppedDelta = dropped >= lastDroppedFrames ? dropped - lastDroppedFrames : dropped
+            let underflowDelta = underflows >= lastUnderflowFrames ? underflows - lastUnderflowFrames : underflows
             lastWrittenFrames = written
             lastReadFrames = read
+            lastDroppedFrames = dropped
+            lastUnderflowFrames = underflows
 
-            let peak = max(Double(peakPPM) / 1_000_000.0, 1.0e-12)
-            let peakDB = 20.0 * log10(peak)
-            let gain = Double(gainPPM) / 1_000_000.0
-            print(
-                String(
-                    format: "ring fill: %u frames, in/s: %llu, out/s: %llu, input peak: %.1f dBFS, gain: %.3f, dropped: %llu, underflow: %llu",
-                    fill,
-                    writtenDelta,
-                    readDelta,
-                    peakDB,
-                    gain,
-                    dropped,
-                    underflows
+            if droppedDelta > 0 || underflowDelta > 0 {
+                print(
+                    "Audio gap detected: fill=\(fill) frames, in/s=\(writtenDelta), out/s=\(readDelta), dropped +\(droppedDelta), underflow +\(underflowDelta)."
                 )
-            )
+            }
 
             statusTick += 1
-            if statusTick % 5 == 0 {
-                printRouteDiagnostics(context: "periodic")
-            }
         }
         statusTimer = timer
         timer.resume()

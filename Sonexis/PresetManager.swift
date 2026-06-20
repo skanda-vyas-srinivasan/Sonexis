@@ -69,7 +69,8 @@ struct SavedPreset: Identifiable, Codable {
         let baseY: CGFloat = 300
         let startX: CGFloat = 220
         let spacing: CGFloat = 160
-        let nodes: [BeginnerNode] = chain.activeEffects.enumerated().map { index, snapshot in
+        let activeEffects = chain.activeEffects.filter { !$0.type.isRetired }
+        let nodes: [BeginnerNode] = activeEffects.enumerated().map { index, snapshot in
             var node = BeginnerNode(
                 type: snapshot.type,
                 position: CGPoint(x: startX + spacing * CGFloat(index), y: baseY),

@@ -1084,6 +1084,8 @@ struct CanvasView: View {
     }
 
     private func addEffectToChain(_ type: EffectType) {
+        guard !type.isRetired else { return }
+
         if tutorial.isBuildStep && ![TutorialStep.buildAddBass, .buildDualMonoAdd].contains(tutorial.step) {
             return
         }

@@ -12,12 +12,6 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .bassBoost, isEnabled: true, parameters: params))
         }
 
-        // Enhancer
-        if enhancerEnabled {
-            let params = EffectChainSnapshot.EffectParameters(enhancerAmount: enhancerAmount)
-            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .enhancer, isEnabled: true, parameters: params))
-        }
-
         // Nightcore
         if nightcoreEnabled {
             let params = EffectChainSnapshot.EffectParameters(nightcoreIntensity: nightcoreIntensity)
@@ -155,12 +149,6 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .stereoWidth, isEnabled: true, parameters: params))
         }
 
-        // Resampling
-        if resampleEnabled {
-            let params = EffectChainSnapshot.EffectParameters(resampleRate: resampleRate, resampleCrossfade: resampleCrossfade)
-            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .resampling, isEnabled: true, parameters: params))
-        }
-
         // Rubber Band Pitch
         if rubberBandPitchEnabled {
             let params = EffectChainSnapshot.EffectParameters(rubberBandPitchSemitones: rubberBandPitchSemitones)
@@ -207,10 +195,7 @@ extension AudioEngine {
                 }
 
             case .enhancer:
-                enhancerEnabled = effect.isEnabled
-                if let amount = params.enhancerAmount {
-                    enhancerAmount = amount
-                }
+                enhancerEnabled = false
 
             case .pitchShift: // Nightcore
                 nightcoreEnabled = effect.isEnabled
@@ -321,9 +306,7 @@ extension AudioEngine {
                 if let mix = params.tapeSaturationMix { tapeSaturationMix = mix }
 
             case .resampling:
-                resampleEnabled = effect.isEnabled
-                if let rate = params.resampleRate { resampleRate = rate }
-                if let crossfade = params.resampleCrossfade { resampleCrossfade = crossfade }
+                resampleEnabled = false
 
             case .rubberBandPitch:
                 rubberBandPitchEnabled = effect.isEnabled
@@ -351,7 +334,7 @@ extension AudioEngine {
         let activeTypes = Set(chain.filter { $0.isEnabled }.map { $0.type })
 
         bassBoostEnabled = activeTypes.contains(.bassBoost)
-        enhancerEnabled = activeTypes.contains(.enhancer)
+        enhancerEnabled = false
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -369,7 +352,7 @@ extension AudioEngine {
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
-        resampleEnabled = activeTypes.contains(.resampling)
+        resampleEnabled = false
         rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
 
         if !activeTypes.contains(.tenBandEQ) {
@@ -407,7 +390,7 @@ extension AudioEngine {
 
         let activeTypes = Set(nodes.filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
-        enhancerEnabled = activeTypes.contains(.enhancer)
+        enhancerEnabled = false
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -425,7 +408,7 @@ extension AudioEngine {
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
-        resampleEnabled = activeTypes.contains(.resampling)
+        resampleEnabled = false
         rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
     }
 
@@ -459,7 +442,7 @@ extension AudioEngine {
 
         let activeTypes = Set((leftNodes + rightNodes).filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
-        enhancerEnabled = activeTypes.contains(.enhancer)
+        enhancerEnabled = false
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -477,7 +460,7 @@ extension AudioEngine {
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
-        resampleEnabled = activeTypes.contains(.resampling)
+        resampleEnabled = false
         rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
     }
 
@@ -491,43 +474,105 @@ extension AudioEngine {
 
     private func syncNodeState(_ nodes: [BeginnerNode]) {
         let ids = Set(nodes.map { $0.id })
+        let activeRubberBandPitchIDs = Set(
+            nodes
+                .filter {
+                    $0.type == .rubberBandPitch
+                        && $0.isEnabled
+                        && abs($0.parameters.rubberBandPitchSemitones) > 0.01
+                }
+                .map { $0.id }
+        )
+        let shouldResetRubberBandPitch = rubberBandNodes.keys.contains { !activeRubberBandPitchIDs.contains($0) }
+            || nodes.contains {
+                $0.type == .rubberBandPitch
+                    && (!$0.isEnabled || abs($0.parameters.rubberBandPitchSemitones) <= 0.01)
+            }
+
+        if shouldResetRubberBandPitch {
+            enqueueReset(.rubberBand)
+        }
+
         nodeParameters = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.parameters) })
         nodeEnabled = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.isEnabled) })
-        bassBoostStatesByNode = bassBoostStatesByNode.filter { ids.contains($0.key) }
-        enhancerSmoothedGainByNode = enhancerSmoothedGainByNode.filter { ids.contains($0.key) }
-        enhancerLowVDSPDelayByNode = enhancerLowVDSPDelayByNode.filter { ids.contains($0.key) }
-        enhancerMidVDSPDelayByNode = enhancerMidVDSPDelayByNode.filter { ids.contains($0.key) }
-        enhancerHighVDSPDelayByNode = enhancerHighVDSPDelayByNode.filter { ids.contains($0.key) }
-        clarityStatesByNode = clarityStatesByNode.filter { ids.contains($0.key) }
-        nightcoreStatesByNode = nightcoreStatesByNode.filter { ids.contains($0.key) }
-        deMudStatesByNode = deMudStatesByNode.filter { ids.contains($0.key) }
-        eqBassStatesByNode = eqBassStatesByNode.filter { ids.contains($0.key) }
-        eqMidsStatesByNode = eqMidsStatesByNode.filter { ids.contains($0.key) }
-        eqTrebleStatesByNode = eqTrebleStatesByNode.filter { ids.contains($0.key) }
-        tenBandStatesByNode = tenBandStatesByNode.filter { ids.contains($0.key) }
-        reverbBuffersByNode = reverbBuffersByNode.filter { ids.contains($0.key) }
-        reverbWriteIndexByNode = reverbWriteIndexByNode.filter { ids.contains($0.key) }
-        delayBuffersByNode = delayBuffersByNode.filter { ids.contains($0.key) }
-        delayWriteIndexByNode = delayWriteIndexByNode.filter { ids.contains($0.key) }
-        tremoloPhaseByNode = tremoloPhaseByNode.filter { ids.contains($0.key) }
-        chorusBuffersByNode = chorusBuffersByNode.filter { ids.contains($0.key) }
-        chorusWriteIndexByNode = chorusWriteIndexByNode.filter { ids.contains($0.key) }
-        chorusPhaseByNode = chorusPhaseByNode.filter { ids.contains($0.key) }
-        flangerBuffersByNode = flangerBuffersByNode.filter { ids.contains($0.key) }
-        flangerWriteIndexByNode = flangerWriteIndexByNode.filter { ids.contains($0.key) }
-        flangerPhaseByNode = flangerPhaseByNode.filter { ids.contains($0.key) }
-        phaserStatesByNode = phaserStatesByNode.filter { ids.contains($0.key) }
-        phaserPhaseByNode = phaserPhaseByNode.filter { ids.contains($0.key) }
-        bitcrusherHoldCountersByNode = bitcrusherHoldCountersByNode.filter { ids.contains($0.key) }
-        bitcrusherHoldValuesByNode = bitcrusherHoldValuesByNode.filter { ids.contains($0.key) }
-        resampleBuffersByNode = resampleBuffersByNode.filter { ids.contains($0.key) }
-        resampleWriteIndexByNode = resampleWriteIndexByNode.filter { ids.contains($0.key) }
-        resampleReadPhaseByNode = resampleReadPhaseByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeRemainingByNode = resampleCrossfadeRemainingByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeTotalByNode = resampleCrossfadeTotalByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeStartPhaseByNode = resampleCrossfadeStartPhaseByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeTargetPhaseByNode = resampleCrossfadeTargetPhaseByNode.filter { ids.contains($0.key) }
-        ampSmoothedGainByNode = ampSmoothedGainByNode.filter { ids.contains($0.key) }
-        rubberBandNodes = rubberBandNodes.filter { ids.contains($0.key) }
+
+        func keepActiveNodes<Value>(_ dictionary: inout [UUID: Value]) {
+            dictionary = dictionary.filter { ids.contains($0.key) }
+        }
+
+        keepActiveNodes(&bassBoostStatesByNode)
+        keepActiveNodes(&bassBoostSmoothedGainByNode)
+        keepActiveNodes(&bassBoostVDSPDelayByNode)
+        keepActiveNodes(&enhancerSmoothedGainByNode)
+        keepActiveNodes(&enhancerLowVDSPDelayByNode)
+        keepActiveNodes(&enhancerMidVDSPDelayByNode)
+        keepActiveNodes(&enhancerHighVDSPDelayByNode)
+        keepActiveNodes(&clarityStatesByNode)
+        keepActiveNodes(&claritySmoothedGainByNode)
+        keepActiveNodes(&clarityVDSPDelayByNode)
+        keepActiveNodes(&nightcoreStatesByNode)
+        keepActiveNodes(&nightcoreSmoothedGainByNode)
+        keepActiveNodes(&deMudStatesByNode)
+        keepActiveNodes(&deMudSmoothedGainByNode)
+        keepActiveNodes(&deMudVDSPDelayByNode)
+        keepActiveNodes(&eqBassStatesByNode)
+        keepActiveNodes(&eqMidsStatesByNode)
+        keepActiveNodes(&eqTrebleStatesByNode)
+        keepActiveNodes(&eqBassVDSPDelayByNode)
+        keepActiveNodes(&eqMidsVDSPDelayByNode)
+        keepActiveNodes(&eqTrebleVDSPDelayByNode)
+        keepActiveNodes(&simpleEQSmoothedGainByNode)
+        keepActiveNodes(&tenBandStatesByNode)
+        keepActiveNodes(&tenBandEQSmoothedGainByNode)
+        keepActiveNodes(&tenBandVDSPDelaysByNode)
+        keepActiveNodes(&compressorSmoothedGainByNode)
+        keepActiveNodes(&reverbBuffersByNode)
+        keepActiveNodes(&reverbWriteIndexByNode)
+        keepActiveNodes(&reverbSmoothedGainByNode)
+        keepActiveNodes(&delayBuffersByNode)
+        keepActiveNodes(&delayWriteIndexByNode)
+        keepActiveNodes(&delaySmoothedGainByNode)
+        keepActiveNodes(&tremoloPhaseByNode)
+        keepActiveNodes(&tremoloSmoothedGainByNode)
+        keepActiveNodes(&chorusBuffersByNode)
+        keepActiveNodes(&chorusWriteIndexByNode)
+        keepActiveNodes(&chorusPhaseByNode)
+        keepActiveNodes(&chorusSmoothedGainByNode)
+        keepActiveNodes(&flangerBuffersByNode)
+        keepActiveNodes(&flangerWriteIndexByNode)
+        keepActiveNodes(&flangerPhaseByNode)
+        keepActiveNodes(&flangerSmoothedGainByNode)
+        keepActiveNodes(&phaserStatesByNode)
+        keepActiveNodes(&phaserPhaseByNode)
+        keepActiveNodes(&phaserSmoothedGainByNode)
+        keepActiveNodes(&bitcrusherHoldCountersByNode)
+        keepActiveNodes(&bitcrusherHoldValuesByNode)
+        keepActiveNodes(&bitcrusherSmoothedGainByNode)
+        keepActiveNodes(&resampleBuffersByNode)
+        keepActiveNodes(&resampleWriteIndexByNode)
+        keepActiveNodes(&resampleReadPhaseByNode)
+        keepActiveNodes(&resampleCrossfadeRemainingByNode)
+        keepActiveNodes(&resampleCrossfadeTotalByNode)
+        keepActiveNodes(&resampleCrossfadeStartPhaseByNode)
+        keepActiveNodes(&resampleCrossfadeTargetPhaseByNode)
+        keepActiveNodes(&resampleSmoothedGainByNode)
+        keepActiveNodes(&ampSmoothedGainByNode)
+        keepActiveNodes(&distortionSmoothedGainByNode)
+        keepActiveNodes(&tapeSaturationSmoothedGainByNode)
+        keepActiveNodes(&stereoWidthSmoothedGainByNode)
+        keepActiveNodes(&rubberBandNodes)
+        keepActiveNodes(&rubberBandScratchByNode)
+        keepActiveNodes(&rubberBandSmoothedGainByNode)
+        keepActiveNodes(&pluginDryScratchByNode)
+        keepActiveNodes(&pluginWetScratchByNode)
+        keepActiveNodes(&pluginCrossfadeRemainingByNode)
+        keepActiveNodes(&pluginCrossfadeTotalByNode)
+        keepActiveNodes(&pluginCrossfadeOutRemainingByNode)
+        keepActiveNodes(&pluginCrossfadeOutTotalByNode)
+        keepActiveNodes(&pluginWasEnabledByNode)
+        keepActiveNodes(&pluginWasReadyByNode)
+        keepActiveNodes(&pluginStableOutputCountByNode)
+        keepActiveNodes(&pluginHasStableOutputByNode)
+        keepActiveNodes(&pluginReadyDelaySamplesByNode)
     }
 }

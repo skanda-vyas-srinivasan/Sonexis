@@ -57,6 +57,17 @@ extension AudioEngine {
         return quantized * 2 - 1
     }
 
+    private func softConstrainedSample(_ sample: Float, knee: Float, ceiling: Float) -> Float {
+        let magnitude = abs(sample)
+        guard magnitude > knee else { return sample }
+
+        let sign: Float = sample >= 0 ? 1 : -1
+        let range = max(ceiling - knee, 0.0001)
+        let over = magnitude - knee
+        let shaped = knee + (1 - Float(exp(Double(-over / range)))) * range
+        return sign * min(shaped, ceiling)
+    }
+
     func applySoftLimiter(_ buffer: [[Float]]) -> [[Float]] {
         let threshold: Float = 0.9
         var limited = buffer
@@ -79,7 +90,6 @@ extension AudioEngine {
     var defaultEffectOrder: [EffectType] {
         [
             .bassBoost,
-            .enhancer,
             .clarity,
             .deMud,
             .simpleEQ,
@@ -95,7 +105,6 @@ extension AudioEngine {
             .flanger,
             .bitcrusher,
             .tapeSaturation,
-            .resampling,
             .rubberBandPitch,
             .stereoWidth
         ]
@@ -114,6 +123,135 @@ extension AudioEngine {
     private func nodeIsEnabled(_ nodeId: UUID?, snapshot: ProcessingSnapshot) -> Bool {
         guard let nodeId else { return true }
         return snapshot.nodeEnabled[nodeId] ?? true
+    }
+
+    func sanitizeEffectOutput(
+        _ processedAudio: inout [[Float]],
+        effect: EffectType,
+        nodeId: UUID?,
+        frameLength: Int,
+        channelCount: Int
+    ) {
+        guard frameLength > 0, channelCount > 0 else { return }
+
+        let faultLimit: Float = 16.0
+        let headroomKnee: Float = 1.25
+        let headroomCeiling: Float = 2.5
+        var repairedSamples = 0
+        var limitedSamples = 0
+        let safeChannelCount = min(channelCount, processedAudio.count)
+
+        for channel in 0..<safeChannelCount {
+            let safeFrameCount = min(frameLength, processedAudio[channel].count)
+            for frame in 0..<safeFrameCount {
+                let sample = processedAudio[channel][frame]
+                if !sample.isFinite {
+                    processedAudio[channel][frame] = 0
+                    repairedSamples += 1
+                } else {
+                    let magnitude = abs(sample)
+                    if magnitude > faultLimit {
+                        limitedSamples += 1
+                        processedAudio[channel][frame] = softConstrainedSample(
+                            sample,
+                            knee: headroomKnee,
+                            ceiling: headroomCeiling
+                        )
+                    } else if magnitude > headroomKnee {
+                        processedAudio[channel][frame] = softConstrainedSample(
+                            sample,
+                            knee: headroomKnee,
+                            ceiling: headroomCeiling
+                        )
+                    }
+                }
+            }
+        }
+
+        guard repairedSamples > 0 || limitedSamples > 0 else { return }
+
+        registerDSPFault(
+            effect: effect,
+            nodeId: nodeId,
+            repairedSamples: repairedSamples,
+            limitedSamples: limitedSamples
+        )
+
+        if repairedSamples > 0 {
+            resetFaultStateUnlocked(for: effect, nodeId: nodeId)
+        }
+    }
+
+    private func resetFaultStateUnlocked(for effect: EffectType, nodeId: UUID?) {
+        switch effect {
+        case .bassBoost:
+            resetBassBoostStateUnlocked(nodeId: nodeId)
+        case .enhancer:
+            resetEnhancerStateUnlocked(nodeId: nodeId)
+        case .clarity:
+            resetClarityStateUnlocked(nodeId: nodeId)
+        case .deMud:
+            resetDeMudStateUnlocked(nodeId: nodeId)
+        case .simpleEQ:
+            resetEQStateUnlocked(nodeId: nodeId)
+        case .tenBandEQ:
+            resetTenBandEQStateUnlocked(nodeId: nodeId)
+        case .compressor:
+            resetCompressorStateUnlocked(nodeId: nodeId)
+        case .reverb:
+            resetReverbStateUnlocked(nodeId: nodeId)
+        case .delay:
+            resetDelayStateUnlocked(nodeId: nodeId)
+        case .tremolo:
+            resetTremoloStateUnlocked(nodeId: nodeId)
+        case .chorus:
+            resetChorusStateUnlocked(nodeId: nodeId)
+        case .phaser:
+            resetPhaserStateUnlocked(nodeId: nodeId)
+        case .flanger:
+            resetFlangerStateUnlocked(nodeId: nodeId)
+        case .bitcrusher:
+            resetBitcrusherStateUnlocked(nodeId: nodeId)
+        case .resampling:
+            resetResampleStateUnlocked(nodeId: nodeId)
+        case .rubberBandPitch:
+            resetRubberBandStateUnlocked(nodeId: nodeId)
+        case .amp:
+            resetAmpStateUnlocked(nodeId: nodeId)
+        case .distortion:
+            resetDistortionStateUnlocked(nodeId: nodeId)
+        case .tapeSaturation:
+            resetTapeSaturationStateUnlocked(nodeId: nodeId)
+        case .stereoWidth:
+            resetStereoWidthStateUnlocked(nodeId: nodeId)
+        case .pitchShift:
+            resetNightcoreStateUnlocked(nodeId: nodeId)
+        case .plugin:
+            resetPluginStateUnlocked(nodeId: nodeId)
+        }
+    }
+
+    private func registerDSPFault(
+        effect: EffectType,
+        nodeId: UUID?,
+        repairedSamples: Int,
+        limitedSamples: Int
+    ) {
+        let effectCount = (dspFaultCountsByEffect[effect] ?? 0) + 1
+        dspFaultCountsByEffect[effect] = effectCount
+
+        if let nodeId {
+            dspFaultCountsByNode[nodeId] = (dspFaultCountsByNode[nodeId] ?? 0) + 1
+        }
+
+        guard effectCount == 1 || effectCount % 100 == 0 else { return }
+
+        let nodeText = nodeId.map { " node=\($0.uuidString)" } ?? ""
+        DispatchQueue.main.async {
+            print(
+                "DSP fault guarded: \(effect.rawValue)\(nodeText), repaired=\(repairedSamples), limited=\(limitedSamples), count=\(effectCount)"
+            )
+        }
     }
 
     private func rubberBandProcessor(
@@ -207,6 +345,60 @@ extension AudioEngine {
         }
     }
 
+    private func applyRubberBandInputSafety(
+        to processedAudio: inout [[Float]],
+        frameLength: Int,
+        channelCount: Int,
+        sampleRate: Double,
+        nodeId: UUID?
+    ) {
+        guard frameLength > 0, channelCount > 0 else { return }
+
+        let ceiling: Float = 1.15
+        var peak: Float = 0
+        let safeChannelCount = min(channelCount, processedAudio.count)
+        for channel in 0..<safeChannelCount {
+            let safeFrameCount = min(frameLength, processedAudio[channel].count)
+            for frame in 0..<safeFrameCount {
+                let sample = processedAudio[channel][frame]
+                if sample.isFinite {
+                    peak = max(peak, abs(sample))
+                }
+            }
+        }
+
+        let targetGain: Float = peak > ceiling ? ceiling / peak : 1.0
+        var safetyGain: Float
+        if let id = nodeId {
+            safetyGain = rubberBandSmoothedGainByNode[id] ?? 1.0
+        } else {
+            safetyGain = rubberBandSmoothedGain
+        }
+        if !safetyGain.isFinite || safetyGain <= 0 {
+            safetyGain = 1.0
+        }
+
+        guard targetGain < 0.999 || safetyGain < 0.999 else { return }
+
+        let attackCoeff: Float = 0.35
+        let releaseCoeff = Float(1.0 - exp(-1.0 / max(sampleRate * 0.25, 1.0)))
+        for frame in 0..<frameLength {
+            let coeff = targetGain < safetyGain ? attackCoeff : releaseCoeff
+            safetyGain += (targetGain - safetyGain) * coeff
+            for channel in 0..<safeChannelCount {
+                if frame < processedAudio[channel].count {
+                    processedAudio[channel][frame] *= safetyGain
+                }
+            }
+        }
+
+        if let id = nodeId {
+            rubberBandSmoothedGainByNode[id] = safetyGain
+        } else {
+            rubberBandSmoothedGain = safetyGain
+        }
+    }
+
     var tenBandGains: [Double] {
         [
             tenBand31,
@@ -232,6 +424,11 @@ extension AudioEngine {
         levelSnapshot: inout [UUID: Float],
         snapshot: ProcessingSnapshot
     ) {
+        if effect.isRetired {
+            if let id = nodeId { levelSnapshot[id] = 0 }
+            return
+        }
+
         switch effect {
         case .bassBoost:
             // Determine if effect should be active
@@ -333,9 +530,9 @@ extension AudioEngine {
 
             let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.02)))
             let normalizedAmount = min(max(amount, 0), 1)
-            let lowGainDb = normalizedAmount * 4.0
-            let midGainDb = -normalizedAmount * 3.0
-            let highGainDb = normalizedAmount * 6.0
+            let lowGainDb = normalizedAmount * 2.0
+            let midGainDb = -normalizedAmount * 1.5
+            let highGainDb = normalizedAmount * 3.0
 
             let lowCoefficients = BiquadCoefficients.lowShelf(
                 sampleRate: sampleRate,
@@ -380,10 +577,10 @@ extension AudioEngine {
                 biquadScratchBuffer2 = [Float](repeating: 0, count: frameLength)
             }
 
-            let drive = Float(1.0 + normalizedAmount * 2.0)
+            let drive = Float(1.0 + normalizedAmount * 1.4)
             let driveNorm = Float(tanh(Double(drive)))
-            let exciterMix = Float(normalizedAmount) * 0.16
-            let wetTrim = Float(1.0 - normalizedAmount * 0.12)
+            let exciterMix = Float(normalizedAmount) * 0.07
+            let wetTrim = Float(1.0 - normalizedAmount * 0.18)
 
             for channel in 0..<channelCount {
                 lowCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &lowDelays[channel])
@@ -394,11 +591,21 @@ extension AudioEngine {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
                     let toneShaped = biquadScratchBuffer[frame] * wetTrim
-                    let highBand = biquadScratchBuffer[frame] - biquadScratchBuffer2[frame]
+                    let toneDelta = softConstrainedSample((toneShaped - dry) * 0.45, knee: 0.25, ceiling: 0.65)
+                    let highBand = softConstrainedSample(
+                        biquadScratchBuffer[frame] - biquadScratchBuffer2[frame],
+                        knee: 0.55,
+                        ceiling: 1.2
+                    )
                     let excitedHighBand = Float(tanh(Double(highBand * drive))) / max(driveNorm, 0.0001)
-                    let exciter = (excitedHighBand - highBand) * exciterMix
-                    let wet = toneShaped + exciter
-                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
+                    let exciter = softConstrainedSample(
+                        (excitedHighBand - highBand) * exciterMix,
+                        knee: 0.2,
+                        ceiling: 0.45
+                    )
+                    let enhanced = dry + softConstrainedSample(toneDelta + exciter, knee: 0.35, ceiling: 0.75)
+                    let mixed = dry * (1 - smoothedGain) + enhanced * smoothedGain
+                    processedAudio[channel][frame] = softConstrainedSample(mixed, knee: 1.05, ceiling: 1.35)
                 }
             }
 
@@ -1335,6 +1542,13 @@ extension AudioEngine {
             }
             let processor = rubberBandProcessor(for: nodeId, type: .rubberBandPitch, sampleRate: sampleRate, channels: channelCount)
             processor.setPitchSemitones(semitones)
+            applyRubberBandInputSafety(
+                to: &processedAudio,
+                frameLength: frameLength,
+                channelCount: channelCount,
+                sampleRate: sampleRate,
+                nodeId: nodeId
+            )
             applyRubberBand(processor, to: &processedAudio, frameLength: frameLength, channelCount: channelCount, nodeId: nodeId)
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -1865,6 +2079,334 @@ extension AudioEngine {
         bitcrusherHoldValuesByNode.removeAll()
     }
 
+    func resetRubberBandStateUnlocked() {
+        rubberBandNodes.values.forEach { $0.reset() }
+        rubberBandGlobalByType.values.forEach { $0.reset() }
+        rubberBandNodes.removeAll()
+        rubberBandGlobalByType.removeAll()
+        rubberBandScratchByNode.removeAll()
+        rubberBandScratchGlobal = RubberBandScratch()
+        rubberBandSmoothedGain = 0
+        rubberBandSmoothedGainByNode.removeAll()
+    }
+
+    func resetBassBoostStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetBassBoostStateUnlocked()
+            bassBoostStatesByNode.removeAll()
+            bassBoostVDSPDelay.removeAll()
+            bassBoostVDSPDelayByNode.removeAll()
+            return
+        }
+        bassBoostStatesByNode.removeValue(forKey: nodeId)
+        bassBoostSmoothedGainByNode.removeValue(forKey: nodeId)
+        bassBoostVDSPDelayByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetEnhancerStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            enhancerSmoothedGain = 0
+            enhancerSmoothedGainByNode.removeAll()
+            enhancerLowVDSPDelay.removeAll()
+            enhancerMidVDSPDelay.removeAll()
+            enhancerHighVDSPDelay.removeAll()
+            enhancerLowVDSPDelayByNode.removeAll()
+            enhancerMidVDSPDelayByNode.removeAll()
+            enhancerHighVDSPDelayByNode.removeAll()
+            return
+        }
+        enhancerSmoothedGainByNode.removeValue(forKey: nodeId)
+        enhancerLowVDSPDelayByNode.removeValue(forKey: nodeId)
+        enhancerMidVDSPDelayByNode.removeValue(forKey: nodeId)
+        enhancerHighVDSPDelayByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetClarityStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetClarityStateUnlocked()
+            claritySmoothedGain = 0
+            claritySmoothedGainByNode.removeAll()
+            clarityVDSPDelay.removeAll()
+            clarityVDSPDelayByNode.removeAll()
+            clarityStatesByNode.removeAll()
+            return
+        }
+        clarityStatesByNode.removeValue(forKey: nodeId)
+        claritySmoothedGainByNode.removeValue(forKey: nodeId)
+        clarityVDSPDelayByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetNightcoreStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            nightcoreStatesByNode.removeAll()
+            nightcoreSmoothedGain = 0
+            nightcoreSmoothedGainByNode.removeAll()
+            return
+        }
+        nightcoreStatesByNode.removeValue(forKey: nodeId)
+        nightcoreSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetDeMudStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetDeMudStateUnlocked()
+            deMudSmoothedGain = 0
+            deMudSmoothedGainByNode.removeAll()
+            deMudVDSPDelay.removeAll()
+            deMudVDSPDelayByNode.removeAll()
+            deMudStatesByNode.removeAll()
+            return
+        }
+        deMudStatesByNode.removeValue(forKey: nodeId)
+        deMudSmoothedGainByNode.removeValue(forKey: nodeId)
+        deMudVDSPDelayByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetEQStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetEQStateUnlocked()
+            simpleEQSmoothedGain = 0
+            simpleEQSmoothedGainByNode.removeAll()
+            eqBassVDSPDelay.removeAll()
+            eqMidsVDSPDelay.removeAll()
+            eqTrebleVDSPDelay.removeAll()
+            eqBassVDSPDelayByNode.removeAll()
+            eqMidsVDSPDelayByNode.removeAll()
+            eqTrebleVDSPDelayByNode.removeAll()
+            eqBassStatesByNode.removeAll()
+            eqMidsStatesByNode.removeAll()
+            eqTrebleStatesByNode.removeAll()
+            return
+        }
+        eqBassStatesByNode.removeValue(forKey: nodeId)
+        eqMidsStatesByNode.removeValue(forKey: nodeId)
+        eqTrebleStatesByNode.removeValue(forKey: nodeId)
+        eqBassVDSPDelayByNode.removeValue(forKey: nodeId)
+        eqMidsVDSPDelayByNode.removeValue(forKey: nodeId)
+        eqTrebleVDSPDelayByNode.removeValue(forKey: nodeId)
+        simpleEQSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetTenBandEQStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetTenBandEQStateUnlocked()
+            tenBandEQSmoothedGain = 0
+            tenBandEQSmoothedGainByNode.removeAll()
+            tenBandVDSPDelays.removeAll()
+            tenBandVDSPDelaysByNode.removeAll()
+            tenBandStatesByNode.removeAll()
+            return
+        }
+        tenBandStatesByNode.removeValue(forKey: nodeId)
+        tenBandVDSPDelaysByNode.removeValue(forKey: nodeId)
+        tenBandEQSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetCompressorStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetCompressorStateUnlocked()
+            compressorSmoothedGain = 0
+            compressorSmoothedGainByNode.removeAll()
+            return
+        }
+        compressorSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetReverbStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetReverbStateUnlocked()
+            reverbSmoothedGain = 0
+            reverbBuffersByNode.removeAll()
+            reverbWriteIndexByNode.removeAll()
+            reverbSmoothedGainByNode.removeAll()
+            return
+        }
+        reverbBuffersByNode.removeValue(forKey: nodeId)
+        reverbWriteIndexByNode.removeValue(forKey: nodeId)
+        reverbSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetDelayStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetDelayStateUnlocked()
+            delaySmoothedGain = 0
+            delayBuffersByNode.removeAll()
+            delayWriteIndexByNode.removeAll()
+            delaySmoothedGainByNode.removeAll()
+            return
+        }
+        delayBuffersByNode.removeValue(forKey: nodeId)
+        delayWriteIndexByNode.removeValue(forKey: nodeId)
+        delaySmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetTremoloStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            tremoloPhase = 0
+            tremoloSmoothedGain = 0
+            tremoloPhaseByNode.removeAll()
+            tremoloSmoothedGainByNode.removeAll()
+            return
+        }
+        tremoloPhaseByNode.removeValue(forKey: nodeId)
+        tremoloSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetChorusStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetChorusStateUnlocked()
+            chorusSmoothedGain = 0
+            chorusSmoothedGainByNode.removeAll()
+            return
+        }
+        chorusBuffersByNode.removeValue(forKey: nodeId)
+        chorusWriteIndexByNode.removeValue(forKey: nodeId)
+        chorusPhaseByNode.removeValue(forKey: nodeId)
+        chorusSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetFlangerStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetFlangerStateUnlocked()
+            flangerSmoothedGain = 0
+            flangerSmoothedGainByNode.removeAll()
+            return
+        }
+        flangerBuffersByNode.removeValue(forKey: nodeId)
+        flangerWriteIndexByNode.removeValue(forKey: nodeId)
+        flangerPhaseByNode.removeValue(forKey: nodeId)
+        flangerSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetPhaserStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetPhaserStateUnlocked()
+            phaserSmoothedGain = 0
+            phaserSmoothedGainByNode.removeAll()
+            return
+        }
+        phaserStatesByNode.removeValue(forKey: nodeId)
+        phaserPhaseByNode.removeValue(forKey: nodeId)
+        phaserSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetBitcrusherStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetBitcrusherStateUnlocked()
+            bitcrusherSmoothedGain = 0
+            bitcrusherSmoothedGainByNode.removeAll()
+            return
+        }
+        bitcrusherHoldCountersByNode.removeValue(forKey: nodeId)
+        bitcrusherHoldValuesByNode.removeValue(forKey: nodeId)
+        bitcrusherSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetResampleStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resampleBuffer.removeAll()
+            resampleWriteIndex = 0
+            resampleReadPhase = 0
+            resampleCrossfadeRemaining = 0
+            resampleCrossfadeTotal = 0
+            resampleCrossfadeStartPhase = 0
+            resampleCrossfadeTargetPhase = 0
+            resampleSmoothedGain = 0
+            resampleBuffersByNode.removeAll()
+            resampleWriteIndexByNode.removeAll()
+            resampleReadPhaseByNode.removeAll()
+            resampleCrossfadeRemainingByNode.removeAll()
+            resampleCrossfadeTotalByNode.removeAll()
+            resampleCrossfadeStartPhaseByNode.removeAll()
+            resampleCrossfadeTargetPhaseByNode.removeAll()
+            resampleSmoothedGainByNode.removeAll()
+            return
+        }
+        resampleBuffersByNode.removeValue(forKey: nodeId)
+        resampleWriteIndexByNode.removeValue(forKey: nodeId)
+        resampleReadPhaseByNode.removeValue(forKey: nodeId)
+        resampleCrossfadeRemainingByNode.removeValue(forKey: nodeId)
+        resampleCrossfadeTotalByNode.removeValue(forKey: nodeId)
+        resampleCrossfadeStartPhaseByNode.removeValue(forKey: nodeId)
+        resampleCrossfadeTargetPhaseByNode.removeValue(forKey: nodeId)
+        resampleSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetRubberBandStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            resetRubberBandStateUnlocked()
+            return
+        }
+        rubberBandNodes[nodeId]?.reset()
+        rubberBandNodes.removeValue(forKey: nodeId)
+        rubberBandScratchByNode.removeValue(forKey: nodeId)
+        rubberBandSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetAmpStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            ampSmoothedGain = 0
+            ampSmoothedGainByNode.removeAll()
+            return
+        }
+        ampSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetDistortionStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            distortionSmoothedGain = 0
+            distortionSmoothedGainByNode.removeAll()
+            return
+        }
+        distortionSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetTapeSaturationStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            tapeSaturationSmoothedGain = 0
+            tapeSaturationSmoothedGainByNode.removeAll()
+            return
+        }
+        tapeSaturationSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetStereoWidthStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            stereoWidthSmoothedGain = 0
+            stereoWidthSmoothedGainByNode.removeAll()
+            return
+        }
+        stereoWidthSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetPluginStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            pluginDryScratchByNode.removeAll()
+            pluginWetScratchByNode.removeAll()
+            pluginCrossfadeRemainingByNode.removeAll()
+            pluginCrossfadeTotalByNode.removeAll()
+            pluginCrossfadeOutRemainingByNode.removeAll()
+            pluginCrossfadeOutTotalByNode.removeAll()
+            pluginWasEnabledByNode.removeAll()
+            pluginWasReadyByNode.removeAll()
+            pluginStableOutputCountByNode.removeAll()
+            pluginHasStableOutputByNode.removeAll()
+            pluginReadyDelaySamplesByNode.removeAll()
+            return
+        }
+        pluginDryScratchByNode.removeValue(forKey: nodeId)
+        pluginWetScratchByNode.removeValue(forKey: nodeId)
+        pluginCrossfadeRemainingByNode.removeValue(forKey: nodeId)
+        pluginCrossfadeTotalByNode.removeValue(forKey: nodeId)
+        pluginCrossfadeOutRemainingByNode.removeValue(forKey: nodeId)
+        pluginCrossfadeOutTotalByNode.removeValue(forKey: nodeId)
+        pluginWasEnabledByNode.removeValue(forKey: nodeId)
+        pluginWasReadyByNode.removeValue(forKey: nodeId)
+        pluginStableOutputCountByNode.removeValue(forKey: nodeId)
+        pluginHasStableOutputByNode.removeValue(forKey: nodeId)
+        pluginReadyDelaySamplesByNode.removeValue(forKey: nodeId)
+    }
+
     func resetEffectStateUnlocked() {
         resetBassBoostStateUnlocked()
         enhancerSmoothedGain = 0
@@ -1900,12 +2442,7 @@ extension AudioEngine {
         resampleCrossfadeTotal = 0
         resampleCrossfadeStartPhase = 0
         resampleCrossfadeTargetPhase = 0
-        rubberBandNodes.values.forEach { $0.reset() }
-        rubberBandGlobalByType.values.forEach { $0.reset() }
-        rubberBandNodes.removeAll()
-        rubberBandGlobalByType.removeAll()
-        rubberBandScratchByNode.removeAll()
-        rubberBandScratchGlobal = RubberBandScratch()
+        resetRubberBandStateUnlocked()
         bassBoostStatesByNode.removeAll()
         clarityStatesByNode.removeAll()
         nightcoreStatesByNode.removeAll()
@@ -1931,6 +2468,8 @@ extension AudioEngine {
         resampleBuffersByNode.removeAll()
         resampleWriteIndexByNode.removeAll()
         resampleReadPhaseByNode.removeAll()
+        dspFaultCountsByEffect.removeAll()
+        dspFaultCountsByNode.removeAll()
     }
 
     func applyPendingResets() {
@@ -1961,6 +2500,7 @@ extension AudioEngine {
         if resets.contains(ResetFlags.flanger) { resetFlangerStateUnlocked() }
         if resets.contains(ResetFlags.phaser) { resetPhaserStateUnlocked() }
         if resets.contains(ResetFlags.bitcrusher) { resetBitcrusherStateUnlocked() }
+        if resets.contains(ResetFlags.rubberBand) { resetRubberBandStateUnlocked() }
     }
 
     func resetTenBandValues() {
@@ -2137,7 +2677,7 @@ struct BiquadCoefficients {
     func processBuffer(_ input: [Float], output: inout [Float], delay: inout [Float]) {
         guard input.count > 0 else { return }
 
-        // vDSP_biquad expects coefficients as [b0, b1, b2, a1, a2] in Double
+        // vDSP_biquad expects the normalized RBJ coefficient convention used here.
         let coefficients: [Double] = [Double(b0), Double(b1), Double(b2), Double(a1), Double(a2)]
 
         guard let setup = vDSP_biquad_CreateSetup(coefficients, 1) else { return }

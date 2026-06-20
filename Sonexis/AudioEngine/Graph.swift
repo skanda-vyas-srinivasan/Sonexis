@@ -109,6 +109,13 @@ extension AudioEngine {
                 levelSnapshot: &levelSnapshot,
                 snapshot: snapshot
             )
+            sanitizeEffectOutput(
+                &processed,
+                effect: node.type,
+                nodeId: node.id,
+                frameLength: inputBuffer.first?.count ?? 0,
+                channelCount: channelCount
+            )
             graphOutputBuffers[nodeID] = processed
 
             for next in graphOutEdges[nodeID] ?? [] {
