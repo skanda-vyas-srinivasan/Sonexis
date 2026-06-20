@@ -156,7 +156,14 @@ static void ringWrite(
 }
 
 - (void)setPitchSemitones:(double)semitones {
+    if (!std::isfinite(semitones)) {
+        semitones = 0.0;
+    }
+    semitones = std::max(-12.0, std::min(12.0, semitones));
     double scale = std::pow(2.0, semitones / 12.0);
+    if (!std::isfinite(scale) || scale <= 0.0) {
+        scale = 1.0;
+    }
     if (scale == _pitchScale) {
         return;
     }
@@ -219,7 +226,8 @@ static void ringWrite(
             for (int ch = 0; ch < channels; ch++) {
                 const size_t sampleIndex = (size_t)frame * (size_t)channels + (size_t)ch;
                 const size_t ringIndex = (_inputRead + sampleIndex) % inputCapacity;
-                _inputPointers[ch][frame] = _inputFifo[ringIndex];
+                const float inputValue = _inputFifo[ringIndex];
+                _inputPointers[ch][frame] = std::isfinite(inputValue) ? inputValue : 0.0f;
             }
         }
 
@@ -237,7 +245,8 @@ static void ringWrite(
             int outputIndex = 0;
             for (int frame = 0; frame < toRetrieve; frame++) {
                 for (int ch = 0; ch < channels; ch++) {
-                    _outputInterleaved[outputIndex++] = _outputPointers[ch][frame];
+                    const float outputValue = _outputPointers[ch][frame];
+                    _outputInterleaved[outputIndex++] = std::isfinite(outputValue) ? outputValue : 0.0f;
                 }
             }
             ringWrite(
@@ -277,6 +286,9 @@ static void ringWrite(
                 const size_t ringIndex = (_outputRead + sampleIndex) % _outputFifo.size();
                 value = _outputFifo[ringIndex];
             } else {
+                value = 0.0f;
+            }
+            if (!std::isfinite(value)) {
                 value = 0.0f;
             }
             output[frame * channels + ch] = value;

@@ -307,11 +307,15 @@ struct ContentView: View {
         tutorial.handleBuildClick()
         homeTransitionRipple = HomeTransitionRipple(origin: location)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            activeScreen = .beginner
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                activeScreen = .beginner
+            }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.82) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.78) {
             homeTransitionRipple = nil
         }
     }
@@ -363,34 +367,59 @@ private struct HomeTransitionRipple: Equatable {
 
 private struct HomeTransitionRippleView: View {
     let ripple: HomeTransitionRipple
+    @State private var backdropVisible = false
     @State private var expanded = false
     @State private var fading = false
+    private let expansionDuration: TimeInterval = 0.34
+    private let fadeDelay: TimeInterval = 0.44
+    private let fadeDuration: TimeInterval = 0.26
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
             let diameter = transitionDiameter(for: size)
 
-            Circle()
-                .fill(AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.06 : 0.22)))
-                .overlay(
-                    Circle()
-                        .stroke(AppColors.neonCyan.opacity(expanded ? 0 : 0.85), lineWidth: expanded ? 1 : 2)
-                )
-                .frame(width: expanded ? diameter : 14, height: expanded ? diameter : 14)
-                .shadow(color: AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.18 : 0.9)), radius: expanded ? 34 : 10)
-                .position(ripple.origin)
-                .ignoresSafeArea()
-                .onAppear {
-                    withAnimation(.timingCurve(0.16, 0.84, 0.24, 1.0, duration: 0.62)) {
+            ZStack {
+                AppColors.deepBlack
+                    .opacity(fading ? 0 : (backdropVisible ? 0.82 : 0))
+                    .ignoresSafeArea()
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                AppColors.neonCyan.opacity(expanded ? 0.28 : 0.55),
+                                AppColors.midPurple.opacity(expanded ? 0.96 : 0.72),
+                                AppColors.deepBlack.opacity(expanded ? 0.99 : 0.82)
+                            ],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: max(40, diameter * 0.5)
+                        )
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.14 : 0.8)), lineWidth: expanded ? 1 : 2)
+                    )
+                    .frame(width: expanded ? diameter : 18, height: expanded ? diameter : 18)
+                    .shadow(color: AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.2 : 0.9)), radius: expanded ? 28 : 10)
+                    .opacity(fading ? 0 : 1)
+                    .position(ripple.origin)
+                    .ignoresSafeArea()
+            }
+            .onAppear {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        backdropVisible = true
+                    }
+                    withAnimation(.timingCurve(0.16, 0.84, 0.24, 1.0, duration: expansionDuration)) {
                         expanded = true
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.48) {
-                        withAnimation(.easeOut(duration: 0.26)) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + fadeDelay) {
+                        withAnimation(.easeOut(duration: fadeDuration)) {
                             fading = true
                         }
                     }
-                }
+            }
         }
     }
 

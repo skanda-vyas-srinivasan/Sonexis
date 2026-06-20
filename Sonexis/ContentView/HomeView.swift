@@ -121,6 +121,7 @@ struct HomeView: View {
 private struct HomeSignalBackdrop: View {
     let isActive: Bool
     let reduceMotion: Bool
+    @State private var animationStart = Date()
 
     private let barHeights: [CGFloat] = [72, 128, 96, 180, 116, 148, 84, 164, 104, 136, 76]
 
@@ -130,7 +131,8 @@ private struct HomeSignalBackdrop: View {
             let height = proxy.size.height
 
             TimelineView(.animation) { context in
-                let pulse = reduceMotion ? 0.5 : phase(at: context.date, offset: 0)
+                let elapsed = max(0, context.date.timeIntervalSince(animationStart))
+                let pulse = reduceMotion ? 0.5 : breathingPhase(elapsed: elapsed, offset: 0, cycle: 7.8)
 
                 ZStack {
                     Circle()
@@ -147,12 +149,16 @@ private struct HomeSignalBackdrop: View {
 
                     HStack(alignment: .center, spacing: 12) {
                         ForEach(Array(barHeights.enumerated()), id: \.offset) { index, barHeight in
-                            let barPulse = reduceMotion ? 0.5 : phase(at: context.date, offset: Double(index) * 0.08)
-                            let heightScale = 0.82 + (0.26 * barPulse)
+                            let barPulse = reduceMotion ? 0.64 : breathingPhase(
+                                elapsed: elapsed,
+                                offset: 0,
+                                cycle: 6.8
+                            )
+                            let heightScale = 0.34 + (0.46 * barPulse)
 
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(index.isMultiple(of: 2) ? AppColors.neonCyan.opacity(0.22) : AppColors.neonPink.opacity(0.18))
-                                .frame(width: 6, height: isActive ? barHeight * heightScale : 24)
+                                .frame(width: 6, height: isActive ? max(14, barHeight * heightScale) : 8)
                                 .shadow(color: AppColors.neonCyan.opacity(0.18), radius: 12)
                         }
                     }
@@ -165,11 +171,13 @@ private struct HomeSignalBackdrop: View {
             .animation(.easeInOut(duration: 1.6), value: isActive)
             .allowsHitTesting(false)
         }
+        .onAppear {
+            animationStart = Date()
+        }
     }
 
-    private func phase(at date: Date, offset: TimeInterval) -> CGFloat {
-        let cycle = 3.4
-        let radians = ((date.timeIntervalSinceReferenceDate + offset) / cycle) * .pi * 2
-        return CGFloat((sin(radians) + 1) / 2)
+    private func breathingPhase(elapsed: TimeInterval, offset: TimeInterval, cycle: TimeInterval) -> CGFloat {
+        let progress = ((elapsed + offset) / cycle).truncatingRemainder(dividingBy: 1)
+        return CGFloat((1 - cos(progress * .pi * 2)) / 2)
     }
 }

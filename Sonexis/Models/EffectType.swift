@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Effect Type
 
-enum EffectType: String, Codable, CaseIterable {
+enum EffectType: String, Codable, CaseIterable, Hashable {
     case bassBoost = "Bass Boost"
     case clarity = "Clarity"
     case reverb = "Reverb"
@@ -25,6 +25,10 @@ enum EffectType: String, Codable, CaseIterable {
     case resampling = "Resampling"
     case enhancer = "Enhancer"
     case plugin = "Plugin"
+
+    var isRetired: Bool {
+        self == .enhancer || self == .resampling
+    }
 
     var description: String {
         switch self {

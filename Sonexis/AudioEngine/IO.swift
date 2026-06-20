@@ -347,6 +347,13 @@ extension AudioEngine {
                     levelSnapshot: &levelSnapshot,
                     snapshot: snapshot
                 )
+                sanitizeEffectOutput(
+                    &processedAudio,
+                    effect: node.type,
+                    nodeId: node.id,
+                    frameLength: frameLength,
+                    channelCount: channelCount
+                )
             }
 
             let limited = snapshot.limiterEnabled ? applySoftLimiter(processedAudio) : processedAudio
