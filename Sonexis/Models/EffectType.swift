@@ -27,7 +27,7 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
     case plugin = "Plugin"
 
     var isRetired: Bool {
-        self == .enhancer || self == .resampling
+        self == .resampling
     }
 
     var description: String {

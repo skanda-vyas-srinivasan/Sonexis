@@ -5,25 +5,18 @@ private enum ProcessTapGainStage {
     // Process Taps see the system mix before the user's output-device volume.
     // Keep conservative headroom and avoid makeup gain while validating quality.
     static let dspInputHeadroomGain: Float = 0.5011872 // -6 dB before effects
-    static let outputMakeupGain: Float = 1.4125376 // +3 dB after effects; net -3 dB
+    static let outputMakeupGain: Float = 1.0 // 0 dB after effects; net -6 dB
     static let softLimitThreshold: Float = 0.86
     static let outputCeiling: Float = 0.95
 }
 
 enum ProcessTapBackendFlag {
     static var isEnabled: Bool {
-        #if DEBUG
         if ProcessInfo.processInfo.environment["SONEXIS_USE_BLACKHOLE"] == "1" {
             return false
         }
-        return true
-        #else
-        if ProcessInfo.processInfo.environment["SONEXIS_USE_PROCESS_TAP"] == "1" {
-            return true
-        }
 
-        return UserDefaults.standard.bool(forKey: "SonexisUseProcessTapEngine")
-        #endif
+        return true
     }
 }
 
@@ -68,6 +61,7 @@ extension AudioEngine {
             audioProcessor: self
         )
         processTapEngine = engine
+        resetOutputMeter()
 
         do {
             try engine.start()
@@ -76,7 +70,7 @@ extension AudioEngine {
             outputDeviceName = "Default Output"
             errorMessage = nil
             isRunning = true
-            print("Process Tap gain staging: DSP input -6 dB, output makeup +3 dB, output ceiling -0.45 dBFS.")
+            print("Process Tap gain staging: DSP input -6 dB, output makeup 0 dB, output ceiling -0.45 dBFS.")
             signalFlowToken += 1
             scheduleSnapshotUpdate()
         } catch {
@@ -116,6 +110,7 @@ extension AudioEngine {
                 }
                 self.processTapStopInProgress = false
                 self.isRunning = false
+                self.resetOutputMeter()
                 self.scheduleSnapshotUpdate()
                 completion?()
             }
@@ -129,6 +124,7 @@ extension AudioEngine {
         processTapStopInProgress = false
         engine.stopImmediately(reason: reason)
         isRunning = false
+        resetOutputMeter()
         scheduleSnapshotUpdate()
     }
 }
@@ -171,16 +167,32 @@ extension AudioEngine: ProcessTapAudioProcessor {
             }
 
             let copiedSamples = min(processed.count, sampleCount)
+            var sumSquares: Float = 0
+            var peak: Float = 0
             for sampleIndex in 0..<copiedSamples {
                 let madeUp = processedBase[sampleIndex] * ProcessTapGainStage.outputMakeupGain
-                output[sampleIndex] = protectProcessTapOutputSample(madeUp)
+                let finalSample = protectProcessTapOutputSample(madeUp)
+                output[sampleIndex] = finalSample
+                let magnitude = abs(finalSample)
+                peak = max(peak, magnitude)
+                sumSquares += finalSample * finalSample
             }
             if copiedSamples < sampleCount {
                 for sampleIndex in copiedSamples..<sampleCount {
                     output[sampleIndex] = 0.0
                 }
             }
+            publishOutputMeter(sumSquares: sumSquares, peak: peak, sampleCount: sampleCount)
         }
+    }
+
+    func processTapAudioGapDetected(
+        fillFrames: UInt32,
+        droppedFrames: UInt64,
+        underflowFrames: UInt64
+    ) {
+        let message = "Processing fell behind: fill \(fillFrames), dropped +\(droppedFrames), underflow +\(underflowFrames)"
+        publishProcessTapWarning(message)
     }
 
     private func processTapBuffer(
@@ -221,12 +233,19 @@ extension AudioEngine: ProcessTapAudioProcessor {
         sampleCount: Int
     ) {
         guard sampleCount > 0 else { return }
+        var sumSquares: Float = 0
+        var peak: Float = 0
         for sampleIndex in 0..<sampleCount {
             let staged = input[sampleIndex]
                 * ProcessTapGainStage.dspInputHeadroomGain
                 * ProcessTapGainStage.outputMakeupGain
-            output[sampleIndex] = protectProcessTapOutputSample(staged)
+            let finalSample = protectProcessTapOutputSample(staged)
+            output[sampleIndex] = finalSample
+            let magnitude = abs(finalSample)
+            peak = max(peak, magnitude)
+            sumSquares += finalSample * finalSample
         }
+        publishOutputMeter(sumSquares: sumSquares, peak: peak, sampleCount: sampleCount)
     }
 
     private func protectProcessTapOutputSample(_ sample: Float) -> Float {

@@ -672,6 +672,11 @@ final class ProcessTapDSPApp {
                 print(
                     "Audio gap detected: fill=\(fill) frames, in/s=\(writtenDelta), out/s=\(readDelta), dropped +\(droppedDelta), underflow +\(underflowDelta)."
                 )
+                audioProcessor?.processTapAudioGapDetected(
+                    fillFrames: fill,
+                    droppedFrames: droppedDelta,
+                    underflowFrames: underflowDelta
+                )
             }
 
             statusTick += 1

@@ -109,7 +109,13 @@ extension AudioEngine {
                 interleavedOutputBuffer[frame * channelCount + channel] = buffer[channel][frame]
             }
         }
+        publishLegacyOutputMeterIfNeeded(sampleCount: frameLength * channelCount)
         return interleavedOutputBuffer
+    }
+
+    private func publishLegacyOutputMeterIfNeeded(sampleCount: Int) {
+        guard processTapEngine == nil else { return }
+        publishOutputMeter(samples: interleavedOutputBuffer, sampleCount: sampleCount)
     }
 
     func enqueueAudioData(_ data: [Float], queue: AudioQueueRef) {
@@ -177,6 +183,7 @@ extension AudioEngine {
                     interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
                 }
             }
+            publishLegacyOutputMeterIfNeeded(sampleCount: frameLength * channelCount)
             return interleavedOutputBuffer
         }
 
@@ -200,6 +207,7 @@ extension AudioEngine {
                     interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
                 }
             }
+            publishLegacyOutputMeterIfNeeded(sampleCount: frameLength * channelCount)
             return interleavedOutputBuffer
         }
 

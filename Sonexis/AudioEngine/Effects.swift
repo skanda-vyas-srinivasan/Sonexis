@@ -489,7 +489,7 @@ extension AudioEngine {
 
             for channel in 0..<channelCount {
                 // Step 1: Process entire channel through biquad using vDSP (vectorized)
-                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel])
+                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel], frameLength: frameLength)
 
                 // Step 2: Crossfade dry/wet with per-sample gain smoothing (for click-free transitions)
                 for frame in 0..<frameLength {
@@ -530,9 +530,9 @@ extension AudioEngine {
 
             let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.02)))
             let normalizedAmount = min(max(amount, 0), 1)
-            let lowGainDb = normalizedAmount * 2.0
-            let midGainDb = -normalizedAmount * 1.5
-            let highGainDb = normalizedAmount * 3.0
+            let lowGainDb = normalizedAmount * 4.0
+            let midGainDb = -normalizedAmount * 3.0
+            let highGainDb = normalizedAmount * 6.0
 
             let lowCoefficients = BiquadCoefficients.lowShelf(
                 sampleRate: sampleRate,
@@ -577,35 +577,20 @@ extension AudioEngine {
                 biquadScratchBuffer2 = [Float](repeating: 0, count: frameLength)
             }
 
-            let drive = Float(1.0 + normalizedAmount * 1.4)
+            let drive = Float(1.0 + normalizedAmount * 4.0)
             let driveNorm = Float(tanh(Double(drive)))
-            let exciterMix = Float(normalizedAmount) * 0.07
-            let wetTrim = Float(1.0 - normalizedAmount * 0.18)
 
             for channel in 0..<channelCount {
-                lowCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &lowDelays[channel])
-                midCoefficients.processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &midDelays[channel])
-                highCoefficients.processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &highDelays[channel])
+                lowCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &lowDelays[channel], frameLength: frameLength)
+                midCoefficients.processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &midDelays[channel], frameLength: frameLength)
+                highCoefficients.processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &highDelays[channel], frameLength: frameLength)
 
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
-                    let toneShaped = biquadScratchBuffer[frame] * wetTrim
-                    let toneDelta = softConstrainedSample((toneShaped - dry) * 0.45, knee: 0.25, ceiling: 0.65)
-                    let highBand = softConstrainedSample(
-                        biquadScratchBuffer[frame] - biquadScratchBuffer2[frame],
-                        knee: 0.55,
-                        ceiling: 1.2
-                    )
-                    let excitedHighBand = Float(tanh(Double(highBand * drive))) / max(driveNorm, 0.0001)
-                    let exciter = softConstrainedSample(
-                        (excitedHighBand - highBand) * exciterMix,
-                        knee: 0.2,
-                        ceiling: 0.45
-                    )
-                    let enhanced = dry + softConstrainedSample(toneDelta + exciter, knee: 0.35, ceiling: 0.75)
-                    let mixed = dry * (1 - smoothedGain) + enhanced * smoothedGain
-                    processedAudio[channel][frame] = softConstrainedSample(mixed, knee: 1.05, ceiling: 1.35)
+                    let driven = biquadScratchBuffer[frame] * drive
+                    let saturated = Float(tanh(Double(driven))) / max(driveNorm, 0.0001)
+                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + saturated * smoothedGain
                 }
             }
 
@@ -677,7 +662,7 @@ extension AudioEngine {
             }
 
             for channel in 0..<channelCount {
-                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel])
+                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel], frameLength: frameLength)
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
@@ -735,7 +720,7 @@ extension AudioEngine {
             }
 
             for channel in 0..<channelCount {
-                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel])
+                coefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &vdspDelays[channel], frameLength: frameLength)
                 for frame in 0..<frameLength {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
@@ -814,21 +799,27 @@ extension AudioEngine {
                 // Process through 3 bands in series using vDSP
                 // Input → Bass → Mids → Treble → Output (wet)
                 if bass != 0 {
-                    bassCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &bassDelays[channel])
+                    bassCoefficients.processBuffer(processedAudio[channel], output: &biquadScratchBuffer, delay: &bassDelays[channel], frameLength: frameLength)
                 } else {
-                    biquadScratchBuffer = Array(processedAudio[channel].prefix(frameLength))
+                    for frame in 0..<frameLength {
+                        biquadScratchBuffer[frame] = processedAudio[channel][frame]
+                    }
                 }
 
                 if mids != 0 {
-                    midsCoefficients.processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &midsDelays[channel])
+                    midsCoefficients.processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &midsDelays[channel], frameLength: frameLength)
                 } else {
-                    biquadScratchBuffer2 = biquadScratchBuffer
+                    for frame in 0..<frameLength {
+                        biquadScratchBuffer2[frame] = biquadScratchBuffer[frame]
+                    }
                 }
 
                 if treble != 0 {
-                    trebleCoefficients.processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &trebleDelays[channel])
+                    trebleCoefficients.processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &trebleDelays[channel], frameLength: frameLength)
                 } else {
-                    biquadScratchBuffer = biquadScratchBuffer2
+                    for frame in 0..<frameLength {
+                        biquadScratchBuffer[frame] = biquadScratchBuffer2[frame]
+                    }
                 }
 
                 // biquadScratchBuffer now contains the fully filtered wet signal
@@ -918,9 +909,9 @@ extension AudioEngine {
                 for band in 0..<bandCount {
                     // Alternate: scratch -> scratch2 -> scratch -> scratch2 ...
                     if band % 2 == 0 {
-                        bandCoefficients[band].processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &vdspDelays[band][channel])
+                        bandCoefficients[band].processBuffer(biquadScratchBuffer, output: &biquadScratchBuffer2, delay: &vdspDelays[band][channel], frameLength: frameLength)
                     } else {
-                        bandCoefficients[band].processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &vdspDelays[band][channel])
+                        bandCoefficients[band].processBuffer(biquadScratchBuffer2, output: &biquadScratchBuffer, delay: &vdspDelays[band][channel], frameLength: frameLength)
                     }
                 }
 
@@ -2674,8 +2665,9 @@ struct BiquadCoefficients {
     ///   - input: Input samples for one channel
     ///   - output: Output buffer (will be overwritten)
     ///   - delay: vDSP delay state, must have 4 elements, persists between calls
-    func processBuffer(_ input: [Float], output: inout [Float], delay: inout [Float]) {
-        guard input.count > 0 else { return }
+    func processBuffer(_ input: [Float], output: inout [Float], delay: inout [Float], frameLength: Int? = nil) {
+        let sampleCount = min(frameLength ?? input.count, input.count)
+        guard sampleCount > 0 else { return }
 
         // vDSP_biquad expects the normalized RBJ coefficient convention used here.
         let coefficients: [Double] = [Double(b0), Double(b1), Double(b2), Double(a1), Double(a2)]
@@ -2684,8 +2676,8 @@ struct BiquadCoefficients {
         defer { vDSP_biquad_DestroySetup(setup) }
 
         // Ensure output buffer is sized correctly
-        if output.count < input.count {
-            output = [Float](repeating: 0, count: input.count)
+        if output.count < sampleCount {
+            output = [Float](repeating: 0, count: sampleCount)
         }
 
         // Ensure delay buffer is sized correctly (4 elements for single section)
@@ -2693,6 +2685,6 @@ struct BiquadCoefficients {
             delay = [Float](repeating: 0, count: 4)
         }
 
-        vDSP_biquad(setup, &delay, input, 1, &output, 1, vDSP_Length(input.count))
+        vDSP_biquad(setup, &delay, input, 1, &output, 1, vDSP_Length(sampleCount))
     }
 }

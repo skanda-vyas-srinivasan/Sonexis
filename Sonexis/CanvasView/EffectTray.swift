@@ -30,7 +30,7 @@ struct EffectTray: View {
     }
 
     private let effects: [EffectType] = [
-        .bassBoost, .clarity, .deMud,
+        .bassBoost, .enhancer, .clarity, .deMud,
         .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
         .delay, .amp, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
         .rubberBandPitch
@@ -118,11 +118,38 @@ struct EffectTray: View {
                             .padding(.vertical, 12)
 
                         case .plugins:
-                            if filteredPlugins.isEmpty {
-                                Text("No plugins found")
+                            if pluginManager.isScanning {
+                                VStack(spacing: 8) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("Scanning Audio Units")
+                                        .font(AppTypography.caption)
+                                        .foregroundColor(AppColors.textMuted)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                            } else if filteredPlugins.isEmpty {
+                                VStack(spacing: 8) {
+                                    Text(pluginManager.hasScannedPlugins ? "No Audio Units found" : "Plugins not scanned")
+                                        .font(AppTypography.caption)
+                                        .foregroundColor(AppColors.textMuted)
+                                    Button(pluginManager.hasScannedPlugins ? "Rescan" : "Scan Plugins") {
+                                        pluginManager.scanPlugins()
+                                    }
+                                    .buttonStyle(.plain)
                                     .font(AppTypography.caption)
-                                    .foregroundColor(AppColors.textMuted)
-                                    .padding(.vertical, 8)
+                                    .foregroundColor(AppColors.textPrimary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(AppColors.controlPurpleRaised.opacity(0.52))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(AppColors.neonCyan.opacity(0.45), lineWidth: 1)
+                                    )
+                                    .cornerRadius(8)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
                             } else {
                                 LazyVGrid(columns: gridColumns, spacing: 12) {
                                     ForEach(filteredPlugins) { plugin in
@@ -229,7 +256,10 @@ struct EffectTray: View {
                 .frame(width: 1),
             alignment: .trailing
         )
-        .onAppear(perform: loadFavorites)
+        .onAppear {
+            loadFavorites()
+            scanPluginsIfNeeded(for: activeTab)
+        }
         .onChange(of: tutorialStep) { step in
             if step == .buildTrayTabs || step == .buildAddBass {
                 activeTab = .builtIn
@@ -242,6 +272,12 @@ struct EffectTray: View {
         }
     }
 
+    private func scanPluginsIfNeeded(for tab: TrayTab) {
+        guard tab == .plugins || tab == .favorites else { return }
+        guard !pluginManager.hasScannedPlugins, !pluginManager.isScanning else { return }
+        pluginManager.scanPlugins()
+    }
+
     private var trayTabs: some View {
         HStack(spacing: 8) {
             ForEach(TrayTab.allCases) { tab in
@@ -250,6 +286,7 @@ struct EffectTray: View {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         activeTab = tab
                     }
+                    scanPluginsIfNeeded(for: tab)
                     onTabChange(tab)
                 }) {
                     Text(tab.rawValue)
