@@ -195,10 +195,18 @@ struct ContentView: View {
                 lastGraphSnapshot = nil
                 currentPresetID = nil
                 skipRestoreOnEnter = true
-                audioEngine.requestGraphLoad(resetSnapshot)
+                audioEngine.requestGraphLoad(
+                    resetSnapshot,
+                    mode: .audioAndVisual,
+                    reason: "tutorial reset"
+                )
             } else if newStep == .inactive, let snapshot = tutorialRestoreSnapshot {
                 // Restore the user's graph when the tutorial ends.
-                audioEngine.requestGraphLoad(snapshot)
+                audioEngine.requestGraphLoad(
+                    snapshot,
+                    mode: .audioAndVisual,
+                    reason: "tutorial restore"
+                )
                 lastGraphSnapshot = snapshot
                 currentPresetID = tutorialRestorePresetID
                 tutorialRestoreSnapshot = nil
@@ -243,7 +251,11 @@ struct ContentView: View {
                 presetManager: presetManager,
                 tutorialStep: tutorial.step,
                 onApply: { preset in
-                    audioEngine.requestGraphLoad(preset.graph)
+                    audioEngine.requestGraphLoad(
+                        preset.graph,
+                        mode: .audioAndVisual,
+                        reason: "load preset dialog"
+                    )
                     currentPresetID = preset.id
                     if tutorial.step == .buildLoad {
                         tutorial.advance()
@@ -294,7 +306,11 @@ struct ContentView: View {
             if skipRestoreOnEnter {
                 skipRestoreOnEnter = false
             } else if let snapshot = lastGraphSnapshot {
-                audioEngine.requestGraphLoad(snapshot)
+                audioEngine.requestGraphLoad(
+                    snapshot,
+                    mode: .visualOnly,
+                    reason: "screen navigation"
+                )
             }
         }
 
@@ -307,7 +323,7 @@ struct ContentView: View {
         tutorial.handleBuildClick()
         homeTransitionRipple = HomeTransitionRipple(origin: location)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
@@ -315,7 +331,7 @@ struct ContentView: View {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.78) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.48) {
             homeTransitionRipple = nil
         }
     }
@@ -370,9 +386,9 @@ private struct HomeTransitionRippleView: View {
     @State private var backdropVisible = false
     @State private var expanded = false
     @State private var fading = false
-    private let expansionDuration: TimeInterval = 0.34
-    private let fadeDelay: TimeInterval = 0.44
-    private let fadeDuration: TimeInterval = 0.26
+    private let expansionDuration: TimeInterval = 0.30
+    private let fadeDelay: TimeInterval = 0.20
+    private let fadeDuration: TimeInterval = 0.24
 
     var body: some View {
         GeometryReader { proxy in
@@ -381,16 +397,16 @@ private struct HomeTransitionRippleView: View {
 
             ZStack {
                 AppColors.deepBlack
-                    .opacity(fading ? 0 : (backdropVisible ? 0.82 : 0))
+                    .opacity(fading ? 0 : (backdropVisible ? 0.34 : 0))
                     .ignoresSafeArea()
 
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                AppColors.neonCyan.opacity(expanded ? 0.28 : 0.55),
-                                AppColors.midPurple.opacity(expanded ? 0.96 : 0.72),
-                                AppColors.deepBlack.opacity(expanded ? 0.99 : 0.82)
+                                AppColors.neonCyan.opacity(expanded ? 0.18 : 0.55),
+                                AppColors.midPurple.opacity(expanded ? 0.42 : 0.72),
+                                AppColors.deepBlack.opacity(expanded ? 0.50 : 0.82)
                             ],
                             center: .center,
                             startRadius: 4,

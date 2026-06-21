@@ -116,6 +116,29 @@ struct HeaderView: View {
                 }
             )
 
+            if audioEngine.isProcessTapBackendEnabled {
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.controlStrokeSoft.opacity(0.65))
+
+                ProcessTapInputTrimSection(
+                    trimDB: $audioEngine.processTapInputTrimDB,
+                    rawPeakDBFS: audioEngine.processTapRawInputPeakDBFS,
+                    trimmedPeakDBFS: audioEngine.processTapTrimmedInputPeakDBFS,
+                    isActive: audioEngine.isRunning
+                )
+
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.controlStrokeSoft.opacity(0.65))
+
+                ProcessTapOutputMakeupSection(
+                    makeupDB: $audioEngine.processTapOutputMakeupDB,
+                    ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled,
+                    isActive: audioEngine.isRunning
+                )
+            }
+
             Spacer()
 
             if let warning = audioEngine.processTapWarningText {
@@ -274,6 +297,134 @@ struct HeaderView: View {
         panel.allowedFileTypes = ["wav"]
         panel.canCreateDirectories = true
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+private struct ProcessTapInputTrimSection: View {
+    @Binding var trimDB: Double
+    let rawPeakDBFS: Float
+    let trimmedPeakDBFS: Float
+    let isActive: Bool
+
+    private var trimText: String {
+        String(format: "%.0f dB", trimDB)
+    }
+
+    private var rawText: String {
+        formattedDB(rawPeakDBFS)
+    }
+
+    private var trimmedText: String {
+        formattedDB(trimmedPeakDBFS)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Tap In")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+
+                Spacer(minLength: 8)
+
+                Text(trimText)
+                    .font(AppTypography.technical)
+                    .foregroundColor(isActive ? AppColors.neonCyan : AppColors.textMuted)
+                    .monospacedDigit()
+            }
+
+            Slider(
+                value: Binding(
+                    get: { trimDB },
+                    set: { trimDB = min(max($0, -30), 0) }
+                ),
+                in: -30...0,
+                step: 1
+            )
+            .controlSize(.small)
+            .tint(AppColors.neonCyan)
+            .disabled(!isActive)
+
+            HStack(spacing: 8) {
+                Text("raw \(rawText)")
+                Text("dsp \(trimmedText)")
+            }
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .foregroundColor(isActive ? AppColors.textSecondary : AppColors.textMuted)
+        }
+        .frame(width: 168, height: 46)
+        .opacity(isActive ? 1 : 0.56)
+        .help("Debug input trim before Sonexis effects. Raw is the tap peak; dsp is after trim.")
+    }
+
+    private func formattedDB(_ value: Float) -> String {
+        guard isActive, value > -90 else { return "-inf" }
+        return String(format: "%.0f", value)
+    }
+}
+
+private struct ProcessTapOutputMakeupSection: View {
+    @Binding var makeupDB: Double
+    @Binding var ceilingEnabled: Bool
+    let isActive: Bool
+
+    private var makeupText: String {
+        String(format: "%+.0f dB", makeupDB)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Makeup")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textMuted)
+
+                Spacer(minLength: 8)
+
+                Text(makeupText)
+                    .font(AppTypography.technical)
+                    .foregroundColor(isActive ? AppColors.neonPink : AppColors.textMuted)
+                    .monospacedDigit()
+            }
+
+            Slider(
+                value: Binding(
+                    get: { makeupDB },
+                    set: { makeupDB = min(max($0, -12), 30) }
+                ),
+                in: -12...30,
+                step: 1
+            )
+            .controlSize(.small)
+            .tint(AppColors.neonPink)
+            .disabled(!isActive)
+
+            HStack(spacing: 6) {
+                Text("post DSP")
+
+                Spacer(minLength: 6)
+
+                Button {
+                    ceilingEnabled.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: ceilingEnabled ? "shield.fill" : "shield.slash")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(ceilingEnabled ? "ceil" : "raw")
+                    }
+                    .foregroundColor(ceilingEnabled ? AppColors.textSecondary : AppColors.warning)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!isActive)
+                .opacity(isActive ? 1 : 0.5)
+            }
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .foregroundColor(isActive ? AppColors.textSecondary : AppColors.textMuted)
+        }
+        .frame(width: 132, height: 46)
+        .opacity(isActive ? 1 : 0.56)
+        .help("Debug output makeup after Sonexis effects. The shield toggles the final output ceiling.")
     }
 }
 

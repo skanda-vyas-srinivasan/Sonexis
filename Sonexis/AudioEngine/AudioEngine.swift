@@ -227,6 +227,11 @@ class AudioEngine: ObservableObject {
     @Published var pluginStatusToken: Int = 0
     @Published var outputMeterLevel: Float = 0
     @Published var outputMeterPeakDBFS: Float = -96
+    @Published var processTapInputTrimDB: Double = -12
+    @Published var processTapOutputMakeupDB: Double = 0
+    @Published var processTapOutputCeilingEnabled: Bool = true
+    @Published var processTapRawInputPeakDBFS: Float = -96
+    @Published var processTapTrimmedInputPeakDBFS: Float = -96
     @Published var processTapWarningText: String?
 
     private var recordingFile: AVAudioFile?
@@ -240,6 +245,9 @@ class AudioEngine: ObservableObject {
     private var tapChannelCount: Int = 0
     private var tapSampleRate: Double = 0
     private var processTapWarningClearTask: DispatchWorkItem?
+    private var processTapInputMeterRawPeak: Float = 0
+    private var processTapInputMeterTrimmedPeak: Float = 0
+    private var processTapInputMeterUpdateCounter: Int = 0
 
     init() {
         setupNotifications()
@@ -310,6 +318,35 @@ class AudioEngine: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.outputMeterLevel = 0
             self?.outputMeterPeakDBFS = -96
+        }
+    }
+
+    func resetProcessTapInputMeter() {
+        processTapInputMeterRawPeak = 0
+        processTapInputMeterTrimmedPeak = 0
+        processTapInputMeterUpdateCounter = 0
+        DispatchQueue.main.async { [weak self] in
+            self?.processTapRawInputPeakDBFS = -96
+            self?.processTapTrimmedInputPeakDBFS = -96
+        }
+    }
+
+    func publishProcessTapInputMeter(rawPeak: Float, trimmedPeak: Float) {
+        let safeRawPeak = rawPeak.isFinite ? min(max(rawPeak, 0), 4) : 0
+        let safeTrimmedPeak = trimmedPeak.isFinite ? min(max(trimmedPeak, 0), 4) : 0
+        let rawCoefficient: Float = safeRawPeak > processTapInputMeterRawPeak ? 0.55 : 0.08
+        let trimmedCoefficient: Float = safeTrimmedPeak > processTapInputMeterTrimmedPeak ? 0.55 : 0.08
+        processTapInputMeterRawPeak += (safeRawPeak - processTapInputMeterRawPeak) * rawCoefficient
+        processTapInputMeterTrimmedPeak += (safeTrimmedPeak - processTapInputMeterTrimmedPeak) * trimmedCoefficient
+
+        processTapInputMeterUpdateCounter += 1
+        guard processTapInputMeterUpdateCounter % 4 == 0 else { return }
+
+        let rawDBFS = 20 * log10f(max(processTapInputMeterRawPeak, 0.000_001))
+        let trimmedDBFS = 20 * log10f(max(processTapInputMeterTrimmedPeak, 0.000_001))
+        DispatchQueue.main.async { [weak self] in
+            self?.processTapRawInputPeakDBFS = rawDBFS
+            self?.processTapTrimmedInputPeakDBFS = trimmedDBFS
         }
     }
 
@@ -784,7 +821,7 @@ class AudioEngine: ObservableObject {
         }
     }
     @Published var setupReady = true
-    @Published var pendingGraphSnapshot: GraphSnapshot?
+    @Published var pendingGraphLoadRequest: GraphLoadRequest?
 
     var currentGraphSnapshot: GraphSnapshot?
 
