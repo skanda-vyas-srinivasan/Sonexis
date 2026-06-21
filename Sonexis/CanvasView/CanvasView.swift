@@ -54,9 +54,11 @@ struct CanvasView: View {
     @State private var flagsMonitor: Any?
     @State private var isWindowKey = true
     @State private var betaUnlockBuffer = ""
+    @State private var lastAppliedAudioGraphSignature: Int?
     private let connectionSnapRadius: CGFloat = 120
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let betaUnlockPhrase = "poopymcbutt"
+    private let debugGraphLifecycle = true
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
             fill: Color(hex: "#00F5FF"),
@@ -130,6 +132,7 @@ struct CanvasView: View {
                     }
                 )
                 .onChange(of: graphMode) { _ in
+                    guard !isRestoringSnapshot else { return }
                     if graphMode == .split {
                         syncLanesForSplit()
                     }
@@ -217,6 +220,7 @@ struct CanvasView: View {
                            "Auto-connect End: On - Last nodes auto-connect to End." :
                            "Auto-connect End: Off - Manually connect to End."))
                     .onChange(of: autoConnectEnd) { _ in
+                        guard !isRestoringSnapshot else { return }
                         applyChainToEngine()
                         // Ensure animations continue after toggle interaction
                         DispatchQueue.main.async {
@@ -989,11 +993,15 @@ struct CanvasView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
             updateFocusState(isKeyWindow: false)
         }
-        .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
-            guard let snapshot else { return }
+        .onReceive(audioEngine.$pendingGraphLoadRequest) { request in
+            guard let request else { return }
             DispatchQueue.main.async {
-                restorePendingGraphSnapshot(snapshot)
-                audioEngine.pendingGraphSnapshot = nil
+                restorePendingGraphSnapshot(
+                    request.snapshot,
+                    mode: request.mode,
+                    reason: request.reason
+                )
+                audioEngine.pendingGraphLoadRequest = nil
             }
         }
         .onReceive(audioEngine.$signalFlowToken) { _ in
@@ -1052,9 +1060,17 @@ struct CanvasView: View {
         showSignalFlow = shouldShowSignalFlow
     }
 
-    private func restorePendingGraphSnapshot(_ snapshot: GraphSnapshot) {
+    private func restorePendingGraphSnapshot(
+        _ snapshot: GraphSnapshot,
+        mode: GraphLoadMode,
+        reason: String
+    ) {
         isRestoringSnapshot = true
-        applyGraphSnapshot(snapshot)
+        applyGraphSnapshot(
+            snapshot,
+            mode: mode,
+            reason: reason
+        )
         DispatchQueue.main.async {
             isRestoringSnapshot = false
         }
@@ -1188,7 +1204,23 @@ struct CanvasView: View {
         applyChainToEngine()
     }
 
-    private func applyChainToEngine() {
+    private func applyChainToEngine(
+        reason: String = "graph edit",
+        forceAudioApply: Bool = false
+    ) {
+        let signature = currentAudioGraphSignature()
+        if !forceAudioApply, lastAppliedAudioGraphSignature == signature {
+            audioEngine.updateGraphSnapshot(currentGraphSnapshot())
+            if debugGraphLifecycle {
+                print("Audio graph apply skipped: reason=\(reason), unchanged signature=\(signature)")
+            }
+            return
+        }
+        lastAppliedAudioGraphSignature = signature
+        if debugGraphLifecycle {
+            print("Audio graph apply: reason=\(reason), force=\(forceAudioApply), signature=\(signature), nodes=\(effectChain.count)")
+        }
+
         if graphMode == .split {
             let leftNodes = effectChain.filter { $0.lane == .left }
             let rightNodes = effectChain.filter { $0.lane == .right }
@@ -1246,6 +1278,83 @@ struct CanvasView: View {
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
     }
 
+    private func currentAudioGraphSignature() -> Int {
+        var hasher = Hasher()
+        hasher.combine(graphMode.rawValue)
+        hasher.combine(wiringMode == .manual ? "manual" : "automatic")
+        hasher.combine(autoConnectEnd)
+
+        switch graphMode {
+        case .single:
+            combineAudioNodes(into: &hasher, nodes: audioRelevantNodes(for: nil))
+            combineAudioConnections(into: &hasher, connections: audioRelevantConnections(for: nil))
+        case .split:
+            hasher.combine("left")
+            combineAudioNodes(into: &hasher, nodes: audioRelevantNodes(for: .left))
+            combineAudioConnections(into: &hasher, connections: audioRelevantConnections(for: .left))
+            hasher.combine("right")
+            combineAudioNodes(into: &hasher, nodes: audioRelevantNodes(for: .right))
+            combineAudioConnections(into: &hasher, connections: audioRelevantConnections(for: .right))
+        }
+
+        return hasher.finalize()
+    }
+
+    private func audioRelevantNodes(for lane: GraphLane?) -> [BeginnerNode] {
+        if wiringMode == .automatic {
+            return chainPath(for: lane)
+        }
+
+        let nodes = graphMode == .split
+            ? effectChain.filter { $0.lane == lane }
+            : effectChain
+        return nodes.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    private func audioRelevantConnections(for lane: GraphLane?) -> [BeginnerConnection] {
+        if wiringMode == .automatic {
+            if autoGainOverrides.isEmpty {
+                return []
+            }
+            return autoConnections(for: lane ?? .left)
+        }
+
+        let connections = graphMode == .split
+            ? manualConnections.filter { laneForConnection($0) == lane }
+            : manualConnections
+        return connections.sorted {
+            if $0.fromNodeId.uuidString != $1.fromNodeId.uuidString {
+                return $0.fromNodeId.uuidString < $1.fromNodeId.uuidString
+            }
+            return $0.toNodeId.uuidString < $1.toNodeId.uuidString
+        }
+    }
+
+    private func combineAudioNodes(into hasher: inout Hasher, nodes: [BeginnerNode]) {
+        hasher.combine(nodes.count)
+        for node in nodes {
+            hasher.combine(node.id)
+            hasher.combine(node.type.rawValue)
+            hasher.combine(node.isEnabled)
+            hasher.combine(node.lane.rawValue)
+            if let parameterData = try? JSONEncoder().encode(node.parameters) {
+                hasher.combine(parameterData)
+            }
+            if let pluginData = try? JSONEncoder().encode(node.plugin) {
+                hasher.combine(pluginData)
+            }
+        }
+    }
+
+    private func combineAudioConnections(into hasher: inout Hasher, connections: [BeginnerConnection]) {
+        hasher.combine(connections.count)
+        for connection in connections {
+            hasher.combine(connection.fromNodeId)
+            hasher.combine(connection.toNodeId)
+            hasher.combine(connection.gain)
+        }
+    }
+
     private func bindingForEffect(_ id: UUID) -> Binding<BeginnerNode> {
         Binding(
             get: {
@@ -1258,7 +1367,11 @@ struct CanvasView: View {
         )
     }
 
-    private func applyGraphSnapshot(_ snapshot: GraphSnapshot) {
+    private func applyGraphSnapshot(
+        _ snapshot: GraphSnapshot,
+        mode: GraphLoadMode = .audioAndVisual,
+        reason: String = "direct restore"
+    ) {
         let nodes = snapshot.hasNodeParameters ? snapshot.nodes : migrateNodeParameters(snapshot.nodes)
         let removedIds = Set(nodes.filter { $0.type == .pitchShift }.map { $0.id })
         let filteredNodes = nodes.filter { $0.type != .pitchShift }
@@ -1289,7 +1402,18 @@ struct CanvasView: View {
         selectedNodeIDs.removeAll()
         selectedWireID = nil
         selectedAutoWire = nil
-        applyChainToEngine()
+
+        switch mode {
+        case .visualOnly:
+            let signature = currentAudioGraphSignature()
+            lastAppliedAudioGraphSignature = signature
+            audioEngine.updateGraphSnapshot(currentGraphSnapshot())
+            if debugGraphLifecycle {
+                print("Graph restore visual-only: reason=\(reason), signature=\(signature), nodes=\(effectChain.count)")
+            }
+        case .audioAndVisual:
+            applyChainToEngine(reason: "restore: \(reason)", forceAudioApply: true)
+        }
     }
 
     private func migrateNodeParameters(_ nodes: [BeginnerNode]) -> [BeginnerNode] {
@@ -1844,16 +1968,20 @@ struct CanvasView: View {
         guard let snapshot = undoStack.popLast() else { return }
         isRestoringSnapshot = true
         redoStack.append(currentGraphSnapshot())
-        applyGraphSnapshot(snapshot)
-        isRestoringSnapshot = false
+        applyGraphSnapshot(snapshot, reason: "undo")
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+        }
     }
 
     private func redo() {
         guard let snapshot = redoStack.popLast() else { return }
         isRestoringSnapshot = true
         undoStack.append(currentGraphSnapshot())
-        applyGraphSnapshot(snapshot)
-        isRestoringSnapshot = false
+        applyGraphSnapshot(snapshot, reason: "redo")
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+        }
     }
 
     private func normalizeAllOutgoingGains() {

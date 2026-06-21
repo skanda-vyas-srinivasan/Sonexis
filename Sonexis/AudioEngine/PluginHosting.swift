@@ -680,13 +680,33 @@ final class PluginHost {
     private var instances: [UUID: PluginInstance] = [:]
     private var references: [UUID: PluginReference] = [:]
     private let lock = NSLock()
+    private let debugLifecycle = true
     var onPluginReady: ((UUID) -> Void)?
 
     func sync(nodes: [BeginnerNode]) {
         lock.lock()
         defer { lock.unlock() }
         let pluginNodes = nodes.filter { $0.type == .plugin && $0.plugin != nil }
-        let nodeIds = Set(pluginNodes.map { $0.id })
+        let nextReferences = Dictionary(
+            uniqueKeysWithValues: pluginNodes.compactMap { node -> (UUID, PluginReference)? in
+                guard let reference = node.plugin else { return nil }
+                return (node.id, reference)
+            }
+        )
+        let nodeIds = Set(nextReferences.keys)
+
+        if references == nextReferences && nodeIds.allSatisfy({ instances[$0] != nil }) {
+            if debugLifecycle, !nodeIds.isEmpty {
+                print("PluginHost sync skipped: unchanged plugin nodes=\(nodeIds.count)")
+            }
+            return
+        }
+
+        let removedIds = Set(references.keys).subtracting(nodeIds)
+        if debugLifecycle, !removedIds.isEmpty {
+            print("PluginHost removing plugin instances: \(removedIds.map(\.uuidString).joined(separator: ", "))")
+        }
+
         instances = instances.filter { nodeIds.contains($0.key) }
         references = references.filter { nodeIds.contains($0.key) }
 
@@ -696,6 +716,9 @@ final class PluginHost {
                 continue
             }
             references[node.id] = reference
+            if debugLifecycle {
+                print("PluginHost creating plugin instance: node=\(node.id), name=\(reference.name)")
+            }
             let instance = makeInstance(for: reference)
             if let auInstance = instance as? AUPluginInstance {
                 auInstance.onReady = { [weak self] in

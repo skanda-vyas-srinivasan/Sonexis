@@ -503,3 +503,15 @@ struct GraphSnapshot: Codable {
         self.hasNodeParameters = try container.decodeIfPresent(Bool.self, forKey: .hasNodeParameters) ?? false
     }
 }
+
+enum GraphLoadMode {
+    case visualOnly
+    case audioAndVisual
+}
+
+struct GraphLoadRequest {
+    let id = UUID()
+    let snapshot: GraphSnapshot
+    let mode: GraphLoadMode
+    let reason: String
+}

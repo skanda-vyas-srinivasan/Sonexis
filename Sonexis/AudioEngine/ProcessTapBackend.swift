@@ -3,9 +3,7 @@ import AVFoundation
 
 private enum ProcessTapGainStage {
     // Process Taps see the system mix before the user's output-device volume.
-    // Keep conservative headroom and avoid makeup gain while validating quality.
-    static let dspInputHeadroomGain: Float = 0.5011872 // -6 dB before effects
-    static let outputMakeupGain: Float = 1.0 // 0 dB after effects; net -6 dB
+    // Keep the default conservative; optional makeup happens after the DSP graph.
     static let softLimitThreshold: Float = 0.86
     static let outputCeiling: Float = 0.95
 }
@@ -62,6 +60,7 @@ extension AudioEngine {
         )
         processTapEngine = engine
         resetOutputMeter()
+        resetProcessTapInputMeter()
 
         do {
             try engine.start()
@@ -70,7 +69,8 @@ extension AudioEngine {
             outputDeviceName = "Default Output"
             errorMessage = nil
             isRunning = true
-            print("Process Tap gain staging: DSP input -6 dB, output makeup 0 dB, output ceiling -0.45 dBFS.")
+            let ceilingDescription = processTapOutputCeilingEnabled ? "-0.45 dBFS" : "disabled"
+            print("Process Tap gain staging: DSP input \(String(format: "%.1f", processTapInputTrimDB)) dB, output makeup \(String(format: "%.1f", processTapOutputMakeupDB)) dB, output ceiling \(ceilingDescription).")
             signalFlowToken += 1
             scheduleSnapshotUpdate()
         } catch {
@@ -111,6 +111,7 @@ extension AudioEngine {
                 self.processTapStopInProgress = false
                 self.isRunning = false
                 self.resetOutputMeter()
+                self.resetProcessTapInputMeter()
                 self.scheduleSnapshotUpdate()
                 completion?()
             }
@@ -125,11 +126,22 @@ extension AudioEngine {
         engine.stopImmediately(reason: reason)
         isRunning = false
         resetOutputMeter()
+        resetProcessTapInputMeter()
         scheduleSnapshotUpdate()
     }
 }
 
 extension AudioEngine: ProcessTapAudioProcessor {
+    private var processTapInputTrimGain: Float {
+        let clampedDB = min(max(processTapInputTrimDB, -30), 0)
+        return Float(pow(10.0, clampedDB / 20.0))
+    }
+
+    private var processTapOutputMakeupGain: Float {
+        let clampedDB = min(max(processTapOutputMakeupDB, -12), 30)
+        return Float(pow(10.0, clampedDB / 20.0))
+    }
+
     func processSystemAudio(
         input: UnsafePointer<Float>,
         output: UnsafeMutablePointer<Float>,
@@ -151,12 +163,20 @@ extension AudioEngine: ProcessTapAudioProcessor {
         }
 
         buffer.frameLength = AVAudioFrameCount(frameCount)
+        let inputTrimGain = processTapInputTrimGain
+        var rawInputPeak: Float = 0
+        var trimmedInputPeak: Float = 0
         for frame in 0..<frameCount {
             for channel in 0..<channelCount {
                 let sampleIndex = (frame * channelCount) + channel
-                channelData[channel][frame] = input[sampleIndex] * ProcessTapGainStage.dspInputHeadroomGain
+                let rawSample = input[sampleIndex]
+                let trimmedSample = rawSample * inputTrimGain
+                channelData[channel][frame] = trimmedSample
+                rawInputPeak = max(rawInputPeak, abs(rawSample))
+                trimmedInputPeak = max(trimmedInputPeak, abs(trimmedSample))
             }
         }
+        publishProcessTapInputMeter(rawPeak: rawInputPeak, trimmedPeak: trimmedInputPeak)
 
         let sampleCount = frameCount * channelCount
         let processed = interleavedData(from: buffer)
@@ -167,10 +187,11 @@ extension AudioEngine: ProcessTapAudioProcessor {
             }
 
             let copiedSamples = min(processed.count, sampleCount)
+            let outputMakeupGain = processTapOutputMakeupGain
             var sumSquares: Float = 0
             var peak: Float = 0
             for sampleIndex in 0..<copiedSamples {
-                let madeUp = processedBase[sampleIndex] * ProcessTapGainStage.outputMakeupGain
+                let madeUp = processedBase[sampleIndex] * outputMakeupGain
                 let finalSample = protectProcessTapOutputSample(madeUp)
                 output[sampleIndex] = finalSample
                 let magnitude = abs(finalSample)
@@ -233,23 +254,33 @@ extension AudioEngine: ProcessTapAudioProcessor {
         sampleCount: Int
     ) {
         guard sampleCount > 0 else { return }
+        let inputTrimGain = processTapInputTrimGain
         var sumSquares: Float = 0
         var peak: Float = 0
+        var rawInputPeak: Float = 0
+        var trimmedInputPeak: Float = 0
+        let outputMakeupGain = processTapOutputMakeupGain
         for sampleIndex in 0..<sampleCount {
+            let rawSample = input[sampleIndex]
+            let trimmedSample = rawSample * inputTrimGain
             let staged = input[sampleIndex]
-                * ProcessTapGainStage.dspInputHeadroomGain
-                * ProcessTapGainStage.outputMakeupGain
+                * inputTrimGain
+                * outputMakeupGain
             let finalSample = protectProcessTapOutputSample(staged)
             output[sampleIndex] = finalSample
             let magnitude = abs(finalSample)
             peak = max(peak, magnitude)
             sumSquares += finalSample * finalSample
+            rawInputPeak = max(rawInputPeak, abs(rawSample))
+            trimmedInputPeak = max(trimmedInputPeak, abs(trimmedSample))
         }
+        publishProcessTapInputMeter(rawPeak: rawInputPeak, trimmedPeak: trimmedInputPeak)
         publishOutputMeter(sumSquares: sumSquares, peak: peak, sampleCount: sampleCount)
     }
 
     private func protectProcessTapOutputSample(_ sample: Float) -> Float {
         guard sample.isFinite else { return 0 }
+        guard processTapOutputCeilingEnabled else { return sample }
 
         let threshold = ProcessTapGainStage.softLimitThreshold
         let ceiling = ProcessTapGainStage.outputCeiling

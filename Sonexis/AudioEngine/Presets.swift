@@ -468,8 +468,21 @@ extension AudioEngine {
         currentGraphSnapshot = snapshot
     }
 
-    func requestGraphLoad(_ snapshot: GraphSnapshot?) {
-        pendingGraphSnapshot = snapshot
+    func requestGraphLoad(
+        _ snapshot: GraphSnapshot?,
+        mode: GraphLoadMode = .audioAndVisual,
+        reason: String = "unspecified"
+    ) {
+        guard let snapshot else {
+            pendingGraphLoadRequest = nil
+            return
+        }
+        print("Graph load requested: mode=\(mode), reason=\(reason), nodes=\(snapshot.nodes.count)")
+        pendingGraphLoadRequest = GraphLoadRequest(
+            snapshot: snapshot,
+            mode: mode,
+            reason: reason
+        )
     }
 
     private func syncNodeState(_ nodes: [BeginnerNode]) {
