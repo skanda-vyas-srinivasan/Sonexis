@@ -106,7 +106,7 @@ struct SavedPreset: Identifiable, Codable {
             params.clarityAmount = values.clarityAmount ?? params.clarityAmount
         case .deMud:
             params.deMudStrength = values.deMudStrength ?? params.deMudStrength
-        case .simpleEQ:
+        case .simpleEQ, .appleThreeBandEQ:
             params.eqBass = values.eqBass ?? params.eqBass
             params.eqMids = values.eqMids ?? params.eqMids
             params.eqTreble = values.eqTreble ?? params.eqTreble
@@ -116,6 +116,12 @@ struct SavedPreset: Identifiable, Codable {
             }
         case .compressor:
             params.compressorStrength = values.compressorStrength ?? params.compressorStrength
+            params.compressorThresholdDB = values.compressorThresholdDB ?? params.compressorThresholdDB
+            params.compressorRatio = values.compressorRatio ?? params.compressorRatio
+            params.compressorAttackMS = values.compressorAttackMS ?? params.compressorAttackMS
+            params.compressorReleaseMS = values.compressorReleaseMS ?? params.compressorReleaseMS
+            params.compressorMakeupDB = values.compressorMakeupDB ?? params.compressorMakeupDB
+            params.compressorMix = values.compressorMix ?? params.compressorMix
         case .reverb:
             params.reverbMix = values.reverbMix ?? params.reverbMix
             params.reverbSize = values.reverbSize ?? params.reverbSize
@@ -136,6 +142,9 @@ struct SavedPreset: Identifiable, Codable {
         case .tremolo:
             params.tremoloRate = values.tremoloRate ?? params.tremoloRate
             params.tremoloDepth = values.tremoloDepth ?? params.tremoloDepth
+        case .autoPan:
+            params.autoPanRate = values.autoPanRate ?? params.autoPanRate
+            params.autoPanDepth = values.autoPanDepth ?? params.autoPanDepth
         case .chorus:
             params.chorusRate = values.chorusRate ?? params.chorusRate
             params.chorusDepth = values.chorusDepth ?? params.chorusDepth
@@ -160,6 +169,18 @@ struct SavedPreset: Identifiable, Codable {
             params.resampleCrossfade = values.resampleCrossfade ?? params.resampleCrossfade
         case .rubberBandPitch:
             params.rubberBandPitchSemitones = values.rubberBandPitchSemitones ?? params.rubberBandPitchSemitones
+        case .nightDrive:
+            params.nightDriveIntensity = values.nightDriveIntensity ?? params.nightDriveIntensity
+            params.nightDriveWidth = values.nightDriveWidth ?? params.nightDriveWidth
+        case .chromePunch:
+            params.chromePunchPunch = values.chromePunchPunch ?? params.chromePunchPunch
+            params.chromePunchBody = values.chromePunchBody ?? params.chromePunchBody
+        case .midnightGlow:
+            params.midnightGlowGlow = values.midnightGlowGlow ?? params.midnightGlowGlow
+            params.midnightGlowWarmth = values.midnightGlowWarmth ?? params.midnightGlowWarmth
+        case .afterglow:
+            params.afterglowAir = values.afterglowAir ?? params.afterglowAir
+            params.afterglowSpace = values.afterglowSpace ?? params.afterglowSpace
         case .plugin:
             break
         }
@@ -204,6 +225,12 @@ struct EffectChainSnapshot: Codable {
 
         // Compressor
         var compressorStrength: Double?
+        var compressorThresholdDB: Double?
+        var compressorRatio: Double?
+        var compressorAttackMS: Double?
+        var compressorReleaseMS: Double?
+        var compressorMakeupDB: Double?
+        var compressorMix: Double?
 
 
         // Reverb
@@ -231,6 +258,10 @@ struct EffectChainSnapshot: Codable {
         // Tremolo
         var tremoloRate: Double?
         var tremoloDepth: Double?
+
+        // Auto Pan
+        var autoPanRate: Double?
+        var autoPanDepth: Double?
 
         // Chorus
         var chorusRate: Double?
@@ -262,6 +293,16 @@ struct EffectChainSnapshot: Codable {
 
         // Rubber Band
         var rubberBandPitchSemitones: Double?
+
+        // Signature effects
+        var nightDriveIntensity: Double?
+        var nightDriveWidth: Double?
+        var chromePunchPunch: Double?
+        var chromePunchBody: Double?
+        var midnightGlowGlow: Double?
+        var midnightGlowWarmth: Double?
+        var afterglowAir: Double?
+        var afterglowSpace: Double?
     }
 }
 

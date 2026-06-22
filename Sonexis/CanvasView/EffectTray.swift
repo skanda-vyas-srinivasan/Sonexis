@@ -30,9 +30,10 @@ struct EffectTray: View {
     }
 
     private let effects: [EffectType] = [
-        .bassBoost, .enhancer, .clarity, .deMud,
-        .simpleEQ, .tenBandEQ, .compressor, .reverb, .stereoWidth,
-        .delay, .amp, .distortion, .tremolo, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
+        .nightDrive, .chromePunch, .midnightGlow, .afterglow,
+        .bassBoost, .enhancer, .clarity,
+        .simpleEQ, .reverb, .stereoWidth,
+        .delay, .amp, .tremolo, .autoPan, .chorus, .phaser, .flanger, .bitcrusher, .tapeSaturation,
         .rubberBandPitch
     ]
 
@@ -45,7 +46,7 @@ struct EffectTray: View {
             searchText.isEmpty || effect.rawValue.lowercased().contains(searchText.lowercased())
         }
         let filteredPlugins = pluginManager.plugins.filter { plugin in
-            plugin.format == .au && (searchText.isEmpty || plugin.name.lowercased().contains(searchText.lowercased()))
+            plugin.format == .au && (searchText.isEmpty || plugin.displayName.lowercased().contains(searchText.lowercased()))
         }
         let favoriteEffects = effects.filter { favoriteIDs.contains(effectFavoriteID($0)) }
         let favoritePlugins = pluginManager.plugins.filter { favoriteIDs.contains(pluginFavoriteID($0)) }
@@ -451,6 +452,7 @@ struct EffectPaletteButton: View {
         }, preview: {
             EffectDragPreview(effectType: effectType, tileStyle: previewStyle)
         })
+        .help("\(effectType.rawValue): \(effectType.description)")
     }
 }
 
@@ -514,7 +516,7 @@ struct PluginPaletteButton: View {
                 .buttonStyle(.plain)
             }
 
-            Text(plugin.name)
+            Text(plugin.displayName)
                 .font(AppTypography.caption)
                 .foregroundColor(textColor)
                 .lineLimit(2)
@@ -558,7 +560,7 @@ struct PluginDragPreview: View {
                     .shadow(color: Color.white.opacity(0.6), radius: 8)
                     .shadow(color: tileStyle.fill.opacity(0.5), radius: 16)
 
-                Text(plugin.name)
+                Text(plugin.displayName)
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(1.2)
                     .foregroundColor(tileStyle.text.opacity(0.95))

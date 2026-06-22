@@ -13,6 +13,7 @@ struct EffectBlockHorizontal: View {
     let isPluginLoading: Bool
     let onRemove: () -> Void
     let onUpdate: () -> Void
+    let onParameterChange: () -> Void
     let onExpanded: () -> Void
     let onCollapsed: () -> Void
     let onOpenPluginEditor: () -> Void
@@ -32,7 +33,7 @@ struct EffectBlockHorizontal: View {
         let hoverScale: CGFloat = isHovered ? 1.03 : 1.0
         let hoverOffset: CGFloat = isHovered ? -4 : 0
         let combinedScale = hoverScale * dropScale
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
             VStack(spacing: 8) {
                 // Icon and name
                 VStack(spacing: 6) {
@@ -106,7 +107,7 @@ struct EffectBlockHorizontal: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 16))
             .onTapGesture(count: 2) {
-                if effect.type == .plugin, effect.plugin?.hasCustomView == true {
+                if effect.type == .plugin {
                     onOpenPluginEditor()
                     return
                 }
@@ -152,7 +153,7 @@ struct EffectBlockHorizontal: View {
                             effectType: effect.type,
                             parameters: $effect.parameters,
                             tint: tileStyle.fill,
-                            onChange: onUpdate
+                            onChange: onParameterChange
                         )
                     }
 
@@ -179,11 +180,13 @@ struct EffectBlockHorizontal: View {
                 .sonexisFloatingPanel(tint: tileStyle.fill, cornerRadius: 8, glowOpacity: 0)
                 .foregroundColor(AppColors.textPrimary)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
-                .padding(.top, 8)
                 .scaleEffect(overlayScale, anchor: .top)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .offset(y: 138)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .frame(width: 226, height: 130, alignment: .top)
+        .zIndex(isExpanded ? 10 : 0)
         .onChange(of: tutorialStep) { step in
             // Keep the panel stable during the open/close tutorial steps.
             if step == .buildDoubleClick || step == .buildCloseOverlay {

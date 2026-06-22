@@ -56,6 +56,11 @@ final class RealtimeRingBuffer {
         SonexisAudioRingBufferSetReadEnabled(pointer, enabled)
     }
 
+    func setTargetFillFrames(_ frames: UInt32) {
+        guard let pointer else { return }
+        SonexisAudioRingBufferSetTargetFillFrames(pointer, frames)
+    }
+
     func configurePitchShift(enabled: Bool, semitones: Float) {
         guard let pointer else { return }
         SonexisAudioRingBufferConfigurePitchShift(
@@ -93,6 +98,11 @@ final class RealtimeRingBuffer {
     var lastInputPeakPPM: UInt32 {
         guard let pointer else { return 0 }
         return SonexisAudioRingBufferGetLastInputPeakPPM(pointer)
+    }
+
+    var targetFillFrames: UInt32 {
+        guard let pointer else { return 0 }
+        return SonexisAudioRingBufferGetTargetFillFrames(pointer)
     }
 
     var currentGainPPM: UInt32 {

@@ -11,12 +11,14 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
     case pitchShift = "Pitch Effect"
     case rubberBandPitch = "Pitch (Rubber Band)"
     case simpleEQ = "Simple EQ"
+    case appleThreeBandEQ = "Apple 3-Band EQ"
     case tenBandEQ = "10-Band EQ"
     case deMud = "De-Mud"
     case delay = "Delay"
     case amp = "Amp"
     case distortion = "Distortion"
     case tremolo = "Tremolo"
+    case autoPan = "Auto Pan"
     case chorus = "Chorus"
     case phaser = "Phaser"
     case flanger = "Flanger"
@@ -24,10 +26,19 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
     case tapeSaturation = "Tape Saturation"
     case resampling = "Resampling"
     case enhancer = "Enhancer"
+    case nightDrive = "Night Drive"
+    case chromePunch = "Chrome Punch"
+    case midnightGlow = "Midnight Glow"
+    case afterglow = "Afterglow"
     case plugin = "Plugin"
 
     var isRetired: Bool {
-        self == .resampling
+        switch self {
+        case .resampling, .deMud, .appleThreeBandEQ, .tenBandEQ, .compressor, .distortion:
+            return true
+        default:
+            return false
+        }
     }
 
     var description: String {
@@ -48,6 +59,8 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
             return "High-quality pitch shift"
         case .simpleEQ:
             return "Adjust bass, middle, and treble"
+        case .appleThreeBandEQ:
+            return "Apple system bass, middle, and treble EQ"
         case .tenBandEQ:
             return "Fine-tune 10 frequency bands"
         case .deMud:
@@ -60,6 +73,8 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
             return "Adds warmth, grit, and harmonic saturation"
         case .tremolo:
             return "Pulsing volume modulation"
+        case .autoPan:
+            return "Moves sound left and right"
         case .chorus:
             return "Thickens sound with lush modulation"
         case .phaser:
@@ -74,6 +89,14 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
             return "Pitch and speed shift by resampling"
         case .enhancer:
             return "Adds clarity, warmth, and punch in one step"
+        case .nightDrive:
+            return "Dark, wide, bass-forward color for late-night listening"
+        case .chromePunch:
+            return "Adds impact, attack, and tight low-end body"
+        case .midnightGlow:
+            return "Smooths harsh edges with warm, gentle loudness"
+        case .afterglow:
+            return "Adds air, stereo shimmer, and a short spacious tail"
         case .plugin:
             return "Third-party effect plugin"
         }
@@ -97,6 +120,8 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
             return "music.note.list"
         case .simpleEQ:
             return "slider.horizontal.3"
+        case .appleThreeBandEQ:
+            return "slider.horizontal.3"
         case .tenBandEQ:
             return "slider.horizontal.2.square"
         case .deMud:
@@ -109,6 +134,8 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
             return "waveform.path.badge.plus"
         case .tremolo:
             return "waveform"
+        case .autoPan:
+            return "arrow.left.arrow.right"
         case .chorus:
             return "waveform.circle"
         case .phaser:
@@ -123,8 +150,37 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
             return "arrow.triangle.2.circlepath"
         case .enhancer:
             return "flame.fill"
+        case .nightDrive:
+            return "moon.stars.fill"
+        case .chromePunch:
+            return "bolt.fill"
+        case .midnightGlow:
+            return "moon.circle.fill"
+        case .afterglow:
+            return "sun.haze.fill"
         case .plugin:
             return "puzzlepiece.extension"
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        if rawValue == "Pitch" {
+            self = .rubberBandPitch
+            return
+        }
+        guard let effect = EffectType(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown effect type: \(rawValue)"
+            )
+        }
+        self = effect
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }

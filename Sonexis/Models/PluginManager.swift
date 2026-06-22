@@ -27,7 +27,7 @@ final class PluginManager: ObservableObject {
             guard let self else { return }
             let auPlugins = self.scanAudioUnits()
             let combined = auPlugins
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
             DispatchQueue.main.async {
                 self.plugins = combined

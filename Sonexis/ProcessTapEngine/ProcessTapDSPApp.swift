@@ -181,6 +181,7 @@ final class ProcessTapDSPApp {
         )
         dspProcessor.configureInitialGain(on: playbackRingBuffer)
         dspProcessor.configurePitchShift(on: playbackRingBuffer)
+        playbackRingBuffer.setTargetFillFrames(startupPrerollTargetFrames)
         playbackRingBuffer.setReadEnabled(false)
         ringBuffer = playbackRingBuffer
 
@@ -208,6 +209,7 @@ final class ProcessTapDSPApp {
             processingWorker = nil
         }
         print("Created realtime ring buffer: \(ringCapacityFrames) frames, \(channelCount) channels")
+        print("Playback reservoir target: \(playbackRingBuffer.targetFillFrames) frames")
         if audioProcessor != nil {
             print("Created raw capture ring buffer for Sonexis DSP worker.")
         }

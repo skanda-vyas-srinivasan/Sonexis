@@ -10,6 +10,7 @@ struct HeaderView: View {
     let allowSave: Bool
     let allowLoad: Bool
     @Binding var saveStatusText: String?
+    @State private var showingAudioSettings = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -121,21 +122,11 @@ struct HeaderView: View {
                     .frame(height: 30)
                     .background(AppColors.controlStrokeSoft.opacity(0.65))
 
-                ProcessTapInputTrimSection(
+                AudioSettingsButton(
+                    isPresented: $showingAudioSettings,
                     trimDB: $audioEngine.processTapInputTrimDB,
-                    rawPeakDBFS: audioEngine.processTapRawInputPeakDBFS,
-                    trimmedPeakDBFS: audioEngine.processTapTrimmedInputPeakDBFS,
-                    isActive: audioEngine.isRunning
-                )
-
-                Divider()
-                    .frame(height: 30)
-                    .background(AppColors.controlStrokeSoft.opacity(0.65))
-
-                ProcessTapOutputMakeupSection(
                     makeupDB: $audioEngine.processTapOutputMakeupDB,
-                    ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled,
-                    isActive: audioEngine.isRunning
+                    ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled
                 )
             }
 
@@ -300,131 +291,159 @@ struct HeaderView: View {
     }
 }
 
-private struct ProcessTapInputTrimSection: View {
+private struct AudioSettingsButton: View {
+    @Binding var isPresented: Bool
     @Binding var trimDB: Double
-    let rawPeakDBFS: Float
-    let trimmedPeakDBFS: Float
-    let isActive: Bool
-
-    private var trimText: String {
-        String(format: "%.0f dB", trimDB)
-    }
-
-    private var rawText: String {
-        formattedDB(rawPeakDBFS)
-    }
-
-    private var trimmedText: String {
-        formattedDB(trimmedPeakDBFS)
-    }
+    @Binding var makeupDB: Double
+    @Binding var ceilingEnabled: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text("Tap In")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-
-                Spacer(minLength: 8)
-
-                Text(trimText)
-                    .font(AppTypography.technical)
-                    .foregroundColor(isActive ? AppColors.neonCyan : AppColors.textMuted)
-                    .monospacedDigit()
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    isPresented.toggle()
+                }
+            } label: {
+                Image(systemName: isPresented ? "gearshape.fill" : "gearshape")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(isPresented ? AppColors.neonPink : AppColors.neonCyan)
+                    .frame(width: 34, height: 28)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help(isPresented ? "Close audio settings" : "Audio settings")
 
-            Slider(
+            if isPresented {
+                AudioSettingsInlinePanel(
+                    trimDB: $trimDB,
+                    makeupDB: $makeupDB,
+                    ceilingEnabled: $ceilingEnabled
+                )
+                .transition(
+                    .scale(scale: 0.96, anchor: .leading)
+                        .combined(with: .opacity)
+                )
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: isPresented)
+    }
+}
+
+private struct AudioSettingsInlinePanel: View {
+    @Binding var trimDB: Double
+    @Binding var makeupDB: Double
+    @Binding var ceilingEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AudioSettingsCompactSlider(
+                title: "Tap In",
+                valueText: String(format: "%.0f dB", trimDB),
                 value: Binding(
                     get: { trimDB },
                     set: { trimDB = min(max($0, -30), 0) }
                 ),
-                in: -30...0,
-                step: 1
+                range: -30...0,
+                step: 1,
+                tint: AppColors.neonCyan
             )
-            .controlSize(.small)
-            .tint(AppColors.neonCyan)
-            .disabled(!isActive)
 
-            HStack(spacing: 8) {
-                Text("raw \(rawText)")
-                Text("dsp \(trimmedText)")
-            }
-            .font(.system(size: 9, weight: .medium, design: .monospaced))
-            .foregroundColor(isActive ? AppColors.textSecondary : AppColors.textMuted)
-        }
-        .frame(width: 168, height: 46)
-        .opacity(isActive ? 1 : 0.56)
-        .help("Debug input trim before Sonexis effects. Raw is the tap peak; dsp is after trim.")
-    }
-
-    private func formattedDB(_ value: Float) -> String {
-        guard isActive, value > -90 else { return "-inf" }
-        return String(format: "%.0f", value)
-    }
-}
-
-private struct ProcessTapOutputMakeupSection: View {
-    @Binding var makeupDB: Double
-    @Binding var ceilingEnabled: Bool
-    let isActive: Bool
-
-    private var makeupText: String {
-        String(format: "%+.0f dB", makeupDB)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text("Makeup")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-
-                Spacer(minLength: 8)
-
-                Text(makeupText)
-                    .font(AppTypography.technical)
-                    .foregroundColor(isActive ? AppColors.neonPink : AppColors.textMuted)
-                    .monospacedDigit()
-            }
-
-            Slider(
+            AudioSettingsCompactSlider(
+                title: "Makeup",
+                valueText: String(format: "%+.0f dB", makeupDB),
                 value: Binding(
                     get: { makeupDB },
                     set: { makeupDB = min(max($0, -12), 30) }
                 ),
-                in: -12...30,
-                step: 1
+                range: -12...30,
+                step: 1,
+                tint: AppColors.neonPink
             )
-            .controlSize(.small)
-            .tint(AppColors.neonPink)
-            .disabled(!isActive)
 
-            HStack(spacing: 6) {
-                Text("post DSP")
+            OutputCeilingButton(isOn: $ceilingEnabled)
 
-                Spacer(minLength: 6)
-
-                Button {
-                    ceilingEnabled.toggle()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: ceilingEnabled ? "shield.fill" : "shield.slash")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(ceilingEnabled ? "ceil" : "raw")
-                    }
-                    .foregroundColor(ceilingEnabled ? AppColors.textSecondary : AppColors.warning)
+            Button {
+                trimDB = -12
+                makeupDB = 12
+                ceilingEnabled = true
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppColors.textSecondary)
+                    .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!isActive)
-                .opacity(isActive ? 1 : 0.5)
             }
-            .font(.system(size: 9, weight: .medium, design: .monospaced))
-            .foregroundColor(isActive ? AppColors.textSecondary : AppColors.textMuted)
+            .buttonStyle(.plain)
+            .help("Reset to defaults")
         }
-        .frame(width: 132, height: 46)
-        .opacity(isActive ? 1 : 0.56)
-        .help("Debug output makeup after Sonexis effects. The shield toggles the final output ceiling.")
+        .frame(height: 44)
+    }
+}
+
+private struct AudioSettingsCompactSlider: View {
+    let title: String
+    let valueText: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textSecondary)
+
+                Spacer(minLength: 4)
+
+                Text(valueText)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(tint)
+                    .monospacedDigit()
+            }
+
+            Slider(
+                value: $value,
+                in: range,
+                step: step
+            )
+            .controlSize(.mini)
+            .tint(tint)
+        }
+        .frame(width: 102)
+    }
+}
+
+private struct OutputCeilingButton: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            isOn.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                Text("Ceiling")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textSecondary)
+
+                Text(isOn ? "On" : "Off")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(isOn ? AppColors.warning : AppColors.textMuted)
+                    .monospacedDigit()
+            }
+            .frame(width: 78, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppColors.deepBlack.opacity(0.26))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isOn ? AppColors.warning.opacity(0.48) : AppColors.controlStrokeSoft.opacity(0.48), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(isOn ? "Disable output ceiling" : "Enable output ceiling")
     }
 }
 

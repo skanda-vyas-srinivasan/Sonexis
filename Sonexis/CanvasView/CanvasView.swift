@@ -55,10 +55,13 @@ struct CanvasView: View {
     @State private var isWindowKey = true
     @State private var betaUnlockBuffer = ""
     @State private var lastAppliedAudioGraphSignature: Int?
+    @State private var pendingAudioGraphApplyWorkItem: DispatchWorkItem?
+    @State private var pendingAudioGraphApplyReason = "graph edit"
+    @State private var pendingAudioGraphApplyForce = false
     private let connectionSnapRadius: CGFloat = 120
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let betaUnlockPhrase = "poopymcbutt"
-    private let debugGraphLifecycle = true
+    private let debugGraphLifecycle = false
     private let accentPalette: [AccentStyle] = [
         AccentStyle(
             fill: Color(hex: "#00F5FF"),
@@ -659,6 +662,9 @@ struct CanvasView: View {
                             onUpdate: {
                                 applyChainToEngine()
                             },
+                            onParameterChange: {
+                                updateChainParametersOnly()
+                            },
                             onExpanded: {
                                 tutorial.advanceIf(.buildDoubleClick)
                             },
@@ -1026,6 +1032,12 @@ struct CanvasView: View {
                 NSEvent.removeMonitor(monitor)
                 flagsMonitor = nil
             }
+            if pendingAudioGraphApplyWorkItem != nil {
+                let reason = pendingAudioGraphApplyReason
+                let force = pendingAudioGraphApplyForce
+                cancelPendingAudioGraphApply()
+                performChainApplyToEngine(reason: "canvas disappear: \(reason)", forceAudioApply: force)
+            }
         }
     }
 
@@ -1148,7 +1160,14 @@ struct CanvasView: View {
     }
 
     private func openPluginEditor(for nodeId: UUID) {
-        audioEngine.openPluginEditor(for: nodeId)
+        let fallbackView = NSHostingView(
+            rootView: PluginEditorFallbackView(
+                audioEngine: audioEngine,
+                nodeId: nodeId
+            )
+        )
+        fallbackView.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        audioEngine.openPluginEditor(for: nodeId, fallbackView: fallbackView)
     }
 
 
@@ -1184,7 +1203,7 @@ struct CanvasView: View {
         recordUndoSnapshot()
         guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
         effectChain[index].parameters = NodeEffectParameters.defaults()
-        applyChainToEngine()
+        updateChainParametersOnly()
     }
 
     private func removeEffects(ids: Set<UUID>) {
@@ -1207,6 +1226,37 @@ struct CanvasView: View {
     private func applyChainToEngine(
         reason: String = "graph edit",
         forceAudioApply: Bool = false
+    ) {
+        if forceAudioApply {
+            cancelPendingAudioGraphApply()
+            performChainApplyToEngine(reason: reason, forceAudioApply: true)
+            return
+        }
+
+        pendingAudioGraphApplyReason = reason
+        pendingAudioGraphApplyForce = pendingAudioGraphApplyForce || forceAudioApply
+        pendingAudioGraphApplyWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem {
+            let reason = pendingAudioGraphApplyReason
+            let force = pendingAudioGraphApplyForce
+            pendingAudioGraphApplyWorkItem = nil
+            pendingAudioGraphApplyForce = false
+            performChainApplyToEngine(reason: reason, forceAudioApply: force)
+        }
+        pendingAudioGraphApplyWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: workItem)
+    }
+
+    private func cancelPendingAudioGraphApply() {
+        pendingAudioGraphApplyWorkItem?.cancel()
+        pendingAudioGraphApplyWorkItem = nil
+        pendingAudioGraphApplyForce = false
+    }
+
+    private func performChainApplyToEngine(
+        reason: String,
+        forceAudioApply: Bool
     ) {
         let signature = currentAudioGraphSignature()
         if !forceAudioApply, lastAppliedAudioGraphSignature == signature {
@@ -1278,6 +1328,11 @@ struct CanvasView: View {
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
     }
 
+    private func updateChainParametersOnly() {
+        audioEngine.updateEffectNodeRuntimeState(effectChain)
+        audioEngine.updateGraphSnapshot(currentGraphSnapshot())
+    }
+
     private func currentAudioGraphSignature() -> Int {
         var hasher = Hasher()
         hasher.combine(graphMode.rawValue)
@@ -1337,11 +1392,12 @@ struct CanvasView: View {
             hasher.combine(node.type.rawValue)
             hasher.combine(node.isEnabled)
             hasher.combine(node.lane.rawValue)
-            if let parameterData = try? JSONEncoder().encode(node.parameters) {
-                hasher.combine(parameterData)
-            }
-            if let pluginData = try? JSONEncoder().encode(node.plugin) {
-                hasher.combine(pluginData)
+            if let plugin = node.plugin {
+                hasher.combine(plugin.format.rawValue)
+                hasher.combine(plugin.identifier)
+                hasher.combine(plugin.componentType)
+                hasher.combine(plugin.componentSubType)
+                hasher.combine(plugin.componentManufacturer)
             }
         }
     }
@@ -1373,8 +1429,8 @@ struct CanvasView: View {
         reason: String = "direct restore"
     ) {
         let nodes = snapshot.hasNodeParameters ? snapshot.nodes : migrateNodeParameters(snapshot.nodes)
-        let removedIds = Set(nodes.filter { $0.type == .pitchShift }.map { $0.id })
-        let filteredNodes = nodes.filter { $0.type != .pitchShift }
+        let removedIds = Set(nodes.filter { $0.type == .pitchShift || $0.type.isRetired }.map { $0.id })
+        let filteredNodes = nodes.filter { $0.type != .pitchShift && !$0.type.isRetired }
         effectChain = filteredNodes
         manualConnections = snapshot.connections.filter { !removedIds.contains($0.fromNodeId) && !removedIds.contains($0.toNodeId) }
         let filteredAutoGains = snapshot.autoGainOverrides.filter {
@@ -1405,6 +1461,7 @@ struct CanvasView: View {
 
         switch mode {
         case .visualOnly:
+            cancelPendingAudioGraphApply()
             let signature = currentAudioGraphSignature()
             lastAppliedAudioGraphSignature = signature
             audioEngine.updateGraphSnapshot(currentGraphSnapshot())
@@ -1433,7 +1490,7 @@ struct CanvasView: View {
                 params.clarityAmount = audioEngine.clarityAmount
             case .deMud:
                 params.deMudStrength = audioEngine.deMudStrength
-            case .simpleEQ:
+            case .simpleEQ, .appleThreeBandEQ:
                 params.eqBass = audioEngine.eqBass
                 params.eqMids = audioEngine.eqMids
                 params.eqTreble = audioEngine.eqTreble
@@ -1452,6 +1509,12 @@ struct CanvasView: View {
                 ]
             case .compressor:
                 params.compressorStrength = audioEngine.compressorStrength
+                params.compressorThresholdDB = audioEngine.compressorThresholdDB
+                params.compressorRatio = audioEngine.compressorRatio
+                params.compressorAttackMS = audioEngine.compressorAttackMS
+                params.compressorReleaseMS = audioEngine.compressorReleaseMS
+                params.compressorMakeupDB = audioEngine.compressorMakeupDB
+                params.compressorMix = audioEngine.compressorMix
             case .reverb:
                 params.reverbMix = audioEngine.reverbMix
                 params.reverbSize = audioEngine.reverbSize
@@ -1472,6 +1535,9 @@ struct CanvasView: View {
             case .tremolo:
                 params.tremoloRate = audioEngine.tremoloRate
                 params.tremoloDepth = audioEngine.tremoloDepth
+            case .autoPan:
+                params.autoPanRate = audioEngine.autoPanRate
+                params.autoPanDepth = audioEngine.autoPanDepth
             case .chorus:
                 params.chorusRate = audioEngine.chorusRate
                 params.chorusDepth = audioEngine.chorusDepth
@@ -1491,6 +1557,8 @@ struct CanvasView: View {
             case .tapeSaturation:
                 params.tapeSaturationDrive = audioEngine.tapeSaturationDrive
                 params.tapeSaturationMix = audioEngine.tapeSaturationMix
+            case .nightDrive, .chromePunch, .midnightGlow, .afterglow:
+                break
             case .resampling:
                 params.resampleRate = audioEngine.resampleRate
                 params.resampleCrossfade = audioEngine.resampleCrossfade
