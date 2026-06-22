@@ -24,9 +24,9 @@ struct HomeView: View {
                 VStack(spacing: 10) {
                     Text("Sonexis")
                         .font(.system(size: 56, weight: .black, design: .default))
-                        .foregroundColor(AppColors.neonPink)
+                        .foregroundColor(AppColors.homeTitle)
                         .shadow(
-                            color: AppColors.neonPink.opacity(contentPulse ? 0.82 : 0.58),
+                            color: AppColors.homeTitle.opacity(contentPulse ? 0.82 : 0.58),
                             radius: contentPulse ? 22 : 12
                         )
 
@@ -136,16 +136,18 @@ private struct HomeSignalBackdrop: View {
 
                 ZStack {
                     Circle()
-                        .stroke(AppColors.neonPink.opacity(0.22 - (0.12 * pulse)), lineWidth: 1)
+                        .stroke(AppColors.neonPink.opacity(0.34 - (0.12 * pulse)), lineWidth: 1)
                         .frame(width: min(width, height) * 0.78)
                         .scaleEffect(0.94 + (0.14 * pulse))
                         .blur(radius: 1)
+                        .shadow(color: AppColors.neonPink.opacity(0.22), radius: 10)
 
                     Circle()
-                        .stroke(AppColors.neonCyan.opacity(0.10 + (0.14 * pulse)), lineWidth: 1)
+                        .stroke(AppColors.neonCyan.opacity(0.20 + (0.18 * pulse)), lineWidth: 1)
                         .frame(width: min(width, height) * 0.54)
                         .scaleEffect(1.04 - (0.12 * pulse))
                         .blur(radius: 1)
+                        .shadow(color: AppColors.neonCyan.opacity(0.24), radius: 10)
 
                     HStack(alignment: .center, spacing: 12) {
                         ForEach(Array(barHeights.enumerated()), id: \.offset) { index, barHeight in
@@ -155,11 +157,11 @@ private struct HomeSignalBackdrop: View {
                                 cycle: 6.8
                             )
                             let heightScale = 0.34 + (0.46 * barPulse)
-
+                            let barColor = index.isMultiple(of: 2) ? AppColors.neonCyan : AppColors.neonPink
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(index.isMultiple(of: 2) ? AppColors.neonCyan.opacity(0.22) : AppColors.neonPink.opacity(0.18))
+                                .fill(barColor.opacity(index.isMultiple(of: 2) ? 0.36 : 0.30))
                                 .frame(width: 6, height: isActive ? max(14, barHeight * heightScale) : 8)
-                                .shadow(color: AppColors.neonCyan.opacity(0.18), radius: 12)
+                                .shadow(color: barColor.opacity(0.30), radius: 14)
                         }
                     }
                     .scaleEffect(x: 0.985 + (0.03 * pulse), y: 1.02 - (0.04 * pulse))
