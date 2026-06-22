@@ -333,6 +333,7 @@ private struct AudioSettingsInlinePanel: View {
     @Binding var trimDB: Double
     @Binding var makeupDB: Double
     @Binding var ceilingEnabled: Bool
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.classic.rawValue
 
     var body: some View {
         HStack(spacing: 10) {
@@ -361,6 +362,8 @@ private struct AudioSettingsInlinePanel: View {
             )
 
             OutputCeilingButton(isOn: $ceilingEnabled)
+
+            ThemePickerButton(selectedThemeID: $selectedThemeID)
 
             Button {
                 trimDB = -12
@@ -412,6 +415,54 @@ private struct AudioSettingsCompactSlider: View {
             .tint(tint)
         }
         .frame(width: 102)
+    }
+}
+
+private struct ThemePickerButton: View {
+    @Binding var selectedThemeID: String
+
+    private var selectedTheme: AppTheme {
+        AppTheme.theme(for: selectedThemeID)
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(AppTheme.allCases) { theme in
+                Button {
+                    selectedThemeID = theme.rawValue
+                } label: {
+                    HStack {
+                        Text(theme.displayName)
+                        if selectedThemeID == theme.rawValue {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text("Theme")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textSecondary)
+
+                Text(selectedTheme.shortName)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(AppColors.neonCyan)
+            }
+            .frame(width: 102, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppColors.deepBlack.opacity(0.26))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppColors.neonCyan.opacity(0.42), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .help("Choose color theme")
     }
 }
 

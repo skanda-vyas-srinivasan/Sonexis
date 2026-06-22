@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var showEngineStoppedAlert = false
     @State private var hasEngineBeenOnDuringTutorial = false
     @State private var homeTransitionRipple: HomeTransitionRipple?
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.classic.rawValue
 
     var body: some View {
         ZStack {
@@ -96,6 +97,7 @@ struct ContentView: View {
                 }
             }
             .frame(minWidth: 800, minHeight: 700)
+            .animation(.easeInOut(duration: 0.2), value: selectedThemeID)
             .coordinateSpace(name: "tutorialRoot")
             .onPreferenceChange(TutorialTargetPreferenceKey.self) { value in
                 DispatchQueue.main.async {
@@ -145,6 +147,7 @@ struct ContentView: View {
                 })
             }
         }
+        .environment(\.colorScheme, AppTheme.theme(for: selectedThemeID).colorScheme)
         .onAppear {
             guard !hasShownSetupThisSession else { return }
             hasShownSetupThisSession = true

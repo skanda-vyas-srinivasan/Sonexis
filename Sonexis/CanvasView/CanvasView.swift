@@ -8,6 +8,7 @@ struct CanvasView: View {
     @ObservedObject var tutorial: TutorialController
     @ObservedObject var pluginManager: PluginManager
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.classic.rawValue
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
     @State private var draggedPlugin: PluginDescriptor?
@@ -62,50 +63,52 @@ struct CanvasView: View {
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let betaUnlockPhrase = "poopymcbutt"
     private let debugGraphLifecycle = false
-    private let accentPalette: [AccentStyle] = [
-        AccentStyle(
-            fill: Color(hex: "#00F5FF"),
-            fillDark: Color(hex: "#007C88"),
-            highlight: Color(hex: "#FF5FBF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#FF5FBF"),
-            fillDark: Color(hex: "#7A1F4A"),
-            highlight: Color(hex: "#00F5FF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#8B3DFF"),
-            fillDark: Color(hex: "#3A0B73"),
-            highlight: Color(hex: "#FFB800"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#00FF88"),
-            fillDark: Color(hex: "#00733D"),
-            highlight: Color(hex: "#00D9FF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#FFB800"),
-            fillDark: Color(hex: "#7A4C00"),
-            highlight: Color(hex: "#FF5FBF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#FF6B00"),
-            fillDark: Color(hex: "#7A2E00"),
-            highlight: Color(hex: "#8B3DFF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#00D9FF"),
-            fillDark: Color(hex: "#004866"),
-            highlight: Color(hex: "#00FF88"),
-            text: .white
-        )
-    ]
+    private var accentPalette: [AccentStyle] {
+        [
+            AccentStyle(
+                fill: AppColors.neonCyan,
+                fillDark: AppColors.neonCyan.opacity(0.34),
+                highlight: AppColors.neonPink,
+                text: AppColors.textPrimary
+            ),
+            AccentStyle(
+                fill: AppColors.neonPink,
+                fillDark: AppColors.neonPink.opacity(0.34),
+                highlight: AppColors.neonCyan,
+                text: AppColors.textPrimary
+            ),
+            AccentStyle(
+                fill: AppColors.synthPurple,
+                fillDark: AppColors.synthPurple.opacity(0.34),
+                highlight: AppColors.warning,
+                text: AppColors.textPrimary
+            ),
+            AccentStyle(
+                fill: AppColors.success,
+                fillDark: AppColors.success.opacity(0.34),
+                highlight: AppColors.electricBlue,
+                text: AppColors.textPrimary
+            ),
+            AccentStyle(
+                fill: AppColors.warning,
+                fillDark: AppColors.warning.opacity(0.34),
+                highlight: AppColors.neonPink,
+                text: AppColors.textPrimary
+            ),
+            AccentStyle(
+                fill: AppColors.synthOrange,
+                fillDark: AppColors.synthOrange.opacity(0.34),
+                highlight: AppColors.synthPurple,
+                text: AppColors.textPrimary
+            ),
+            AccentStyle(
+                fill: AppColors.electricBlue,
+                fillDark: AppColors.electricBlue.opacity(0.34),
+                highlight: AppColors.success,
+                text: AppColors.textPrimary
+            )
+        ]
+    }
 
     enum WiringMode {
         case automatic  // Position-based with manual override
