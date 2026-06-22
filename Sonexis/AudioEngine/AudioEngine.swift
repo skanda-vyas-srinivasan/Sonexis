@@ -45,6 +45,12 @@ struct ProcessingSnapshot {
     let tenBandGains: [Double]
     let compressorEnabled: Bool
     let compressorStrength: Double
+    let compressorThresholdDB: Double
+    let compressorRatio: Double
+    let compressorAttackMS: Double
+    let compressorReleaseMS: Double
+    let compressorMakeupDB: Double
+    let compressorMix: Double
     let reverbEnabled: Bool
     let reverbMix: Double
     let reverbSize: Double
@@ -63,6 +69,9 @@ struct ProcessingSnapshot {
     let tremoloEnabled: Bool
     let tremoloRate: Double
     let tremoloDepth: Double
+    let autoPanEnabled: Bool
+    let autoPanRate: Double
+    let autoPanDepth: Double
     let chorusEnabled: Bool
     let chorusRate: Double
     let chorusDepth: Double
@@ -132,6 +141,12 @@ struct ProcessingSnapshot {
         tenBandGains: [],
         compressorEnabled: false,
         compressorStrength: 0,
+        compressorThresholdDB: -18,
+        compressorRatio: 3,
+        compressorAttackMS: 10,
+        compressorReleaseMS: 120,
+        compressorMakeupDB: 0,
+        compressorMix: 1,
         reverbEnabled: false,
         reverbMix: 0,
         reverbSize: 0,
@@ -150,6 +165,9 @@ struct ProcessingSnapshot {
         tremoloEnabled: false,
         tremoloRate: 0,
         tremoloDepth: 0,
+        autoPanEnabled: false,
+        autoPanRate: 0,
+        autoPanDepth: 0,
         chorusEnabled: false,
         chorusRate: 0,
         chorusDepth: 0,
@@ -196,7 +214,8 @@ struct ResetFlags: OptionSet {
     static let phaser = ResetFlags(rawValue: 1 << 10)
     static let bitcrusher = ResetFlags(rawValue: 1 << 11)
     static let rubberBand = ResetFlags(rawValue: 1 << 12)
-    static let all = ResetFlags(rawValue: 1 << 13)
+    static let autoPan = ResetFlags(rawValue: 1 << 13)
+    static let all = ResetFlags(rawValue: 1 << 14)
 }
 
 struct RubberBandScratch {
@@ -210,6 +229,121 @@ struct RubberBandScratch {
         self.output = []
         self.capacity = 0
         self.channelCount = 0
+    }
+}
+
+struct ReverbTankState {
+    private static let baseCombLengths = [1116, 1188, 1277, 1356]
+    private static let baseAllPassLengths = [556, 441]
+
+    var sampleRate: Double = 0
+    var channelCount: Int = 0
+    var combBuffers: [[[Float]]] = []
+    var combWriteIndices: [[Int]] = []
+    var combDampState: [[Float]] = []
+    var allPassBuffers: [[[Float]]] = []
+    var allPassWriteIndices: [[Int]] = []
+
+    mutating func configure(sampleRate: Double, channelCount: Int) {
+        guard sampleRate > 0, channelCount > 0 else { return }
+        guard self.sampleRate != sampleRate || self.channelCount != channelCount else { return }
+
+        let scale = sampleRate / 44_100.0
+        self.sampleRate = sampleRate
+        self.channelCount = channelCount
+        combBuffers = []
+        combWriteIndices = []
+        combDampState = []
+        allPassBuffers = []
+        allPassWriteIndices = []
+
+        for channel in 0..<channelCount {
+            let stereoOffset = channel * 23
+            let combLengths = Self.baseCombLengths.map { max(1, Int(Double($0) * scale) + stereoOffset) }
+            let allPassLengths = Self.baseAllPassLengths.map { max(1, Int(Double($0) * scale) + stereoOffset) }
+            combBuffers.append(combLengths.map { [Float](repeating: 0, count: $0) })
+            combWriteIndices.append([Int](repeating: 0, count: combLengths.count))
+            combDampState.append([Float](repeating: 0, count: combLengths.count))
+            allPassBuffers.append(allPassLengths.map { [Float](repeating: 0, count: $0) })
+            allPassWriteIndices.append([Int](repeating: 0, count: allPassLengths.count))
+        }
+    }
+
+    mutating func reset() {
+        sampleRate = 0
+        channelCount = 0
+        combBuffers.removeAll()
+        combWriteIndices.removeAll()
+        combDampState.removeAll()
+        allPassBuffers.removeAll()
+        allPassWriteIndices.removeAll()
+    }
+
+    mutating func process(input: Float, channel: Int, feedback: Float, damping: Float) -> Float {
+        guard channel < combBuffers.count,
+              channel < combWriteIndices.count,
+              channel < combDampState.count,
+              channel < allPassBuffers.count,
+              channel < allPassWriteIndices.count else {
+            return 0
+        }
+
+        var wet: Float = 0
+        for index in 0..<combBuffers[channel].count {
+            let writeIndex = combWriteIndices[channel][index]
+            let delayed = combBuffers[channel][index][writeIndex]
+            let damped = delayed * (1 - damping) + combDampState[channel][index] * damping
+            combDampState[channel][index] = damped
+            combBuffers[channel][index][writeIndex] = input + damped * feedback
+            combWriteIndices[channel][index] = (writeIndex + 1) % combBuffers[channel][index].count
+            wet += delayed
+        }
+        wet *= 0.25
+
+        for index in 0..<allPassBuffers[channel].count {
+            let writeIndex = allPassWriteIndices[channel][index]
+            let delayed = allPassBuffers[channel][index][writeIndex]
+            let output = -wet + delayed
+            allPassBuffers[channel][index][writeIndex] = wet + delayed * 0.5
+            allPassWriteIndices[channel][index] = (writeIndex + 1) % allPassBuffers[channel][index].count
+            wet = output
+        }
+
+        return wet * 0.7
+    }
+}
+
+struct ModulatedEffectParameterState {
+    var initialized = false
+    var delaySamples: Float = 0
+    var rate: Float = 0
+    var depth: Float = 0
+    var feedback: Float = 0
+    var mix: Float = 0
+}
+
+struct SignatureEffectDSPState {
+    var lowStates: [BiquadState] = []
+    var midStates: [BiquadState] = []
+    var highStates: [BiquadState] = []
+    var previousSamples: [Float] = []
+    var smoothedGain: Float = 0
+    var envelope: Float = 0
+    var reverb = ReverbTankState()
+
+    mutating func configure(channelCount: Int) {
+        if lowStates.count != channelCount {
+            lowStates = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if midStates.count != channelCount {
+            midStates = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if highStates.count != channelCount {
+            highStates = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if previousSamples.count != channelCount {
+            previousSamples = [Float](repeating: 0, count: channelCount)
+        }
     }
 }
 
@@ -228,7 +362,7 @@ class AudioEngine: ObservableObject {
     @Published var outputMeterLevel: Float = 0
     @Published var outputMeterPeakDBFS: Float = -96
     @Published var processTapInputTrimDB: Double = -12
-    @Published var processTapOutputMakeupDB: Double = 0
+    @Published var processTapOutputMakeupDB: Double = 12
     @Published var processTapOutputCeilingEnabled: Bool = true
     @Published var processTapRawInputPeakDBFS: Float = -96
     @Published var processTapTrimmedInputPeakDBFS: Float = -96
@@ -455,6 +589,36 @@ class AudioEngine: ObservableObject {
             scheduleSnapshotUpdate()
         }
     }
+    @Published var compressorThresholdDB: Double = -18.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorRatio: Double = 3.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorAttackMS: Double = 10.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorReleaseMS: Double = 120.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorMakeupDB: Double = 0.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorMix: Double = 1.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
 
 
     // Stereo width effect
@@ -633,6 +797,26 @@ class AudioEngine: ObservableObject {
         }
     }
     @Published var tremoloDepth: Double = 0.5 { // 0 to 1
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+
+    // Auto pan effect
+    @Published var autoPanEnabled = false {
+        didSet {
+            if !autoPanEnabled {
+                resetAutoPanState()
+            }
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var autoPanRate: Double = 0.35 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var autoPanDepth: Double = 0.7 {
         didSet {
             scheduleSnapshotUpdate()
         }
@@ -944,6 +1128,9 @@ class AudioEngine: ObservableObject {
     var eqTrebleStatesByNode: [UUID: [BiquadState]] = [:]
     var simpleEQSmoothedGain: Float = 0
     var simpleEQSmoothedGainByNode: [UUID: Float] = [:]
+    var appleThreeBandEQProcessorsByNode: [UUID: AppleThreeBandEQProcessor] = [:]
+    var appleThreeBandEQDryScratchByNode: [UUID: [[Float]]] = [:]
+    var appleThreeBandEQSmoothedGainByNode: [UUID: Float] = [:]
 
     // 10-band EQ state (peaking filters)
     let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -958,16 +1145,15 @@ class AudioEngine: ObservableObject {
     var tenBandVDSPDelays: [[[Float]]] = []
     var tenBandVDSPDelaysByNode: [UUID: [[[Float]]]] = [:]
 
-    // Compressor state (simple dynamic range compression)
-    var compressorEnvelope: [Float] = []
+    // Compressor state (stereo-linked detector envelope)
+    var compressorEnvelope: Float = 1
+    var compressorEnvelopeByNode: [UUID: Float] = [:]
     var compressorSmoothedGain: Float = 0
     var compressorSmoothedGainByNode: [UUID: Float] = [:]
 
-    // Reverb buffer (simple delay-based reverb)
-    var reverbBuffer: [[Float]] = []
-    var reverbWriteIndex = 0
-    var reverbBuffersByNode: [UUID: [[Float]]] = [:]
-    var reverbWriteIndexByNode: [UUID: Int] = [:]
+    // Reverb tank (parallel comb filters with all-pass diffusion)
+    var reverbState = ReverbTankState()
+    var reverbStatesByNode: [UUID: ReverbTankState] = [:]
     var reverbSmoothedGain: Float = 0
     var reverbSmoothedGainByNode: [UUID: Float] = [:]
 
@@ -978,12 +1164,20 @@ class AudioEngine: ObservableObject {
     var delayWriteIndexByNode: [UUID: Int] = [:]
     var delaySmoothedGain: Float = 0
     var delaySmoothedGainByNode: [UUID: Float] = [:]
+    var delayParameterState = ModulatedEffectParameterState()
+    var delayParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Tremolo state (LFO phase)
     var tremoloPhase: Double = 0
     var tremoloPhaseByNode: [UUID: Double] = [:]
     var tremoloSmoothedGain: Float = 0
     var tremoloSmoothedGainByNode: [UUID: Float] = [:]
+    var autoPanPhase: Double = 0
+    var autoPanPhaseByNode: [UUID: Double] = [:]
+    var autoPanSmoothedGain: Float = 0
+    var autoPanSmoothedGainByNode: [UUID: Float] = [:]
+    var autoPanParameterState = ModulatedEffectParameterState()
+    var autoPanParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Chorus state (delay modulation)
     var chorusBuffer: [[Float]] = []
@@ -994,6 +1188,8 @@ class AudioEngine: ObservableObject {
     var chorusPhaseByNode: [UUID: Double] = [:]
     var chorusSmoothedGain: Float = 0
     var chorusSmoothedGainByNode: [UUID: Float] = [:]
+    var chorusParameterState = ModulatedEffectParameterState()
+    var chorusParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Flanger state (short delay modulation with feedback)
     var flangerBuffer: [[Float]] = []
@@ -1004,15 +1200,21 @@ class AudioEngine: ObservableObject {
     var flangerPhaseByNode: [UUID: Double] = [:]
     var flangerSmoothedGain: Float = 0
     var flangerSmoothedGainByNode: [UUID: Float] = [:]
+    var flangerParameterState = ModulatedEffectParameterState()
+    var flangerParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Phaser state (all-pass)
-    let phaserStageCount = 2
+    let phaserStageCount = 4
     var phaserStates: [[AllPassState]] = []
     var phaserStatesByNode: [UUID: [[AllPassState]]] = [:]
     var phaserPhase: Double = 0
     var phaserPhaseByNode: [UUID: Double] = [:]
+    var phaserFeedbackSamples: [Float] = []
+    var phaserFeedbackSamplesByNode: [UUID: [Float]] = [:]
     var phaserSmoothedGain: Float = 0
     var phaserSmoothedGainByNode: [UUID: Float] = [:]
+    var phaserParameterState = ModulatedEffectParameterState()
+    var phaserParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Resampling state
     var resampleBuffer: [[Float]] = []
@@ -1057,6 +1259,10 @@ class AudioEngine: ObservableObject {
     // Tape Saturation state
     var tapeSaturationSmoothedGain: Float = 0
     var tapeSaturationSmoothedGainByNode: [UUID: Float] = [:]
+
+    // Signature effect combo blocks
+    var signatureEffectStatesByNode: [UUID: SignatureEffectDSPState] = [:]
+    var signatureEffectStatesByType: [EffectType: SignatureEffectDSPState] = [:]
 
     // Stereo Width state
     var stereoWidthSmoothedGain: Float = 0
@@ -1251,6 +1457,12 @@ class AudioEngine: ObservableObject {
             tenBandGains: tenBandGains,
             compressorEnabled: compressorEnabled,
             compressorStrength: compressorStrength,
+            compressorThresholdDB: compressorThresholdDB,
+            compressorRatio: compressorRatio,
+            compressorAttackMS: compressorAttackMS,
+            compressorReleaseMS: compressorReleaseMS,
+            compressorMakeupDB: compressorMakeupDB,
+            compressorMix: compressorMix,
             reverbEnabled: reverbEnabled,
             reverbMix: reverbMix,
             reverbSize: reverbSize,
@@ -1269,6 +1481,9 @@ class AudioEngine: ObservableObject {
             tremoloEnabled: tremoloEnabled,
             tremoloRate: tremoloRate,
             tremoloDepth: tremoloDepth,
+            autoPanEnabled: autoPanEnabled,
+            autoPanRate: autoPanRate,
+            autoPanDepth: autoPanDepth,
             chorusEnabled: chorusEnabled,
             chorusRate: chorusRate,
             chorusDepth: chorusDepth,

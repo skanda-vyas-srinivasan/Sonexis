@@ -35,6 +35,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["semitones": 0.0]
         case .simpleEQ:
             return ["bass": 0.0, "mids": 0.0, "treble": 0.0] // -12 to +12 dB
+        case .appleThreeBandEQ:
+            return ["bass": 0.0, "mids": 0.0, "treble": 0.0] // -12 to +12 dB
         case .tenBandEQ:
             return [
                 "31": 0.0, "62": 0.0, "125": 0.0, "250": 0.0, "500": 0.0,
@@ -50,6 +52,8 @@ struct EffectBlock: Identifiable, Codable {
             return ["drive": 50.0, "mix": 50.0] // 0-100 scale
         case .tremolo:
             return ["rate": 5.0, "depth": 50.0] // rate in Hz, depth 0-100
+        case .autoPan:
+            return ["rate": 0.35, "depth": 70.0]
         case .chorus:
             return ["rate": 0.8, "depth": 40.0, "mix": 35.0]
         case .phaser:
@@ -64,6 +68,14 @@ struct EffectBlock: Identifiable, Codable {
             return ["rate": 1.0]
         case .enhancer:
             return ["intensity": 50.0]
+        case .nightDrive:
+            return ["intensity": 78.0, "width": 62.0]
+        case .chromePunch:
+            return ["punch": 76.0, "body": 58.0]
+        case .midnightGlow:
+            return ["glow": 72.0, "warmth": 60.0]
+        case .afterglow:
+            return ["air": 78.0, "space": 58.0]
         case .plugin:
             return [:]
         }

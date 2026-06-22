@@ -68,6 +68,19 @@ extension AudioEngine {
         return sign * min(shaped, ceiling)
     }
 
+    private func clampedFloat(_ value: Double, min minValue: Float, max maxValue: Float) -> Float {
+        min(max(Float(value), minValue), maxValue)
+    }
+
+    private func smoothingCoefficient(sampleRate: Double, timeConstant: Double) -> Float {
+        guard sampleRate > 0, timeConstant > 0 else { return 1 }
+        return Float(1.0 - exp(-1.0 / (sampleRate * timeConstant)))
+    }
+
+    private func smoothParameter(_ value: inout Float, target: Float, coefficient: Float) {
+        value += (target - value) * coefficient
+    }
+
     func applySoftLimiter(_ buffer: [[Float]]) -> [[Float]] {
         let threshold: Float = 0.9
         var limited = buffer
@@ -87,19 +100,226 @@ extension AudioEngine {
         return limited
     }
 
+    private func signatureParameters(
+        for effect: EffectType,
+        params: NodeEffectParameters
+    ) -> (primary: Float, secondary: Float) {
+        switch effect {
+        case .nightDrive:
+            return (
+                clampedFloat(params.nightDriveIntensity, min: 0, max: 1),
+                clampedFloat(params.nightDriveWidth, min: 0, max: 1)
+            )
+        case .chromePunch:
+            return (
+                clampedFloat(params.chromePunchPunch, min: 0, max: 1),
+                clampedFloat(params.chromePunchBody, min: 0, max: 1)
+            )
+        case .midnightGlow:
+            return (
+                clampedFloat(params.midnightGlowGlow, min: 0, max: 1),
+                clampedFloat(params.midnightGlowWarmth, min: 0, max: 1)
+            )
+        case .afterglow:
+            return (
+                clampedFloat(params.afterglowAir, min: 0, max: 1),
+                clampedFloat(params.afterglowSpace, min: 0, max: 1)
+            )
+        default:
+            return (0, 0)
+        }
+    }
+
+    private func signatureCoefficients(
+        for effect: EffectType,
+        primary: Float,
+        secondary: Float,
+        sampleRate: Double
+    ) -> (low: BiquadCoefficients, mid: BiquadCoefficients, high: BiquadCoefficients) {
+        switch effect {
+        case .nightDrive:
+            return (
+                BiquadCoefficients.lowShelf(sampleRate: sampleRate, frequency: 88, gainDb: Double(primary * 9.0), q: 0.82),
+                BiquadCoefficients.peakingEQ(sampleRate: sampleRate, frequency: 520, gainDb: Double(-primary * 4.0), q: 0.95),
+                BiquadCoefficients.highShelf(sampleRate: sampleRate, frequency: 6200, gainDb: Double(-primary * 5.5), q: 0.70)
+            )
+        case .chromePunch:
+            return (
+                BiquadCoefficients.lowShelf(sampleRate: sampleRate, frequency: 115, gainDb: Double(secondary * 6.5), q: 0.92),
+                BiquadCoefficients.peakingEQ(sampleRate: sampleRate, frequency: 2600, gainDb: Double(primary * 6.0), q: 1.25),
+                BiquadCoefficients.highShelf(sampleRate: sampleRate, frequency: 7800, gainDb: Double(primary * 2.6), q: 0.72)
+            )
+        case .midnightGlow:
+            return (
+                BiquadCoefficients.lowShelf(sampleRate: sampleRate, frequency: 170, gainDb: Double(secondary * 5.5), q: 0.78),
+                BiquadCoefficients.peakingEQ(sampleRate: sampleRate, frequency: 720, gainDb: Double(secondary * 3.2), q: 0.85),
+                BiquadCoefficients.highShelf(sampleRate: sampleRate, frequency: 6400, gainDb: Double(-primary * 3.6), q: 0.72)
+            )
+        case .afterglow:
+            return (
+                BiquadCoefficients.lowShelf(sampleRate: sampleRate, frequency: 150, gainDb: Double(-secondary * 1.8), q: 0.74),
+                BiquadCoefficients.peakingEQ(sampleRate: sampleRate, frequency: 3200, gainDb: Double(primary * 3.2), q: 1.05),
+                BiquadCoefficients.highShelf(sampleRate: sampleRate, frequency: 7200, gainDb: Double(primary * 9.0), q: 0.66)
+            )
+        default:
+            return (
+                BiquadCoefficients.lowShelf(sampleRate: sampleRate, frequency: 100, gainDb: 0, q: 0.7),
+                BiquadCoefficients.peakingEQ(sampleRate: sampleRate, frequency: 1000, gainDb: 0, q: 1.0),
+                BiquadCoefficients.highShelf(sampleRate: sampleRate, frequency: 8000, gainDb: 0, q: 0.7)
+            )
+        }
+    }
+
+    private func applySignatureEffect(
+        _ effect: EffectType,
+        to processedAudio: inout [[Float]],
+        sampleRate: Double,
+        channelCount: Int,
+        frameLength: Int,
+        nodeId: UUID?,
+        levelSnapshot: inout [UUID: Float],
+        snapshot: ProcessingSnapshot
+    ) {
+        guard frameLength > 0, channelCount > 0 else { return }
+        let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
+        let isGlobalDisabled = nodeId == nil
+        guard let params = nodeParams(for: nodeId, snapshot: snapshot) else {
+            if let id = nodeId { levelSnapshot[id] = 0 }
+            return
+        }
+
+        let (primary, secondary) = signatureParameters(for: effect, params: params)
+        let targetGain: Float = (isNodeDisabled || isGlobalDisabled || (primary <= 0 && secondary <= 0)) ? 0 : 1
+        var state = nodeId.flatMap { signatureEffectStatesByNode[$0] }
+            ?? signatureEffectStatesByType[effect]
+            ?? SignatureEffectDSPState()
+
+        if state.smoothedGain < 0.001 && targetGain < 0.001 {
+            if let id = nodeId { levelSnapshot[id] = 0 }
+            return
+        }
+
+        state.configure(channelCount: channelCount)
+        if effect == .afterglow {
+            state.reverb.configure(sampleRate: sampleRate, channelCount: channelCount)
+        }
+
+        let coefficients = signatureCoefficients(
+            for: effect,
+            primary: primary,
+            secondary: secondary,
+            sampleRate: sampleRate
+        )
+        let gainSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.020)
+        let safeChannelCount = min(channelCount, processedAudio.count)
+        let attackCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.004)
+        let releaseCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.090)
+
+        for frame in 0..<frameLength {
+            smoothParameter(&state.smoothedGain, target: targetGain, coefficient: gainSmoothingCoeff)
+
+            var peak: Float = 0
+            for channel in 0..<safeChannelCount where frame < processedAudio[channel].count {
+                peak = max(peak, abs(processedAudio[channel][frame]))
+            }
+            let envelopeCoeff = peak > state.envelope ? attackCoeff : releaseCoeff
+            smoothParameter(&state.envelope, target: peak, coefficient: envelopeCoeff)
+            let transient = max(peak - state.envelope, 0)
+
+            for channel in 0..<safeChannelCount where frame < processedAudio[channel].count {
+                let dry = processedAudio[channel][frame]
+                let edge = abs(dry - state.previousSamples[channel])
+                state.previousSamples[channel] = dry
+                var wet = coefficients.low.process(x: dry, state: &state.lowStates[channel])
+                wet = coefficients.mid.process(x: wet, state: &state.midStates[channel])
+                wet = coefficients.high.process(x: wet, state: &state.highStates[channel])
+
+                switch effect {
+                case .nightDrive:
+                    let drive = 1.0 + primary * 3.0
+                    let norm = max(tanhf(drive), 0.0001)
+                    wet = tanhf(wet * drive) / norm
+                    wet *= 0.82 - primary * 0.08
+
+                case .chromePunch:
+                    let edgeAttack = min(edge * primary * 18.0, 0.9)
+                    let transientAttack = min(transient * primary * 6.0, 0.65)
+                    let hitGain = min(1.0 + edgeAttack + transientAttack, 2.1)
+                    let drive = 1.0 + primary * 1.7
+                    let norm = max(tanhf(drive), 0.0001)
+                    wet = tanhf(wet * hitGain * drive) / norm
+                    wet *= 0.86 - primary * 0.06
+
+                case .midnightGlow:
+                    let leveller = 1.12 + primary * 0.30 - min(state.envelope * primary * 0.42, 0.24)
+                    let drive = 1.0 + (primary + secondary) * 1.25
+                    let norm = max(tanhf(drive), 0.0001)
+                    wet = tanhf(wet * leveller * drive) / norm
+                    wet *= 0.86 - primary * 0.06
+
+                case .afterglow:
+                    let shimmerDrive = 1.0 + primary * 1.6
+                    let shimmerNorm = max(tanhf(shimmerDrive), 0.0001)
+                    wet = tanhf(wet * shimmerDrive) / shimmerNorm
+                    let tail = state.reverb.process(
+                        input: wet * (0.34 + secondary * 0.50),
+                        channel: channel,
+                        feedback: min(0.64 + secondary * 0.28, 0.90),
+                        damping: 0.18 + (1.0 - primary) * 0.10
+                    )
+                    wet += tail * (0.18 + secondary * 0.62)
+                    wet *= 0.84 - primary * 0.04
+                    wet = softConstrainedSample(wet, knee: 1.15, ceiling: 2.0)
+
+                default:
+                    break
+                }
+
+                let blended = dry * (1 - state.smoothedGain) + wet * state.smoothedGain
+                processedAudio[channel][frame] = softConstrainedSample(blended, knee: 1.25, ceiling: 2.2)
+            }
+
+            if effect == .nightDrive && safeChannelCount >= 2,
+               frame < processedAudio[0].count,
+               frame < processedAudio[1].count {
+                let width = secondary * state.smoothedGain * 0.85
+                let left = processedAudio[0][frame]
+                let right = processedAudio[1][frame]
+                let mid = (left + right) * 0.5
+                let side = (left - right) * 0.5 * (1.0 + width)
+                processedAudio[0][frame] = mid + side
+                processedAudio[1][frame] = mid - side
+            } else if effect == .afterglow && safeChannelCount >= 2,
+                      frame < processedAudio[0].count,
+                      frame < processedAudio[1].count {
+                let width = secondary * state.smoothedGain * 0.55
+                let left = processedAudio[0][frame]
+                let right = processedAudio[1][frame]
+                let mid = (left + right) * 0.5
+                let side = (left - right) * 0.5 * (1.0 + width)
+                processedAudio[0][frame] = mid + side
+                processedAudio[1][frame] = mid - side
+            }
+        }
+
+        if let id = nodeId {
+            signatureEffectStatesByNode[id] = state
+            levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+        } else {
+            signatureEffectStatesByType[effect] = state
+        }
+    }
+
     var defaultEffectOrder: [EffectType] {
         [
             .bassBoost,
             .clarity,
-            .deMud,
             .simpleEQ,
-            .tenBandEQ,
-            .compressor,
             .reverb,
             .delay,
             .amp,
-            .distortion,
             .tremolo,
+            .autoPan,
             .chorus,
             .phaser,
             .flanger,
@@ -194,6 +414,8 @@ extension AudioEngine {
             resetDeMudStateUnlocked(nodeId: nodeId)
         case .simpleEQ:
             resetEQStateUnlocked(nodeId: nodeId)
+        case .appleThreeBandEQ:
+            resetAppleThreeBandEQStateUnlocked(nodeId: nodeId)
         case .tenBandEQ:
             resetTenBandEQStateUnlocked(nodeId: nodeId)
         case .compressor:
@@ -204,6 +426,8 @@ extension AudioEngine {
             resetDelayStateUnlocked(nodeId: nodeId)
         case .tremolo:
             resetTremoloStateUnlocked(nodeId: nodeId)
+        case .autoPan:
+            resetAutoPanStateUnlocked(nodeId: nodeId)
         case .chorus:
             resetChorusStateUnlocked(nodeId: nodeId)
         case .phaser:
@@ -228,6 +452,8 @@ extension AudioEngine {
             resetNightcoreStateUnlocked(nodeId: nodeId)
         case .plugin:
             resetPluginStateUnlocked(nodeId: nodeId)
+        case .nightDrive, .chromePunch, .midnightGlow, .afterglow:
+            resetSignatureEffectStateUnlocked(effect: effect, nodeId: nodeId)
         }
     }
 
@@ -430,6 +656,18 @@ extension AudioEngine {
         }
 
         switch effect {
+        case .nightDrive, .chromePunch, .midnightGlow, .afterglow:
+            applySignatureEffect(
+                effect,
+                to: &processedAudio,
+                sampleRate: sampleRate,
+                channelCount: channelCount,
+                frameLength: frameLength,
+                nodeId: nodeId,
+                levelSnapshot: &levelSnapshot,
+                snapshot: snapshot
+            )
+
         case .bassBoost:
             // Determine if effect should be active
             let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
@@ -846,6 +1084,65 @@ extension AudioEngine {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
+        case .appleThreeBandEQ:
+            guard let nodeId else { return }
+            let isNodeDisabled = !nodeIsEnabled(nodeId, snapshot: snapshot)
+            let params = nodeParams(for: nodeId, snapshot: snapshot)
+            let bass = params?.eqBass ?? snapshot.eqBass
+            let mids = params?.eqMids ?? snapshot.eqMids
+            let treble = params?.eqTreble ?? snapshot.eqTreble
+            let hasEQ = bass != 0 || mids != 0 || treble != 0
+            let targetGain: Float = (isNodeDisabled || !hasEQ) ? 0 : 1
+            var smoothedGain = appleThreeBandEQSmoothedGainByNode[nodeId] ?? 0
+
+            if smoothedGain < 0.001 && targetGain < 0.001 {
+                levelSnapshot[nodeId] = 0
+                return
+            }
+
+            var dryScratch = ensureAppleThreeBandEQDryScratch(
+                nodeId: nodeId,
+                channelCount: channelCount,
+                frameLength: frameLength
+            )
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    dryScratch[channel][frame] = processedAudio[channel][frame]
+                }
+            }
+            appleThreeBandEQDryScratchByNode[nodeId] = dryScratch
+
+            let processor = appleThreeBandEQProcessor(for: nodeId)
+            let rendered = processor.process(
+                buffer: &processedAudio,
+                frameLength: frameLength,
+                sampleRate: sampleRate,
+                channelCount: channelCount,
+                bassGainDB: bass * 12.0,
+                midGainDB: mids * 12.0,
+                trebleGainDB: treble * 12.0
+            )
+
+            guard rendered else {
+                processedAudio = dryScratch
+                appleThreeBandEQSmoothedGainByNode[nodeId] = 0
+                levelSnapshot[nodeId] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+                return
+            }
+
+            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
+            for channel in 0..<channelCount {
+                for frame in 0..<frameLength {
+                    smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+                    let dry = dryScratch[channel][frame]
+                    let wet = processedAudio[channel][frame]
+                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
+                }
+            }
+
+            appleThreeBandEQSmoothedGainByNode[nodeId] = smoothedGain
+            levelSnapshot[nodeId] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+
         case .tenBandEQ:
             let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
             let isGlobalDisabled = nodeId == nil && !snapshot.tenBandEQEnabled
@@ -939,11 +1236,21 @@ extension AudioEngine {
         case .compressor:
             let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
             let isGlobalDisabled = nodeId == nil && !snapshot.compressorEnabled
-            let strength = nodeParams(for: nodeId, snapshot: snapshot)?.compressorStrength ?? snapshot.compressorStrength
+            let params = nodeParams(for: nodeId, snapshot: snapshot)
+            let thresholdDB = min(max(params?.compressorThresholdDB ?? snapshot.compressorThresholdDB, -60), 0)
+            let ratio = min(max(params?.compressorRatio ?? snapshot.compressorRatio, 1), 20)
+            let attackMS = min(max(params?.compressorAttackMS ?? snapshot.compressorAttackMS, 0.1), 200)
+            let releaseMS = min(max(params?.compressorReleaseMS ?? snapshot.compressorReleaseMS, 5), 2000)
+            let makeupDB = min(max(params?.compressorMakeupDB ?? snapshot.compressorMakeupDB, -24), 24)
+            let mix = min(max(params?.compressorMix ?? snapshot.compressorMix, 0), 1)
 
-            let targetGain: Float = (isNodeDisabled || isGlobalDisabled || strength <= 0) ? 0 : 1
+            let targetGain: Float = (isNodeDisabled || isGlobalDisabled || mix <= 0) ? 0 : 1
 
             var smoothedGain: Float = nodeId != nil ? (compressorSmoothedGainByNode[nodeId!] ?? 0) : compressorSmoothedGain
+            var detectorGain: Float = nodeId != nil ? (compressorEnvelopeByNode[nodeId!] ?? 1) : compressorEnvelope
+            if !detectorGain.isFinite || detectorGain <= 0 {
+                detectorGain = 1
+            }
 
             if smoothedGain < 0.001 && targetGain < 0.001 {
                 if let id = nodeId { levelSnapshot[id] = 0 }
@@ -951,30 +1258,47 @@ extension AudioEngine {
             }
 
             let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+            let attackCoeff = Float(1.0 - exp(-1.0 / max(sampleRate * attackMS * 0.001, 1.0)))
+            let releaseCoeff = Float(1.0 - exp(-1.0 / max(sampleRate * releaseMS * 0.001, 1.0)))
+            let makeupGain = Float(pow(10.0, makeupDB / 20.0))
+            let safeChannelCount = min(channelCount, processedAudio.count)
+
+            for frame in 0..<frameLength {
+                var sidechainPeak: Float = 0
+                for channel in 0..<safeChannelCount {
+                    guard frame < processedAudio[channel].count else { continue }
+                    sidechainPeak = max(sidechainPeak, abs(processedAudio[channel][frame]))
+                }
+
+                let inputDB = sidechainPeak > 0.000001 ? 20.0 * log10(Double(sidechainPeak)) : -120.0
+                var targetDetectorGain: Float = 1
+                if inputDB > thresholdDB && ratio > 1.0001 {
+                    let overDB = inputDB - thresholdDB
+                    let compressedOverDB = overDB / ratio
+                    let gainReductionDB = compressedOverDB - overDB
+                    targetDetectorGain = Float(pow(10.0, gainReductionDB / 20.0))
+                }
+
+                let detectorCoeff = targetDetectorGain < detectorGain ? attackCoeff : releaseCoeff
+                detectorGain += (targetDetectorGain - detectorGain) * detectorCoeff
+                smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+
+                let wetBlend = smoothedGain * Float(mix)
+                let wetScalar = detectorGain * makeupGain
+                for channel in 0..<safeChannelCount {
+                    guard frame < processedAudio[channel].count else { continue }
                     let dry = processedAudio[channel][frame]
-                    let threshold: Float = 0.5
-                    let ratio: Float = 1.0 + Float(strength) * 3.0
-                    let absInput = abs(dry)
-
-                    let wet: Float
-                    if absInput > threshold {
-                        let excess = absInput - threshold
-                        let compressed = threshold + excess / ratio
-                        wet = (dry > 0 ? compressed : -compressed) * (1.0 + Float(strength) * 0.3)
-                    } else {
-                        wet = dry * (1.0 + Float(strength) * 0.3)
-                    }
-
-                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
+                    let wet = dry * wetScalar
+                    processedAudio[channel][frame] = dry + (wet - dry) * wetBlend
                 }
             }
+
             if let id = nodeId {
+                compressorEnvelopeByNode[id] = detectorGain
                 compressorSmoothedGainByNode[id] = smoothedGain
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             } else {
+                compressorEnvelope = detectorGain
                 compressorSmoothedGain = smoothedGain
             }
 
@@ -994,36 +1318,34 @@ extension AudioEngine {
             }
 
             let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
-            let delayTime = 0.03 * sizeValue
-            let delayFrames = max(Int(sampleRate * delayTime), 1)
             let targetId = nodeId
-            var buffer = targetId.flatMap { reverbBuffersByNode[$0] } ?? reverbBuffer
-            var writeIndex = targetId.flatMap { reverbWriteIndexByNode[$0] } ?? reverbWriteIndex
-
-            if buffer.count != channelCount || buffer.first?.count != delayFrames {
-                buffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
-                writeIndex = 0
-            }
+            var tank = targetId.flatMap { reverbStatesByNode[$0] } ?? reverbState
+            tank.configure(sampleRate: sampleRate, channelCount: channelCount)
+            let size = Float(min(max(sizeValue, 0), 1))
+            let mix = Float(min(max(mixValue, 0), 1))
+            let feedback = min(Float(0.62) + size * 0.30, 0.92)
+            let damping = Float(0.18) + size * 0.18
+            let inputSend = Float(0.45) + size * 0.20
 
             for frame in 0..<frameLength {
                 smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                 for channel in 0..<channelCount {
                     let dry = processedAudio[channel][frame]
-                    let reverbWet = buffer[channel][writeIndex]
-                    let mix = Float(mixValue)
-                    let wet = dry * (1.0 - mix) + reverbWet * mix
-                    buffer[channel][writeIndex] = dry + reverbWet * 0.5
-                    processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
+                    let wet = tank.process(
+                        input: dry * inputSend,
+                        channel: channel,
+                        feedback: feedback,
+                        damping: damping
+                    )
+                    let wetMix = smoothedGain * mix
+                    processedAudio[channel][frame] = dry * (1 - wetMix) + wet * wetMix
                 }
-                writeIndex = (writeIndex + 1) % delayFrames
             }
             if let id = targetId {
-                reverbBuffersByNode[id] = buffer
-                reverbWriteIndexByNode[id] = writeIndex
+                reverbStatesByNode[id] = tank
                 reverbSmoothedGainByNode[id] = smoothedGain
             } else {
-                reverbBuffer = buffer
-                reverbWriteIndex = writeIndex
+                reverbState = tank
                 reverbSmoothedGain = smoothedGain
             }
             if let id = nodeId {
@@ -1046,37 +1368,61 @@ extension AudioEngine {
                 return
             }
 
-            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
-            let delayFrames = max(Int(sampleRate * timeValue), 1)
+            let gainSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.015)
+            let parameterSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.045)
+            let bufferLength = max(Int(sampleRate * 2.05), 2)
+            let targetDelaySamples = clampedFloat(timeValue, min: 0.01, max: 2.0) * Float(sampleRate)
+            let targetMix = clampedFloat(mixValue, min: 0, max: 1)
+            let targetFeedback = clampedFloat(feedbackValue, min: 0, max: 0.95)
             let targetId = nodeId
             var buffer = targetId.flatMap { delayBuffersByNode[$0] } ?? delayBuffer
             var writeIndex = targetId.flatMap { delayWriteIndexByNode[$0] } ?? delayWriteIndex
-            if buffer.count != channelCount || buffer.first?.count != delayFrames {
-                buffer = [[Float]](repeating: [Float](repeating: 0, count: delayFrames), count: channelCount)
-                writeIndex = 0
+            var parameterState = targetId.flatMap { delayParameterStateByNode[$0] } ?? delayParameterState
+            if buffer.count != channelCount || buffer.first?.count != bufferLength {
+                buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferLength), count: channelCount)
+                writeIndex = min(writeIndex, bufferLength - 1)
+            }
+            if !parameterState.initialized {
+                parameterState.initialized = true
+                parameterState.delaySamples = targetDelaySamples
+                parameterState.mix = targetMix
+                parameterState.feedback = targetFeedback
             }
 
             for frame in 0..<frameLength {
-                smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+                smoothParameter(&smoothedGain, target: targetGain, coefficient: gainSmoothingCoeff)
+                smoothParameter(&parameterState.delaySamples, target: targetDelaySamples, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.mix, target: targetMix, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.feedback, target: targetFeedback, coefficient: parameterSmoothingCoeff)
                 for channel in 0..<channelCount {
                     let dry = processedAudio[channel][frame]
-                    let delayWet = buffer[channel][writeIndex]
-                    let mix = Float(mixValue)
+                    let delayWet = readDelaySample(
+                        buffer: buffer,
+                        writeIndex: writeIndex,
+                        delaySamples: Double(parameterState.delaySamples),
+                        channel: channel
+                    )
+                    let mix = parameterState.mix
                     let wet = dry * (1.0 - mix) + delayWet * mix
-                    let feedback = Float(feedbackValue)
-                    buffer[channel][writeIndex] = dry + delayWet * feedback
+                    buffer[channel][writeIndex] = softConstrainedSample(
+                        dry + delayWet * parameterState.feedback,
+                        knee: 1.2,
+                        ceiling: 2.0
+                    )
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
-                writeIndex = (writeIndex + 1) % delayFrames
+                writeIndex = (writeIndex + 1) % bufferLength
             }
             if let id = targetId {
                 delayBuffersByNode[id] = buffer
                 delayWriteIndexByNode[id] = writeIndex
                 delaySmoothedGainByNode[id] = smoothedGain
+                delayParameterStateByNode[id] = parameterState
             } else {
                 delayBuffer = buffer
                 delayWriteIndex = writeIndex
                 delaySmoothedGain = smoothedGain
+                delayParameterState = parameterState
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -1106,8 +1452,14 @@ extension AudioEngine {
             let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
             let inputGain = Float(pow(10.0, inputGainDb / 20.0))
             let outputGain = Float(pow(10.0, outputGainDb / 20.0))
-            let drive = Float(1.0 + normalizedDrive * 11.0)
-            let driveNorm = max(tanhf(drive), 0.0001)
+            let driveAmount = Float(normalizedDrive)
+            let preDrive = Float(1.0 + normalizedDrive * 22.0)
+            let asymmetry = driveAmount * 0.12
+            let centerOffset = tanhf(asymmetry * preDrive)
+            let positiveNorm = max(tanhf((1.0 + asymmetry) * preDrive) - centerOffset, 0.0001)
+            let clipPoint = max(Float(0.32), Float(0.95) - driveAmount * 0.55)
+            let hardClipBlend = max(0, (driveAmount - 0.35) / 0.65) * 0.45
+            let driveCompensation = Float(1.0 / (1.0 + Double(driveAmount) * 0.5))
             let mix = Float(min(max(mixValue, 0), 1))
 
             for channel in 0..<channelCount {
@@ -1115,7 +1467,16 @@ extension AudioEngine {
                     smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
                     let dry = processedAudio[channel][frame]
                     let preamped = dry * inputGain
-                    let driven = normalizedDrive > 0.001 ? tanhf(preamped * drive) / driveNorm : preamped
+                    let driven: Float
+                    if driveAmount > 0.001 {
+                        let biased = preamped + asymmetry
+                        let softClipped = (tanhf(biased * preDrive) - centerOffset) / positiveNorm
+                        let hardClipped = min(max(softClipped, -clipPoint), clipPoint) / clipPoint
+                        let gritty = softClipped * (1.0 - hardClipBlend) + hardClipped * hardClipBlend
+                        driven = gritty * driveCompensation
+                    } else {
+                        driven = preamped
+                    }
                     let wet = (preamped * (1.0 - mix) + driven * mix) * outputGain
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
@@ -1206,6 +1567,70 @@ extension AudioEngine {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
             }
 
+        case .autoPan:
+            let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
+            let isGlobalDisabled = nodeId == nil && !snapshot.autoPanEnabled
+            let rateValue = nodeParams(for: nodeId, snapshot: snapshot)?.autoPanRate ?? snapshot.autoPanRate
+            let depthValue = nodeParams(for: nodeId, snapshot: snapshot)?.autoPanDepth ?? snapshot.autoPanDepth
+
+            let targetGain: Float = (isNodeDisabled || isGlobalDisabled || depthValue <= 0 || channelCount < 2) ? 0 : 1
+
+            var smoothedGain: Float = nodeId != nil ? (autoPanSmoothedGainByNode[nodeId!] ?? 0) : autoPanSmoothedGain
+
+            if smoothedGain < 0.001 && targetGain < 0.001 {
+                if let id = nodeId { levelSnapshot[id] = 0 }
+                return
+            }
+
+            let gainSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.015)
+            let parameterSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.030)
+            let targetRate = clampedFloat(rateValue, min: 0, max: 20)
+            let targetDepth = clampedFloat(depthValue, min: 0, max: 1)
+            var phase = nodeId.flatMap { autoPanPhaseByNode[$0] } ?? autoPanPhase
+            var parameterState = nodeId.flatMap { autoPanParameterStateByNode[$0] } ?? autoPanParameterState
+            if !parameterState.initialized {
+                parameterState.initialized = true
+                parameterState.rate = targetRate
+                parameterState.depth = targetDepth
+            }
+            let safeChannelCount = min(channelCount, processedAudio.count)
+
+            for frame in 0..<frameLength {
+                smoothParameter(&smoothedGain, target: targetGain, coefficient: gainSmoothingCoeff)
+                smoothParameter(&parameterState.rate, target: targetRate, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.depth, target: targetDepth, coefficient: parameterSmoothingCoeff)
+                let pan = sin(Float(phase)) * parameterState.depth
+                let angle = (pan + 1.0) * (Float.pi / 4.0)
+                let equalPowerCompensation = sqrtf(2.0)
+                let leftPanGain = cosf(angle) * equalPowerCompensation
+                let rightPanGain = sinf(angle) * equalPowerCompensation
+
+                if safeChannelCount >= 2,
+                   frame < processedAudio[0].count,
+                   frame < processedAudio[1].count {
+                    let dryLeft = processedAudio[0][frame]
+                    let dryRight = processedAudio[1][frame]
+                    let wetLeft = dryLeft * leftPanGain
+                    let wetRight = dryRight * rightPanGain
+                    processedAudio[0][frame] = dryLeft * (1 - smoothedGain) + wetLeft * smoothedGain
+                    processedAudio[1][frame] = dryRight * (1 - smoothedGain) + wetRight * smoothedGain
+                }
+
+                phase += Double(parameterState.rate) * 2.0 * .pi / sampleRate
+                if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
+            }
+
+            if let id = nodeId {
+                autoPanPhaseByNode[id] = phase
+                autoPanSmoothedGainByNode[id] = smoothedGain
+                autoPanParameterStateByNode[id] = parameterState
+                levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
+            } else {
+                autoPanPhase = phase
+                autoPanSmoothedGain = smoothedGain
+                autoPanParameterState = parameterState
+            }
+
         case .chorus:
             let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
             let isGlobalDisabled = nodeId == nil && !snapshot.chorusEnabled
@@ -1222,33 +1647,48 @@ extension AudioEngine {
                 return
             }
 
-            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
-            let baseDelay = 0.02
-            let depthDelay = 0.01 * depthValue
-            let bufferLength = Int(sampleRate * 0.05)
+            let gainSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.015)
+            let parameterSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.035)
+            let targetRate = clampedFloat(rateValue, min: 0.05, max: 8)
+            let targetDepth = clampedFloat(depthValue, min: 0, max: 1)
+            let targetMix = clampedFloat(mixValue, min: 0, max: 1)
+            let baseDelay: Float = 0.018
+            let maxDepthDelay: Float = 0.012
+            let bufferLength = max(Int(sampleRate * 0.06), 2)
             let targetId = nodeId
             var buffer = targetId.flatMap { chorusBuffersByNode[$0] } ?? chorusBuffer
             var writeIndex = targetId.flatMap { chorusWriteIndexByNode[$0] } ?? chorusWriteIndex
             var phase = targetId.flatMap { chorusPhaseByNode[$0] } ?? chorusPhase
+            var parameterState = targetId.flatMap { chorusParameterStateByNode[$0] } ?? chorusParameterState
             if buffer.count != channelCount || buffer.first?.count != bufferLength {
                 buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferLength), count: channelCount)
-                writeIndex = 0
+                writeIndex = min(writeIndex, bufferLength - 1)
+            }
+            if !parameterState.initialized {
+                parameterState.initialized = true
+                parameterState.rate = targetRate
+                parameterState.depth = targetDepth
+                parameterState.mix = targetMix
             }
 
             for frame in 0..<frameLength {
-                smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
-                let lfo = (sin(phase) + 1) * 0.5
-                let delaySamples = (baseDelay + depthDelay * lfo) * sampleRate
+                smoothParameter(&smoothedGain, target: targetGain, coefficient: gainSmoothingCoeff)
+                smoothParameter(&parameterState.rate, target: targetRate, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.depth, target: targetDepth, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.mix, target: targetMix, coefficient: parameterSmoothingCoeff)
                 for channel in 0..<channelCount {
+                    let channelOffset = channel % 2 == 0 ? 0.0 : Double.pi * 0.5
+                    let lfo = Float((sin(phase + channelOffset) + 1) * 0.5)
+                    let delaySamples = (baseDelay + maxDepthDelay * parameterState.depth * lfo) * Float(sampleRate)
                     let dry = processedAudio[channel][frame]
-                    let chorusWet = readDelaySample(buffer: buffer, writeIndex: writeIndex, delaySamples: delaySamples, channel: channel)
-                    let mix = Float(mixValue)
+                    let chorusWet = readDelaySample(buffer: buffer, writeIndex: writeIndex, delaySamples: Double(delaySamples), channel: channel)
+                    let mix = parameterState.mix
                     let wet = dry * (1 - mix) + chorusWet * mix
                     buffer[channel][writeIndex] = dry
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
                 writeIndex = (writeIndex + 1) % bufferLength
-                phase += rateValue * 2.0 * .pi / sampleRate
+                phase += Double(parameterState.rate) * 2.0 * .pi / sampleRate
                 if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
             }
 
@@ -1257,11 +1697,13 @@ extension AudioEngine {
                 chorusWriteIndexByNode[id] = writeIndex
                 chorusPhaseByNode[id] = phase
                 chorusSmoothedGainByNode[id] = smoothedGain
+                chorusParameterStateByNode[id] = parameterState
             } else {
                 chorusBuffer = buffer
                 chorusWriteIndex = writeIndex
                 chorusPhase = phase
                 chorusSmoothedGain = smoothedGain
+                chorusParameterState = parameterState
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -1282,47 +1724,68 @@ extension AudioEngine {
                 return
             }
 
-            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
+            let gainSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.015)
+            let parameterSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.035)
+            let targetRate = clampedFloat(rateValue, min: 0.05, max: 8)
+            let targetDepth = clampedFloat(depthValue, min: 0, max: 1)
             var phase = nodeId.flatMap { phaserPhaseByNode[$0] } ?? phaserPhase
             let targetId = nodeId
             var states = targetId.flatMap { phaserStatesByNode[$0] } ?? phaserStates
+            var feedbackSamples = targetId.flatMap { phaserFeedbackSamplesByNode[$0] } ?? phaserFeedbackSamples
+            var parameterState = targetId.flatMap { phaserParameterStateByNode[$0] } ?? phaserParameterState
             if states.count != channelCount || states.first?.count != phaserStageCount {
                 states = Array(
                     repeating: Array(repeating: AllPassState(), count: phaserStageCount),
                     count: channelCount
                 )
             }
+            if feedbackSamples.count != channelCount {
+                feedbackSamples = [Float](repeating: 0, count: channelCount)
+            }
+            if !parameterState.initialized {
+                parameterState.initialized = true
+                parameterState.rate = targetRate
+                parameterState.depth = targetDepth
+            }
 
             for frame in 0..<frameLength {
-                smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
+                smoothParameter(&smoothedGain, target: targetGain, coefficient: gainSmoothingCoeff)
+                smoothParameter(&parameterState.rate, target: targetRate, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.depth, target: targetDepth, coefficient: parameterSmoothingCoeff)
                 let lfo = (sin(phase) + 1) * 0.5
-                let freq = 200 + lfo * (800 * depthValue)
+                let sweep = 0.10 + pow(lfo, 1.25) * Double(max(parameterState.depth, 0.001)) * 0.90
+                let freq = 180.0 * pow(2600.0 / 180.0, sweep)
                 let g = tan(Double.pi * freq / sampleRate)
                 let a = Float((1 - g) / (1 + g))
                 for channel in 0..<channelCount {
                     let dry = processedAudio[channel][frame]
-                    var sample = dry
+                    var sample = dry + feedbackSamples[channel] * 0.35
                     for stage in 0..<phaserStageCount {
                         var state = states[channel][stage]
                         sample = allPassProcess(x: sample, coefficient: a, state: &state)
                         states[channel][stage] = state
                     }
-                    let mix = Float(depthValue)
+                    feedbackSamples[channel] = softConstrainedSample(sample, knee: 1.2, ceiling: 2.0)
+                    let mix = min(0.85, 0.25 + parameterState.depth * 0.60)
                     let wet = dry * (1 - mix) + sample * mix
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
-                phase += rateValue * 2.0 * .pi / sampleRate
+                phase += Double(parameterState.rate) * 2.0 * .pi / sampleRate
                 if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
             }
 
             if let id = targetId {
                 phaserStatesByNode[id] = states
                 phaserPhaseByNode[id] = phase
+                phaserFeedbackSamplesByNode[id] = feedbackSamples
                 phaserSmoothedGainByNode[id] = smoothedGain
+                phaserParameterStateByNode[id] = parameterState
             } else {
                 phaserStates = states
                 phaserPhase = phase
+                phaserFeedbackSamples = feedbackSamples
                 phaserSmoothedGain = smoothedGain
+                phaserParameterState = parameterState
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -1345,33 +1808,55 @@ extension AudioEngine {
                 return
             }
 
-            let smoothingCoeff = Float(1.0 - exp(-1.0 / (sampleRate * 0.015)))
-            let baseDelay = 0.003
-            let depthDelay = 0.002 * depthValue
-            let bufferLength = Int(sampleRate * 0.01)
+            let gainSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.015)
+            let parameterSmoothingCoeff = smoothingCoefficient(sampleRate: sampleRate, timeConstant: 0.035)
+            let targetRate = clampedFloat(rateValue, min: 0.05, max: 8)
+            let targetDepth = clampedFloat(depthValue, min: 0, max: 1)
+            let targetFeedback = clampedFloat(feedbackValue, min: 0, max: 0.9)
+            let targetMix = clampedFloat(mixValue, min: 0, max: 1)
+            let baseDelay: Float = 0.0015
+            let maxDepthDelay: Float = 0.0045
+            let bufferLength = max(Int(sampleRate * 0.02), 2)
             let targetId = nodeId
             var buffer = targetId.flatMap { flangerBuffersByNode[$0] } ?? flangerBuffer
             var writeIndex = targetId.flatMap { flangerWriteIndexByNode[$0] } ?? flangerWriteIndex
             var phase = targetId.flatMap { flangerPhaseByNode[$0] } ?? flangerPhase
+            var parameterState = targetId.flatMap { flangerParameterStateByNode[$0] } ?? flangerParameterState
             if buffer.count != channelCount || buffer.first?.count != bufferLength {
                 buffer = [[Float]](repeating: [Float](repeating: 0, count: bufferLength), count: channelCount)
-                writeIndex = 0
+                writeIndex = min(writeIndex, bufferLength - 1)
+            }
+            if !parameterState.initialized {
+                parameterState.initialized = true
+                parameterState.rate = targetRate
+                parameterState.depth = targetDepth
+                parameterState.feedback = targetFeedback
+                parameterState.mix = targetMix
             }
 
             for frame in 0..<frameLength {
-                smoothedGain += (targetGain - smoothedGain) * smoothingCoeff
-                let lfo = (sin(phase) + 1) * 0.5
-                let delaySamples = (baseDelay + depthDelay * lfo) * sampleRate
+                smoothParameter(&smoothedGain, target: targetGain, coefficient: gainSmoothingCoeff)
+                smoothParameter(&parameterState.rate, target: targetRate, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.depth, target: targetDepth, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.feedback, target: targetFeedback, coefficient: parameterSmoothingCoeff)
+                smoothParameter(&parameterState.mix, target: targetMix, coefficient: parameterSmoothingCoeff)
                 for channel in 0..<channelCount {
+                    let channelOffset = channel % 2 == 0 ? 0.0 : Double.pi
+                    let lfo = Float((sin(phase + channelOffset) + 1) * 0.5)
+                    let delaySamples = (baseDelay + maxDepthDelay * parameterState.depth * lfo) * Float(sampleRate)
                     let dry = processedAudio[channel][frame]
-                    let flangerWet = readDelaySample(buffer: buffer, writeIndex: writeIndex, delaySamples: delaySamples, channel: channel)
-                    let mix = Float(mixValue)
+                    let flangerWet = readDelaySample(buffer: buffer, writeIndex: writeIndex, delaySamples: Double(delaySamples), channel: channel)
+                    let mix = parameterState.mix
                     let wet = dry * (1 - mix) + flangerWet * mix
-                    buffer[channel][writeIndex] = dry + flangerWet * Float(feedbackValue)
+                    buffer[channel][writeIndex] = softConstrainedSample(
+                        dry + flangerWet * parameterState.feedback,
+                        knee: 1.2,
+                        ceiling: 2.0
+                    )
                     processedAudio[channel][frame] = dry * (1 - smoothedGain) + wet * smoothedGain
                 }
                 writeIndex = (writeIndex + 1) % bufferLength
-                phase += rateValue * 2.0 * .pi / sampleRate
+                phase += Double(parameterState.rate) * 2.0 * .pi / sampleRate
                 if phase >= 2.0 * .pi { phase -= 2.0 * .pi }
             }
 
@@ -1380,11 +1865,13 @@ extension AudioEngine {
                 flangerWriteIndexByNode[id] = writeIndex
                 flangerPhaseByNode[id] = phase
                 flangerSmoothedGainByNode[id] = smoothedGain
+                flangerParameterStateByNode[id] = parameterState
             } else {
                 flangerBuffer = buffer
                 flangerWriteIndex = writeIndex
                 flangerPhase = phase
                 flangerSmoothedGain = smoothedGain
+                flangerParameterState = parameterState
             }
             if let id = nodeId {
                 levelSnapshot[id] = computeRMS(processedAudio, frameLength: frameLength, channelCount: channelCount)
@@ -1832,6 +2319,32 @@ extension AudioEngine {
         return scratch
     }
 
+    private func appleThreeBandEQProcessor(for nodeId: UUID) -> AppleThreeBandEQProcessor {
+        if let processor = appleThreeBandEQProcessorsByNode[nodeId] {
+            return processor
+        }
+        let processor = AppleThreeBandEQProcessor()
+        appleThreeBandEQProcessorsByNode[nodeId] = processor
+        return processor
+    }
+
+    private func ensureAppleThreeBandEQDryScratch(nodeId: UUID, channelCount: Int, frameLength: Int) -> [[Float]] {
+        var scratch = appleThreeBandEQDryScratchByNode[nodeId] ?? []
+        if scratch.count != channelCount {
+            scratch = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
+            appleThreeBandEQDryScratchByNode[nodeId] = scratch
+            return scratch
+        }
+        let currentLength = scratch.first?.count ?? 0
+        guard currentLength < frameLength else { return scratch }
+        let extra = frameLength - currentLength
+        for index in 0..<channelCount {
+            scratch[index].append(contentsOf: repeatElement(0, count: extra))
+        }
+        appleThreeBandEQDryScratchByNode[nodeId] = scratch
+        return scratch
+    }
+
     func initializeEffectStates(channelCount: Int) {
         if bassBoostState.count != channelCount {
             bassBoostState = [BiquadState](repeating: BiquadState(), count: channelCount)
@@ -1856,14 +2369,14 @@ extension AudioEngine {
                 [BiquadState](repeating: BiquadState(), count: channelCount)
             }
         }
-        if compressorEnvelope.count != channelCount {
-            compressorEnvelope = [Float](repeating: 0, count: channelCount)
-        }
         if phaserStates.count != channelCount {
             phaserStates = Array(
                 repeating: Array(repeating: AllPassState(), count: phaserStageCount),
                 count: channelCount
             )
+        }
+        if phaserFeedbackSamples.count != channelCount {
+            phaserFeedbackSamples = [Float](repeating: 0, count: channelCount)
         }
         if bitcrusherHoldCounters.count != channelCount {
             bitcrusherHoldCounters = [Int](repeating: 0, count: channelCount)
@@ -2042,6 +2555,8 @@ extension AudioEngine {
         chorusBuffersByNode.removeAll()
         chorusWriteIndexByNode.removeAll()
         chorusPhaseByNode.removeAll()
+        chorusParameterState = ModulatedEffectParameterState()
+        chorusParameterStateByNode.removeAll()
     }
 
     func resetFlangerStateUnlocked() {
@@ -2051,6 +2566,8 @@ extension AudioEngine {
         flangerBuffersByNode.removeAll()
         flangerWriteIndexByNode.removeAll()
         flangerPhaseByNode.removeAll()
+        flangerParameterState = ModulatedEffectParameterState()
+        flangerParameterStateByNode.removeAll()
     }
 
     func resetPhaserStateUnlocked() {
@@ -2059,8 +2576,12 @@ extension AudioEngine {
             count: phaserStates.count
         )
         phaserPhase = 0
+        phaserFeedbackSamples = [Float](repeating: 0, count: phaserFeedbackSamples.count)
         phaserStatesByNode.removeAll()
         phaserPhaseByNode.removeAll()
+        phaserFeedbackSamplesByNode.removeAll()
+        phaserParameterState = ModulatedEffectParameterState()
+        phaserParameterStateByNode.removeAll()
     }
 
     func resetBitcrusherStateUnlocked() {
@@ -2178,6 +2699,20 @@ extension AudioEngine {
         simpleEQSmoothedGainByNode.removeValue(forKey: nodeId)
     }
 
+    func resetAppleThreeBandEQStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            appleThreeBandEQProcessorsByNode.values.forEach { $0.reset() }
+            appleThreeBandEQProcessorsByNode.removeAll()
+            appleThreeBandEQDryScratchByNode.removeAll()
+            appleThreeBandEQSmoothedGainByNode.removeAll()
+            return
+        }
+        appleThreeBandEQProcessorsByNode[nodeId]?.reset()
+        appleThreeBandEQProcessorsByNode.removeValue(forKey: nodeId)
+        appleThreeBandEQDryScratchByNode.removeValue(forKey: nodeId)
+        appleThreeBandEQSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
     func resetTenBandEQStateUnlocked(nodeId: UUID?) {
         guard let nodeId else {
             resetTenBandEQStateUnlocked()
@@ -2196,10 +2731,9 @@ extension AudioEngine {
     func resetCompressorStateUnlocked(nodeId: UUID?) {
         guard let nodeId else {
             resetCompressorStateUnlocked()
-            compressorSmoothedGain = 0
-            compressorSmoothedGainByNode.removeAll()
             return
         }
+        compressorEnvelopeByNode.removeValue(forKey: nodeId)
         compressorSmoothedGainByNode.removeValue(forKey: nodeId)
     }
 
@@ -2207,13 +2741,11 @@ extension AudioEngine {
         guard let nodeId else {
             resetReverbStateUnlocked()
             reverbSmoothedGain = 0
-            reverbBuffersByNode.removeAll()
-            reverbWriteIndexByNode.removeAll()
+            reverbStatesByNode.removeAll()
             reverbSmoothedGainByNode.removeAll()
             return
         }
-        reverbBuffersByNode.removeValue(forKey: nodeId)
-        reverbWriteIndexByNode.removeValue(forKey: nodeId)
+        reverbStatesByNode.removeValue(forKey: nodeId)
         reverbSmoothedGainByNode.removeValue(forKey: nodeId)
     }
 
@@ -2224,11 +2756,14 @@ extension AudioEngine {
             delayBuffersByNode.removeAll()
             delayWriteIndexByNode.removeAll()
             delaySmoothedGainByNode.removeAll()
+            delayParameterState = ModulatedEffectParameterState()
+            delayParameterStateByNode.removeAll()
             return
         }
         delayBuffersByNode.removeValue(forKey: nodeId)
         delayWriteIndexByNode.removeValue(forKey: nodeId)
         delaySmoothedGainByNode.removeValue(forKey: nodeId)
+        delayParameterStateByNode.removeValue(forKey: nodeId)
     }
 
     func resetTremoloStateUnlocked(nodeId: UUID?) {
@@ -2243,17 +2778,35 @@ extension AudioEngine {
         tremoloSmoothedGainByNode.removeValue(forKey: nodeId)
     }
 
+    func resetAutoPanStateUnlocked(nodeId: UUID?) {
+        guard let nodeId else {
+            autoPanPhase = 0
+            autoPanSmoothedGain = 0
+            autoPanPhaseByNode.removeAll()
+            autoPanSmoothedGainByNode.removeAll()
+            autoPanParameterState = ModulatedEffectParameterState()
+            autoPanParameterStateByNode.removeAll()
+            return
+        }
+        autoPanPhaseByNode.removeValue(forKey: nodeId)
+        autoPanSmoothedGainByNode.removeValue(forKey: nodeId)
+        autoPanParameterStateByNode.removeValue(forKey: nodeId)
+    }
+
     func resetChorusStateUnlocked(nodeId: UUID?) {
         guard let nodeId else {
             resetChorusStateUnlocked()
             chorusSmoothedGain = 0
             chorusSmoothedGainByNode.removeAll()
+            chorusParameterState = ModulatedEffectParameterState()
+            chorusParameterStateByNode.removeAll()
             return
         }
         chorusBuffersByNode.removeValue(forKey: nodeId)
         chorusWriteIndexByNode.removeValue(forKey: nodeId)
         chorusPhaseByNode.removeValue(forKey: nodeId)
         chorusSmoothedGainByNode.removeValue(forKey: nodeId)
+        chorusParameterStateByNode.removeValue(forKey: nodeId)
     }
 
     func resetFlangerStateUnlocked(nodeId: UUID?) {
@@ -2261,12 +2814,15 @@ extension AudioEngine {
             resetFlangerStateUnlocked()
             flangerSmoothedGain = 0
             flangerSmoothedGainByNode.removeAll()
+            flangerParameterState = ModulatedEffectParameterState()
+            flangerParameterStateByNode.removeAll()
             return
         }
         flangerBuffersByNode.removeValue(forKey: nodeId)
         flangerWriteIndexByNode.removeValue(forKey: nodeId)
         flangerPhaseByNode.removeValue(forKey: nodeId)
         flangerSmoothedGainByNode.removeValue(forKey: nodeId)
+        flangerParameterStateByNode.removeValue(forKey: nodeId)
     }
 
     func resetPhaserStateUnlocked(nodeId: UUID?) {
@@ -2274,11 +2830,16 @@ extension AudioEngine {
             resetPhaserStateUnlocked()
             phaserSmoothedGain = 0
             phaserSmoothedGainByNode.removeAll()
+            phaserFeedbackSamplesByNode.removeAll()
+            phaserParameterState = ModulatedEffectParameterState()
+            phaserParameterStateByNode.removeAll()
             return
         }
         phaserStatesByNode.removeValue(forKey: nodeId)
         phaserPhaseByNode.removeValue(forKey: nodeId)
+        phaserFeedbackSamplesByNode.removeValue(forKey: nodeId)
         phaserSmoothedGainByNode.removeValue(forKey: nodeId)
+        phaserParameterStateByNode.removeValue(forKey: nodeId)
     }
 
     func resetBitcrusherStateUnlocked(nodeId: UUID?) {
@@ -2291,6 +2852,19 @@ extension AudioEngine {
         bitcrusherHoldCountersByNode.removeValue(forKey: nodeId)
         bitcrusherHoldValuesByNode.removeValue(forKey: nodeId)
         bitcrusherSmoothedGainByNode.removeValue(forKey: nodeId)
+    }
+
+    func resetSignatureEffectStateUnlocked(effect: EffectType? = nil, nodeId: UUID?) {
+        guard let nodeId else {
+            signatureEffectStatesByNode.removeAll()
+            if let effect {
+                signatureEffectStatesByType.removeValue(forKey: effect)
+            } else {
+                signatureEffectStatesByType.removeAll()
+            }
+            return
+        }
+        signatureEffectStatesByNode.removeValue(forKey: nodeId)
     }
 
     func resetResampleStateUnlocked(nodeId: UUID?) {
@@ -2411,14 +2985,18 @@ extension AudioEngine {
         resetClarityStateUnlocked()
         resetDeMudStateUnlocked()
         resetEQStateUnlocked()
+        resetAppleThreeBandEQStateUnlocked(nodeId: nil)
         resetTenBandEQStateUnlocked()
         resetCompressorStateUnlocked()
         tremoloPhase = 0
+        resetAutoPanStateUnlocked(nodeId: nil)
         resetReverbStateUnlocked()
         resetDelayStateUnlocked()
         resetChorusStateUnlocked()
         resetFlangerStateUnlocked()
         phaserPhase = 0
+        phaserFeedbackSamples = [Float](repeating: 0, count: phaserFeedbackSamples.count)
+        phaserParameterState = ModulatedEffectParameterState()
         resetBitcrusherStateUnlocked()
         ampSmoothedGain = 0
         ampSmoothedGainByNode.removeAll()
@@ -2426,6 +3004,8 @@ extension AudioEngine {
         distortionSmoothedGainByNode.removeAll()
         tapeSaturationSmoothedGain = 0
         tapeSaturationSmoothedGainByNode.removeAll()
+        signatureEffectStatesByNode.removeAll()
+        signatureEffectStatesByType.removeAll()
         resampleBuffer.removeAll()
         resampleWriteIndex = 0
         resampleReadPhase = 0
@@ -2433,6 +3013,9 @@ extension AudioEngine {
         resampleCrossfadeTotal = 0
         resampleCrossfadeStartPhase = 0
         resampleCrossfadeTargetPhase = 0
+        autoPanParameterState = ModulatedEffectParameterState()
+        chorusParameterState = ModulatedEffectParameterState()
+        flangerParameterState = ModulatedEffectParameterState()
         resetRubberBandStateUnlocked()
         bassBoostStatesByNode.removeAll()
         clarityStatesByNode.removeAll()
@@ -2441,19 +3024,30 @@ extension AudioEngine {
         eqBassStatesByNode.removeAll()
         eqMidsStatesByNode.removeAll()
         eqTrebleStatesByNode.removeAll()
+        appleThreeBandEQProcessorsByNode.removeAll()
+        appleThreeBandEQDryScratchByNode.removeAll()
+        appleThreeBandEQSmoothedGainByNode.removeAll()
         tenBandStatesByNode.removeAll()
-        reverbBuffersByNode.removeAll()
-        reverbWriteIndexByNode.removeAll()
+        reverbStatesByNode.removeAll()
         delayBuffersByNode.removeAll()
         delayWriteIndexByNode.removeAll()
+        delayParameterStateByNode.removeAll()
         tremoloPhaseByNode.removeAll()
+        autoPanPhaseByNode.removeAll()
+        autoPanParameterStateByNode.removeAll()
         chorusBuffersByNode.removeAll()
         chorusWriteIndexByNode.removeAll()
         chorusPhaseByNode.removeAll()
+        chorusParameterStateByNode.removeAll()
         flangerBuffersByNode.removeAll()
         flangerWriteIndexByNode.removeAll()
         flangerPhaseByNode.removeAll()
+        flangerParameterStateByNode.removeAll()
         phaserStatesByNode.removeAll()
+        phaserFeedbackSamplesByNode.removeAll()
+        phaserParameterStateByNode.removeAll()
+        signatureEffectStatesByNode.removeAll()
+        signatureEffectStatesByType.removeAll()
         bitcrusherHoldCountersByNode.removeAll()
         bitcrusherHoldValuesByNode.removeAll()
         resampleBuffersByNode.removeAll()
@@ -2487,6 +3081,7 @@ extension AudioEngine {
         if resets.contains(ResetFlags.compressor) { resetCompressorStateUnlocked() }
         if resets.contains(ResetFlags.reverb) { resetReverbStateUnlocked() }
         if resets.contains(ResetFlags.delay) { resetDelayStateUnlocked() }
+        if resets.contains(ResetFlags.autoPan) { resetAutoPanStateUnlocked(nodeId: nil) }
         if resets.contains(ResetFlags.chorus) { resetChorusStateUnlocked() }
         if resets.contains(ResetFlags.flanger) { resetFlangerStateUnlocked() }
         if resets.contains(ResetFlags.phaser) { resetPhaserStateUnlocked() }
@@ -2512,7 +3107,10 @@ extension AudioEngine {
     }
 
     func resetCompressorStateUnlocked() {
-        compressorEnvelope = compressorEnvelope.map { _ in 0 }
+        compressorEnvelope = 1
+        compressorEnvelopeByNode.removeAll()
+        compressorSmoothedGain = 0
+        compressorSmoothedGainByNode.removeAll()
     }
 
     func resetReverbState() {
@@ -2520,8 +3118,7 @@ extension AudioEngine {
     }
 
     func resetReverbStateUnlocked() {
-        reverbBuffer.removeAll()
-        reverbWriteIndex = 0
+        reverbState.reset()
     }
 
     func resetDelayState() {
@@ -2531,10 +3128,15 @@ extension AudioEngine {
     func resetDelayStateUnlocked() {
         delayBuffer.removeAll()
         delayWriteIndex = 0
+        delayParameterState = ModulatedEffectParameterState()
     }
 
     func resetChorusState() {
         enqueueReset(.chorus)
+    }
+
+    func resetAutoPanState() {
+        enqueueReset(.autoPan)
     }
 
     func resetFlangerState() {
