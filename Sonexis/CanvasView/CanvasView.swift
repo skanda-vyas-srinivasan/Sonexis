@@ -82,7 +82,7 @@ struct CanvasView: View {
     @State private var canvasFrameInRoot: CGRect = .zero
     private let connectionSnapRadius: CGFloat = 120
     private let effectEndpointVisualSize = CGSize(width: 110, height: 110)
-    private let terminalEndpointVisualSize = CGSize(width: 68, height: 68)
+    private let terminalEndpointVisualSize = CGSize(width: 60, height: 60)
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let betaUnlockPhrase = "poopymcbutt"
     private let debugGraphLifecycle = false
@@ -295,8 +295,8 @@ struct CanvasView: View {
                 Toggle("", isOn: $autoConnectEnd)
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .disabled(wiringMode == .automatic || (tutorial.isBuildStep && tutorial.step != .buildAutoConnectEnd))
-                    .opacity(wiringMode == .automatic ? 0.4 : 1.0)
+                    .disabled(wiringMode == .automatic || tutorial.isBuildStep)
+                    .opacity(wiringMode == .automatic || tutorial.isBuildStep ? 0.4 : 1.0)
                     .help(wiringMode == .automatic ?
                           "Automatic mode handles all connections." :
                           (autoConnectEnd ?
@@ -803,6 +803,9 @@ struct CanvasView: View {
                                         if tutorial.isBuildStep && !allowMoveDuringTutorial {
                                             return
                                         }
+                                        if tutorial.step == .buildAutoReorder && effectValue.type != .clarity {
+                                            return
+                                        }
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
                                             draggingNodeID = effectValue.id
@@ -858,6 +861,11 @@ struct CanvasView: View {
                                                                       tutorial.step == .buildParallelConnect ||
                                                                       tutorial.step == .buildDualMonoConnect
                                         if tutorial.isBuildStep && !allowMoveDuringTutorial {
+                                            activeConnectionFromID = nil
+                                            activeConnectionPoint = .zero
+                                            return
+                                        }
+                                        if tutorial.step == .buildAutoReorder && effectValue.type != .clarity {
                                             activeConnectionFromID = nil
                                             activeConnectionPoint = .zero
                                             return
@@ -1016,12 +1024,7 @@ struct CanvasView: View {
                             tutorial.hasVisitedTrayTabs = true
                         }
                     },
-                    allowTapToAdd: !tutorial.isBuildStep || ![
-                        .buildAddBass,
-                        .buildAutoAddClarity,
-                        .buildParallelAddReverb,
-                        .buildDualMonoAdd
-                    ].contains(tutorial.step),
+                    allowTapToAdd: !tutorial.isBuildStep,
                     tutorialStep: tutorial.step
                 )
                 .zIndex(CanvasLayerZIndex.effectTray)
@@ -1230,13 +1233,7 @@ struct CanvasView: View {
     private func addEffectToChain(_ type: EffectType) {
         guard !type.isRetired else { return }
 
-        if tutorial.isBuildStep && ![TutorialStep.buildAddBass, .buildDualMonoAdd].contains(tutorial.step) {
-            return
-        }
-        if tutorial.step == .buildAddBass && type != .bassBoost {
-            return
-        }
-        if tutorial.step == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(type) {
+        if tutorial.isBuildStep {
             return
         }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -2685,7 +2682,7 @@ struct CanvasView: View {
         else { return }
         let bassPos = displayNodePosition(bass, in: canvasSize)
         let clarityPos = displayNodePosition(clarity, in: canvasSize)
-        if clarityPos.x < bassPos.x {
+        if clarityPos.x > bassPos.x {
             tutorial.advance()
         }
     }

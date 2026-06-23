@@ -9,8 +9,6 @@ struct TutorialCardView: View {
     let showSetupButtons: Bool
     let onOpenSetup: (() -> Void)?
 
-    @State private var glowPulse = false
-
     init(
         title: String,
         message: String,
@@ -30,12 +28,11 @@ struct TutorialCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 11) {
             HStack {
                 Text(title)
-                    .font(AppTypography.heading)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textPrimary)
-                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 6)
 
                 Spacer()
 
@@ -44,17 +41,15 @@ struct TutorialCardView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(AppColors.textMuted)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(AppColors.darkPurple.opacity(0.5))
-                )
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
             }
 
             Text(message)
-                .font(AppTypography.body)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundColor(AppColors.textSecondary)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             if showSetupButtons {
@@ -64,11 +59,12 @@ struct TutorialCardView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(AppColors.neonPink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(
-                        Capsule()
-                            .stroke(AppColors.neonPink, lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(AppColors.neonPink.opacity(0.62), lineWidth: 1)
                     )
 
                     Button("Open Setup") {
@@ -76,62 +72,46 @@ struct TutorialCardView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(AppColors.textPrimary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(
-                        Capsule()
-                            .fill(AppColors.neonCyan.opacity(0.86))
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(AppColors.neonCyan.opacity(0.72))
                     )
-                    .shadow(color: AppColors.neonCyan.opacity(0.24), radius: 8)
                 }
             } else if showNext {
                 Button(action: onNext) {
                     HStack(spacing: 6) {
                         Text("Next")
-                            .font(AppTypography.body)
+                            .font(.system(size: 12, weight: .semibold))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(AppColors.textPrimary)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 7)
                     .background(
-                        Capsule()
-                            .fill(AppColors.neonCyan.opacity(0.86))
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(AppColors.neonCyan.opacity(0.72))
                     )
-                    .shadow(color: AppColors.neonCyan.opacity(0.24), radius: 8)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(24)
+        .padding(14)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(AppColors.deepBlack)
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(AppColors.neonCyan.opacity(0.58), lineWidth: 1.5)
-                    .blur(radius: 2)
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                    .padding(2)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppColors.deepBlack.opacity(0.96))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppColors.controlStrokeSoft.opacity(0.78), lineWidth: 1)
             }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(AppColors.neonCyan.opacity(glowPulse ? 0.9 : 0.45), lineWidth: 4)
-                .blur(radius: glowPulse ? 18 : 6)
-                .opacity(glowPulse ? 1 : 0.6)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppColors.neonCyan.opacity(0.18), lineWidth: 1)
         )
-        .shadow(color: AppColors.neonPink.opacity(0.4), radius: 25, y: 10)
-        .scaleEffect(glowPulse ? 1.02 : 0.98)
-        .onAppear {
-            withAnimation(
-                Animation.easeInOut(duration: 1.8)
-                    .repeatForever(autoreverses: true)
-            ) {
-                glowPulse.toggle()
-            }
-        }
+        .shadow(color: Color.black.opacity(0.34), radius: 10, y: 5)
     }
 }

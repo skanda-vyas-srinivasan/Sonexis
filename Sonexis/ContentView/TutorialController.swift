@@ -37,6 +37,8 @@ final class TutorialController: ObservableObject {
              .buildPower,
              .buildRecord,
              .buildOutput,
+             .buildSettings,
+             .buildSettingsExplain,
              .buildAddBass,
              .buildAutoExplain,
              .buildAutoAddClarity,
@@ -102,6 +104,10 @@ final class TutorialController: ObservableObject {
         case .buildRecord:
             step = .buildOutput
         case .buildOutput:
+            step = .buildSettings
+        case .buildSettings:
+            step = .buildSettingsExplain
+        case .buildSettingsExplain:
             step = .buildAddBass
         case .buildAddBass:
             step = .buildAutoExplain

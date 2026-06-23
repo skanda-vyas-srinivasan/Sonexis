@@ -21,6 +21,7 @@ enum TutorialTarget: Hashable {
     case buildPower
     case buildRecord
     case buildOutput
+    case buildSettings
 }
 
 struct TutorialTargetPreferenceKey: PreferenceKey {
@@ -44,6 +45,8 @@ enum TutorialStep: Equatable {
     case buildPower
     case buildRecord
     case buildOutput
+    case buildSettings
+    case buildSettingsExplain
     case buildAddBass
     case buildAutoExplain
     case buildAutoAddClarity

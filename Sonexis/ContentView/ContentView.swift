@@ -289,6 +289,7 @@ struct ContentView: View {
                         showingAudioSettings = false
                     }
                 }
+                tutorial.advanceIf(.buildSettings)
             } else {
                 audioSettingsOutsideClick.stop()
             }
@@ -306,6 +307,11 @@ struct ContentView: View {
 
                 // Reset engine tracking for new tutorial
                 hasEngineBeenOnDuringTutorial = false
+                showEngineStoppedAlert = false
+                showingAudioSettings = false
+                if audioEngine.isRunning {
+                    audioEngine.stop()
+                }
 
                 // Start the tutorial from a clean, predictable state:
                 // - Empty canvas (no nodes/connections)
@@ -349,6 +355,11 @@ struct ContentView: View {
                 tutorialRestoreSnapshot = nil
                 tutorialRestorePresetID = nil
                 hasEngineBeenOnDuringTutorial = false
+                showingAudioSettings = false
+            } else if newStep != .buildSettings && newStep != .buildSettingsExplain && showingAudioSettings {
+                withAnimation(.easeOut(duration: 0.16)) {
+                    showingAudioSettings = false
+                }
             }
         }
         .onChange(of: showSetupOverlay) { isVisible in

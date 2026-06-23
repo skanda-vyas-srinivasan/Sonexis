@@ -16,9 +16,13 @@ struct HeaderView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
+                let powerLockedByTutorial = tutorial.isActive && tutorial.step != .buildPower
+
                 // Power button with status
                 VStack(spacing: 4) {
                     Button(action: {
+                        guard !powerLockedByTutorial else { return }
+
                         if audioEngine.isRunning {
                             audioEngine.stop()
                         } else {
@@ -32,7 +36,9 @@ struct HeaderView: View {
                             .shadow(color: audioEngine.isRunning ? AppColors.success.opacity(0.18) : .clear, radius: 8)
                     }
                     .buttonStyle(.plain)
-                    .help(audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)
+                    .disabled(powerLockedByTutorial)
+                    .opacity(powerLockedByTutorial ? 0.45 : 1)
+                    .help(powerLockedByTutorial ? "Power turns on later in the tutorial" : (audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText))
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(
@@ -125,6 +131,14 @@ struct HeaderView: View {
 
                 AudioSettingsButton(isPresented: $showingAudioSettings)
                     .frame(width: 34, height: 28)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: TutorialTargetPreferenceKey.self,
+                                value: [.buildSettings: proxy.frame(in: .global)]
+                            )
+                        }
+                    )
 
                 Spacer()
 
