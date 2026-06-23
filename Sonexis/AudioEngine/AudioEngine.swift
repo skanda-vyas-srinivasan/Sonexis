@@ -1,8 +1,6 @@
 import AVFoundation
 import Combine
 import CoreAudio
-import AudioToolbox
-import os
 
 struct ProcessingSnapshot {
     let useSplitGraph: Bool
@@ -347,8 +345,35 @@ struct SignatureEffectDSPState {
     }
 }
 
+struct ProcessTapRuntimeSettings {
+    let inputTrimDB: Double
+    let outputMakeupDB: Double
+    let outputCeilingEnabled: Bool
+    let inputTrimGain: Float
+    let outputMakeupGain: Float
+
+    init(
+        inputTrimDB: Double,
+        outputMakeupDB: Double,
+        outputCeilingEnabled: Bool
+    ) {
+        let clampedInputTrimDB = min(max(inputTrimDB, -30), 0)
+        let clampedOutputMakeupDB = min(max(outputMakeupDB, -12), 30)
+        self.inputTrimDB = clampedInputTrimDB
+        self.outputMakeupDB = clampedOutputMakeupDB
+        self.outputCeilingEnabled = outputCeilingEnabled
+        self.inputTrimGain = Float(pow(10.0, clampedInputTrimDB / 20.0))
+        self.outputMakeupGain = Float(pow(10.0, clampedOutputMakeupDB / 20.0))
+    }
+
+    static let defaults = ProcessTapRuntimeSettings(
+        inputTrimDB: -12,
+        outputMakeupDB: 12,
+        outputCeilingEnabled: true
+    )
+}
+
 class AudioEngine: ObservableObject {
-    var engine = AVAudioEngine()
     var processTapEngine: ProcessTapDSPEngine?
     var processTapStopInProgress = false
     @Published var isRunning = false
@@ -361,19 +386,41 @@ class AudioEngine: ObservableObject {
     @Published var pluginStatusToken: Int = 0
     @Published var outputMeterLevel: Float = 0
     @Published var outputMeterPeakDBFS: Float = -96
-    @Published var processTapInputTrimDB: Double = -12
-    @Published var processTapOutputMakeupDB: Double = 12
-    @Published var processTapOutputCeilingEnabled: Bool = true
+    @Published var processTapInputTrimDB: Double = ProcessTapRuntimeSettings.defaults.inputTrimDB {
+        didSet {
+            let clampedValue = min(max(processTapInputTrimDB, -30), 0)
+            if processTapInputTrimDB != clampedValue {
+                processTapInputTrimDB = clampedValue
+            }
+            updateProcessTapRuntimeSettings()
+        }
+    }
+    @Published var processTapOutputMakeupDB: Double = ProcessTapRuntimeSettings.defaults.outputMakeupDB {
+        didSet {
+            let clampedValue = min(max(processTapOutputMakeupDB, -12), 30)
+            if processTapOutputMakeupDB != clampedValue {
+                processTapOutputMakeupDB = clampedValue
+            }
+            updateProcessTapRuntimeSettings()
+        }
+    }
+    @Published var processTapOutputCeilingEnabled: Bool = ProcessTapRuntimeSettings.defaults.outputCeilingEnabled {
+        didSet {
+            updateProcessTapRuntimeSettings()
+        }
+    }
     @Published var processTapRawInputPeakDBFS: Float = -96
     @Published var processTapTrimmedInputPeakDBFS: Float = -96
     @Published var processTapWarningText: String?
 
     private var recordingFile: AVAudioFile?
     private let recordingLock = NSLock()
+    private let recordingQueue = DispatchQueue(label: "Sonexis.AudioRecordingWriter", qos: .utility)
+    private let recordingBufferPoolSize = 8
     private var recordingSampleRate: Double = 44100
     private var recordingChannelCount: AVAudioChannelCount = 2
     private var recordingFormat: AVAudioFormat?
-    private var recordingBuffer: AVAudioPCMBuffer?
+    private var recordingBufferPool: [AVAudioPCMBuffer] = []
     private var recordingFrameCapacity: Int = 0
     private var tapFrameLength: Int = 0
     private var tapChannelCount: Int = 0
@@ -382,6 +429,8 @@ class AudioEngine: ObservableObject {
     private var processTapInputMeterRawPeak: Float = 0
     private var processTapInputMeterTrimmedPeak: Float = 0
     private var processTapInputMeterUpdateCounter: Int = 0
+    let processTapSettingsLock = NSLock()
+    var processTapRuntimeSettings = ProcessTapRuntimeSettings.defaults
 
     init() {
         setupNotifications()
@@ -984,46 +1033,16 @@ class AudioEngine: ObservableObject {
     @Published var effectLevels: [UUID: Float] = [:]
 
     @Published var outputDevices: [AudioDevice] = []
-    @Published var selectedOutputDeviceID: AudioDeviceID? {
-        didSet {
-            if let deviceID = selectedOutputDeviceID {
-                outputVolume = getOutputDeviceVolume(deviceID: deviceID)
-            }
-            if isRunning {
-                reconfigureAudio()
-            }
-        }
-    }
-    @Published var outputVolume: Float = 1.0 {
-        didSet {
-            if let deviceID = selectedOutputDeviceID ?? outputDeviceID {
-                setOutputDeviceVolume(deviceID: deviceID, volume: outputVolume)
-            }
-            if let queue = outputQueue {
-                AudioQueueSetParameter(queue, kAudioQueueParam_Volume, outputVolume)
-            }
-        }
-    }
+    @Published var selectedOutputDeviceID: AudioDeviceID?
     @Published var setupReady = true
     @Published var pendingGraphLoadRequest: GraphLoadRequest?
 
     var currentGraphSnapshot: GraphSnapshot?
 
-    var outputQueue: AudioQueueRef?
-    var outputDeviceID: AudioDeviceID?
-    var outputQueueStarted = false
-    let outputQueueStartLock = NSLock()
-    var chainLogTimer: DispatchSourceTimer?
-    var setupMonitorTimer: DispatchSourceTimer?
-    var setupMonitorListener: AudioObjectPropertyListenerBlock?
-    let setupMonitorQueue = DispatchQueue(label: "AudioEngine.SetupMonitor", qos: .utility)
     var deviceListMonitorTimer: DispatchSourceTimer?
     var deviceListMonitorListener: AudioObjectPropertyListenerBlock?
     let deviceListMonitorQueue = DispatchQueue(label: "AudioEngine.DeviceListMonitor", qos: .utility)
 
-    // Store original devices before switching to BlackHole
-    var originalInputDeviceID: AudioDeviceID?
-    var originalOutputDeviceID: AudioDeviceID?
     var nightcoreRestartWorkItem: DispatchWorkItem?
     var effectChainOrder: [BeginnerNode] = []
     var manualGraphNodes: [BeginnerNode] = []
@@ -1312,26 +1331,6 @@ class AudioEngine: ObservableObject {
     var dspFaultCountsByEffect: [EffectType: Int] = [:]
     var dspFaultCountsByNode: [UUID: Int] = [:]
 
-    // Ring buffer for audio data (interleaved frames)
-    var ringBuffer: UnsafeMutablePointer<Float>?
-    var ringBufferFrameSize: Int = 0
-    var ringBufferCapacity: Int = 0
-    var ringWriteIndex: Int = 0
-    var ringReadIndex: Int = 0
-    var ringBufferLock = os_unfair_lock()  // Real-time safe lock (no priority inversion)
-    let maxRingBufferSize = 10
-
-    // Track whether we have a retained reference in the AudioQueue callback
-    var audioQueueRetainedSelf = false
-
-    // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
-    let audioFormat: AVAudioFormat? = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: 48000,
-        channels: 2,
-        interleaved: false
-    )
-
     func scheduleSnapshotUpdate() {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
@@ -1525,6 +1524,24 @@ class AudioEngine: ObservableObject {
         return snapshot
     }
 
+    func currentProcessTapRuntimeSettings() -> ProcessTapRuntimeSettings {
+        processTapSettingsLock.lock()
+        let settings = processTapRuntimeSettings
+        processTapSettingsLock.unlock()
+        return settings
+    }
+
+    func updateProcessTapRuntimeSettings() {
+        let settings = ProcessTapRuntimeSettings(
+            inputTrimDB: processTapInputTrimDB,
+            outputMakeupDB: processTapOutputMakeupDB,
+            outputCeilingEnabled: processTapOutputCeilingEnabled
+        )
+        processTapSettingsLock.lock()
+        processTapRuntimeSettings = settings
+        processTapSettingsLock.unlock()
+    }
+
     private func computeGraphSignature(
         manualNodes: [BeginnerNode],
         manualConnections: [BeginnerConnection],
@@ -1643,18 +1660,23 @@ class AudioEngine: ObservableObject {
         }
 
         do {
-            guard let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(targetFrameLength)
-            ) else {
-                errorMessage = "Unable to create recording buffer."
-                return
+            var bufferPool: [AVAudioPCMBuffer] = []
+            bufferPool.reserveCapacity(recordingBufferPoolSize)
+            for _ in 0..<recordingBufferPoolSize {
+                guard let buffer = AVAudioPCMBuffer(
+                    pcmFormat: format,
+                    frameCapacity: AVAudioFrameCount(targetFrameLength)
+                ) else {
+                    errorMessage = "Unable to create recording buffer."
+                    return
+                }
+                bufferPool.append(buffer)
             }
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
             recordingLock.lock()
             recordingFile = file
             recordingFormat = format
-            recordingBuffer = buffer
+            recordingBufferPool = bufferPool
             recordingFrameCapacity = targetFrameLength
             isRecording = true
             recordingLock.unlock()
@@ -1667,7 +1689,7 @@ class AudioEngine: ObservableObject {
         recordingLock.lock()
         recordingFile = nil
         recordingFormat = nil
-        recordingBuffer = nil
+        recordingBufferPool.removeAll(keepingCapacity: false)
         recordingFrameCapacity = 0
         isRecording = false
         recordingLock.unlock()
@@ -1684,12 +1706,19 @@ class AudioEngine: ObservableObject {
         let targetSampleRate = recordingSampleRate
         let targetChannelCount = recordingChannelCount
         let cachedFormat = recordingFormat
-        let cachedBuffer = recordingBuffer
+        let cachedFile = recordingFile
+        let pooledBuffer = active ? recordingBufferPool.popLast() : nil
         recordingLock.unlock()
         guard active else { return }
-        guard channelCount > 0, frameLength > 0 else { return }
+        guard channelCount > 0, frameLength > 0, buffer.count >= channelCount else {
+            recycleRecordingBuffer(pooledBuffer, file: cachedFile)
+            return
+        }
 
         if sampleRate != targetSampleRate || AVAudioChannelCount(channelCount) != targetChannelCount {
+            if let pooledBuffer {
+                recycleRecordingBuffer(pooledBuffer, file: cachedFile)
+            }
             DispatchQueue.main.async {
                 self.errorMessage = "Recording format changed. Stop and start recording again."
                 self.stopRecording()
@@ -1698,68 +1727,63 @@ class AudioEngine: ObservableObject {
         }
 
         guard let format = cachedFormat,
-              let pcmBuffer = cachedBuffer,
+              let file = cachedFile,
+              let pcmBuffer = pooledBuffer,
               pcmBuffer.frameCapacity >= AVAudioFrameCount(frameLength),
               format.sampleRate == sampleRate,
               format.channelCount == AVAudioChannelCount(channelCount)
         else {
-            DispatchQueue.main.async {
-                self.errorMessage = "Recording format changed. Stop and start recording again."
-                self.stopRecording()
-            }
+            // If the writer queue is behind, drop the recording block instead of stalling live audio.
+            if pooledBuffer == nil { return }
+            recycleRecordingBuffer(pooledBuffer, file: cachedFile)
             return
         }
 
         pcmBuffer.frameLength = AVAudioFrameCount(frameLength)
 
-        if let channelData = pcmBuffer.floatChannelData {
-            for channel in 0..<channelCount {
-                buffer[channel].withUnsafeBufferPointer { src in
-                    guard let base = src.baseAddress else { return }
-                    channelData[channel].assign(from: base, count: frameLength)
-                }
+        guard let channelData = pcmBuffer.floatChannelData else {
+            recycleRecordingBuffer(pcmBuffer, file: file)
+            return
+        }
+
+        for channel in 0..<channelCount {
+            buffer[channel].withUnsafeBufferPointer { src in
+                guard let base = src.baseAddress else { return }
+                channelData[channel].update(from: base, count: frameLength)
             }
         }
 
-        var writeError: Error?
-        recordingLock.lock()
-        if let recordingFile {
+        recordingQueue.async { [weak self] in
+            var writeError: Error?
             do {
-                try recordingFile.write(from: pcmBuffer)
+                try file.write(from: pcmBuffer)
             } catch {
                 writeError = error
             }
-        }
-        recordingLock.unlock()
 
-        if let writeError {
-            DispatchQueue.main.async {
-                self.errorMessage = "Recording failed: \(writeError.localizedDescription)"
-                self.stopRecording()
+            self?.recycleRecordingBuffer(pcmBuffer, file: file)
+
+            if let writeError {
+                DispatchQueue.main.async {
+                    self?.errorMessage = "Recording failed: \(writeError.localizedDescription)"
+                    self?.stopRecording()
+                }
             }
         }
     }
 
+    private func recycleRecordingBuffer(_ buffer: AVAudioPCMBuffer?, file: AVAudioFile?) {
+        guard let buffer, let file else { return }
+        recordingLock.lock()
+        defer { recordingLock.unlock() }
+        if isRecording, recordingFile === file {
+            recordingBufferPool.append(buffer)
+        }
+    }
+
     deinit {
-        engine.inputNode.removeTap(onBus: 0)
-        // Stop audio queue before deallocation to prevent callback accessing freed memory
-        if let queue = outputQueue {
-            AudioQueueStop(queue, true)
-            AudioQueueDispose(queue, true)
-            // Note: We don't release the retained self here because if we're in deinit,
-            // the retain count is already being decremented by ARC. Releasing here would
-            // cause a double-release. The audioQueueRetainedSelf flag tracks this for
-            // explicit stop() calls, but deinit means ARC is handling it.
-        }
-        engine.stop()
-
-        // Clean up ring buffer
-        os_unfair_lock_lock(&ringBufferLock)
-        if let buffer = ringBuffer {
-            buffer.deallocate()
-        }
-        os_unfair_lock_unlock(&ringBufferLock)
-
+        stopProcessTapBackendImmediately(reason: "Sonexis deinit")
+        stopDeviceListMonitor()
         NotificationCenter.default.removeObserver(self)
     }
 

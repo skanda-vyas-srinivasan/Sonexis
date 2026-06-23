@@ -117,18 +117,16 @@ struct HeaderView: View {
                 }
             )
 
-            if audioEngine.isProcessTapBackendEnabled {
-                Divider()
-                    .frame(height: 30)
-                    .background(AppColors.controlStrokeSoft.opacity(0.65))
+            Divider()
+                .frame(height: 30)
+                .background(AppColors.controlStrokeSoft.opacity(0.65))
 
-                AudioSettingsButton(
-                    isPresented: $showingAudioSettings,
-                    trimDB: $audioEngine.processTapInputTrimDB,
-                    makeupDB: $audioEngine.processTapOutputMakeupDB,
-                    ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled
-                )
-            }
+            AudioSettingsButton(
+                isPresented: $showingAudioSettings,
+                trimDB: $audioEngine.processTapInputTrimDB,
+                makeupDB: $audioEngine.processTapOutputMakeupDB,
+                ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled
+            )
 
             Spacer()
 
@@ -156,8 +154,7 @@ struct HeaderView: View {
 
                     // Show "Open Settings" button for device-related errors
                     if error.localizedCaseInsensitiveContains("Input") ||
-                       error.localizedCaseInsensitiveContains("Output") ||
-                       error.localizedCaseInsensitiveContains("BlackHole") {
+                       error.localizedCaseInsensitiveContains("Output") {
                         Button("Open Sound Settings") {
                             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
                                 NSWorkspace.shared.open(url)
@@ -298,7 +295,7 @@ private struct AudioSettingsButton: View {
     @Binding var ceilingEnabled: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button {
                 withAnimation(.easeOut(duration: 0.18)) {
                     isPresented.toggle()
@@ -314,30 +311,29 @@ private struct AudioSettingsButton: View {
             .help(isPresented ? "Close audio settings" : "Audio settings")
 
             if isPresented {
-                AudioSettingsInlinePanel(
+                AudioSettingsInlineTray(
                     trimDB: $trimDB,
                     makeupDB: $makeupDB,
                     ceilingEnabled: $ceilingEnabled
                 )
-                .transition(
-                    .scale(scale: 0.96, anchor: .leading)
-                        .combined(with: .opacity)
-                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .leading).combined(with: .opacity),
+                    removal: .opacity
+                ))
             }
         }
-        .animation(.easeOut(duration: 0.18), value: isPresented)
     }
 }
 
-private struct AudioSettingsInlinePanel: View {
+private struct AudioSettingsInlineTray: View {
     @Binding var trimDB: Double
     @Binding var makeupDB: Double
     @Binding var ceilingEnabled: Bool
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.classic.rawValue
 
     var body: some View {
-        HStack(spacing: 10) {
-            AudioSettingsCompactSlider(
+        HStack(spacing: 12) {
+            AudioSettingsInlineSlider(
                 title: "Tap In",
                 valueText: String(format: "%.0f dB", trimDB),
                 value: Binding(
@@ -346,10 +342,11 @@ private struct AudioSettingsInlinePanel: View {
                 ),
                 range: -30...0,
                 step: 1,
-                tint: AppColors.neonCyan
+                tint: AppColors.neonCyan,
+                width: 138
             )
 
-            AudioSettingsCompactSlider(
+            AudioSettingsInlineSlider(
                 title: "Makeup",
                 valueText: String(format: "%+.0f dB", makeupDB),
                 value: Binding(
@@ -358,7 +355,8 @@ private struct AudioSettingsInlinePanel: View {
                 ),
                 range: -12...30,
                 step: 1,
-                tint: AppColors.neonPink
+                tint: AppColors.neonPink,
+                width: 138
             )
 
             OutputCeilingButton(isOn: $ceilingEnabled)
@@ -377,22 +375,44 @@ private struct AudioSettingsInlinePanel: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Reset to defaults")
+            .help("Reset defaults")
         }
-        .frame(height: 44)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(AppColors.deepBlack.opacity(0.18))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            AppColors.neonCyan.opacity(0.28),
+                            AppColors.controlStrokeSoft.opacity(0.34),
+                            AppColors.neonPink.opacity(0.22)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: AppColors.neonCyan.opacity(0.08), radius: 12)
     }
 }
 
-private struct AudioSettingsCompactSlider: View {
+private struct AudioSettingsInlineSlider: View {
     let title: String
     let valueText: String
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     let tint: Color
+    let width: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -414,7 +434,7 @@ private struct AudioSettingsCompactSlider: View {
             .controlSize(.mini)
             .tint(tint)
         }
-        .frame(width: 102)
+        .frame(width: width, height: 30)
     }
 }
 
@@ -449,7 +469,7 @@ private struct ThemePickerButton: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundColor(AppColors.neonCyan)
             }
-            .frame(width: 102, height: 28)
+            .frame(width: 112, height: 30)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(AppColors.deepBlack.opacity(0.26))
@@ -483,7 +503,7 @@ private struct OutputCeilingButton: View {
                     .foregroundColor(isOn ? AppColors.warning : AppColors.textMuted)
                     .monospacedDigit()
             }
-            .frame(width: 78, height: 28)
+            .frame(width: 86, height: 30)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(AppColors.deepBlack.opacity(0.26))

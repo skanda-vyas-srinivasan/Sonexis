@@ -12,14 +12,6 @@ final class DSPProcessor {
         configuration.processingGain
     }
 
-    var pitchShiftEnabled: Bool {
-        configuration.pitchShift.enabled
-    }
-
-    var pitchShiftSemitones: Float {
-        configuration.pitchShift.semitones
-    }
-
     var startupRampDuration: TimeInterval {
         configuration.startupRampDuration
     }
@@ -33,22 +25,11 @@ final class DSPProcessor {
     }
 
     var processingDescription: String {
-        if pitchShiftEnabled {
-            return "debug pitch-up DSP"
-        }
-
         return "unity passthrough DSP"
     }
 
     func configureInitialGain(on ringBuffer: RealtimeRingBuffer) {
         ringBuffer.setGainImmediate(unityGain)
-    }
-
-    func configurePitchShift(on ringBuffer: RealtimeRingBuffer) {
-        ringBuffer.configurePitchShift(
-            enabled: pitchShiftEnabled,
-            semitones: pitchShiftSemitones
-        )
     }
 
     func requestProcessingGainRamp(

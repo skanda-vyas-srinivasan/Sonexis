@@ -105,7 +105,7 @@ enum PluginDisplayName {
             name.removeFirst(2)
         }
         if name == "NewPitch" {
-            return "Pitch"
+            return "New Pitch"
         }
         if name == "NewTimePitch" {
             return "Time Pitch"

@@ -1,8 +1,6 @@
 import Accelerate
 import AVFoundation
-import AudioToolbox
 import Foundation
-import os
 
 extension AudioEngine {
     func deinterleavedInput(
@@ -88,20 +86,6 @@ extension AudioEngine {
         }
     }
 
-    private func interleaveInput(
-        channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
-        frameLength: Int,
-        channelCount: Int
-    ) -> [Float] {
-        ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
-        for frame in 0..<frameLength {
-            for channel in 0..<channelCount {
-                interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
-            }
-        }
-        return interleavedOutputBuffer
-    }
-
     func interleaveBuffer(_ buffer: [[Float]], frameLength: Int, channelCount: Int) -> [Float] {
         ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for frame in 0..<frameLength {
@@ -109,46 +93,7 @@ extension AudioEngine {
                 interleavedOutputBuffer[frame * channelCount + channel] = buffer[channel][frame]
             }
         }
-        publishLegacyOutputMeterIfNeeded(sampleCount: frameLength * channelCount)
         return interleavedOutputBuffer
-    }
-
-    private func publishLegacyOutputMeterIfNeeded(sampleCount: Int) {
-        guard processTapEngine == nil else { return }
-        publishOutputMeter(samples: interleavedOutputBuffer, sampleCount: sampleCount)
-    }
-
-    func enqueueAudioData(_ data: [Float], queue: AudioQueueRef) {
-        os_unfair_lock_lock(&ringBufferLock)
-        defer { os_unfair_lock_unlock(&ringBufferLock) }
-
-        guard let buffer = ringBuffer else { return }
-
-        let available = (ringReadIndex - ringWriteIndex - 1 + ringBufferCapacity) % ringBufferCapacity
-        if available <= 0 {
-            ringReadIndex = (ringReadIndex + 1) % ringBufferCapacity
-        }
-
-        let offset = ringWriteIndex * ringBufferFrameSize
-        data.withUnsafeBufferPointer { src in
-            guard let base = src.baseAddress else { return }
-            buffer.advanced(by: offset).assign(from: base, count: min(data.count, ringBufferFrameSize))
-        }
-
-        ringWriteIndex = (ringWriteIndex + 1) % ringBufferCapacity
-    }
-
-    fileprivate func getAudioDataForOutput(into destination: UnsafeMutablePointer<Float>, count: Int) -> Bool {
-        os_unfair_lock_lock(&ringBufferLock)
-        defer { os_unfair_lock_unlock(&ringBufferLock) }
-
-        guard let buffer = ringBuffer else { return false }
-        guard ringReadIndex != ringWriteIndex else { return false }
-
-        let offset = ringReadIndex * ringBufferFrameSize
-        destination.assign(from: buffer.advanced(by: offset), count: min(count, ringBufferFrameSize))
-        ringReadIndex = (ringReadIndex + 1) % ringBufferCapacity
-        return true
     }
 
     func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
@@ -183,7 +128,6 @@ extension AudioEngine {
                     interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
                 }
             }
-            publishLegacyOutputMeterIfNeeded(sampleCount: frameLength * channelCount)
             return interleavedOutputBuffer
         }
 
@@ -207,7 +151,6 @@ extension AudioEngine {
                     interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
                 }
             }
-            publishLegacyOutputMeterIfNeeded(sampleCount: frameLength * channelCount)
             return interleavedOutputBuffer
         }
 
@@ -486,43 +429,4 @@ extension AudioEngine {
         }
     }
 
-    func initializeRingBuffer(frameSize: Int, capacity: Int = 10) {
-        os_unfair_lock_lock(&ringBufferLock)
-        defer { os_unfair_lock_unlock(&ringBufferLock) }
-
-        if let buffer = ringBuffer {
-            buffer.deallocate()
-        }
-        ringBufferFrameSize = frameSize
-        ringBufferCapacity = max(2, capacity)
-        let totalFloats = ringBufferFrameSize * ringBufferCapacity
-        ringBuffer = UnsafeMutablePointer<Float>.allocate(capacity: totalFloats)
-        ringBuffer?.initialize(repeating: 0, count: totalFloats)
-        ringWriteIndex = 0
-        ringReadIndex = 0
-    }
-}
-
-// MARK: - AudioQueue Callback
-
-func audioQueueOutputCallback(
-    inUserData: UnsafeMutableRawPointer?,
-    inAQ: AudioQueueRef,
-    inBuffer: AudioQueueBufferRef
-) {
-    guard let userData = inUserData else { return }
-
-    let audioEngine = Unmanaged<AudioEngine>.fromOpaque(userData).takeUnretainedValue()
-
-    let floatBuffer = inBuffer.pointee.mAudioData.assumingMemoryBound(to: Float.self)
-    let floatCount = Int(inBuffer.pointee.mAudioDataBytesCapacity) / MemoryLayout<Float>.size
-    let bufferSize = Int(inBuffer.pointee.mAudioDataBytesCapacity)
-
-    if !audioEngine.getAudioDataForOutput(into: floatBuffer, count: floatCount) {
-        memset(inBuffer.pointee.mAudioData, 0, bufferSize)
-    }
-    inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
-
-    // Re-enqueue the buffer
-    AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nil)
 }

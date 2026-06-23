@@ -34,7 +34,7 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
 
     var isRetired: Bool {
         switch self {
-        case .resampling, .deMud, .appleThreeBandEQ, .tenBandEQ, .compressor, .distortion:
+        case .pitchShift, .resampling, .deMud, .appleThreeBandEQ, .tenBandEQ, .compressor, .distortion:
             return true
         default:
             return false

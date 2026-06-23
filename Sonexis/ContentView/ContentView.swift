@@ -122,7 +122,6 @@ struct ContentView: View {
                     step: tutorial.step,
                     targets: tutorialTargets,
                     isSetupReady: audioEngine.setupReadyForCurrentBackend,
-                    usesProcessTapBackend: audioEngine.isProcessTapBackendEnabled,
                     trayTabsVisited: tutorial.hasVisitedTrayTabs,
                     onNext: { tutorial.advance() },
                     onSkip: { tutorial.endTutorial() },

@@ -61,15 +61,6 @@ final class RealtimeRingBuffer {
         SonexisAudioRingBufferSetTargetFillFrames(pointer, frames)
     }
 
-    func configurePitchShift(enabled: Bool, semitones: Float) {
-        guard let pointer else { return }
-        SonexisAudioRingBufferConfigurePitchShift(
-            pointer,
-            enabled,
-            semitones
-        )
-    }
-
     var fillFrames: UInt32 {
         guard let pointer else { return 0 }
         return SonexisAudioRingBufferGetFillFrames(pointer)
