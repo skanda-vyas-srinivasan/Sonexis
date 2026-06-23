@@ -58,16 +58,28 @@ struct NodeEffectParameters: Codable, Equatable {
     var eqTreble: Double
     var tenBandGains: [Double]
     var compressorStrength: Double
+    var compressorThresholdDB: Double
+    var compressorRatio: Double
+    var compressorAttackMS: Double
+    var compressorReleaseMS: Double
+    var compressorMakeupDB: Double
+    var compressorMix: Double
     var reverbMix: Double
     var reverbSize: Double
     var stereoWidthAmount: Double
     var delayTime: Double
     var delayFeedback: Double
     var delayMix: Double
+    var ampInputGain: Double
+    var ampDrive: Double
+    var ampOutputGain: Double
+    var ampMix: Double
     var distortionDrive: Double
     var distortionMix: Double
     var tremoloRate: Double
     var tremoloDepth: Double
+    var autoPanRate: Double
+    var autoPanDepth: Double
     var chorusRate: Double
     var chorusDepth: Double
     var chorusMix: Double
@@ -85,6 +97,14 @@ struct NodeEffectParameters: Codable, Equatable {
     var resampleRate: Double
     var resampleCrossfade: Double
     var rubberBandPitchSemitones: Double
+    var nightDriveIntensity: Double
+    var nightDriveWidth: Double
+    var chromePunchPunch: Double
+    var chromePunchBody: Double
+    var midnightGlowGlow: Double
+    var midnightGlowWarmth: Double
+    var afterglowAir: Double
+    var afterglowSpace: Double
 
     init(
         bassBoostAmount: Double,
@@ -97,16 +117,28 @@ struct NodeEffectParameters: Codable, Equatable {
         eqTreble: Double,
         tenBandGains: [Double],
         compressorStrength: Double,
+        compressorThresholdDB: Double,
+        compressorRatio: Double,
+        compressorAttackMS: Double,
+        compressorReleaseMS: Double,
+        compressorMakeupDB: Double,
+        compressorMix: Double,
         reverbMix: Double,
         reverbSize: Double,
         stereoWidthAmount: Double,
         delayTime: Double,
         delayFeedback: Double,
         delayMix: Double,
+        ampInputGain: Double,
+        ampDrive: Double,
+        ampOutputGain: Double,
+        ampMix: Double,
         distortionDrive: Double,
         distortionMix: Double,
         tremoloRate: Double,
         tremoloDepth: Double,
+        autoPanRate: Double,
+        autoPanDepth: Double,
         chorusRate: Double,
         chorusDepth: Double,
         chorusMix: Double,
@@ -123,7 +155,15 @@ struct NodeEffectParameters: Codable, Equatable {
         tapeSaturationMix: Double,
         resampleRate: Double,
         resampleCrossfade: Double,
-        rubberBandPitchSemitones: Double
+        rubberBandPitchSemitones: Double,
+        nightDriveIntensity: Double,
+        nightDriveWidth: Double,
+        chromePunchPunch: Double,
+        chromePunchBody: Double,
+        midnightGlowGlow: Double,
+        midnightGlowWarmth: Double,
+        afterglowAir: Double,
+        afterglowSpace: Double
     ) {
         self.bassBoostAmount = bassBoostAmount
         self.enhancerAmount = enhancerAmount
@@ -135,16 +175,28 @@ struct NodeEffectParameters: Codable, Equatable {
         self.eqTreble = eqTreble
         self.tenBandGains = tenBandGains
         self.compressorStrength = compressorStrength
+        self.compressorThresholdDB = compressorThresholdDB
+        self.compressorRatio = compressorRatio
+        self.compressorAttackMS = compressorAttackMS
+        self.compressorReleaseMS = compressorReleaseMS
+        self.compressorMakeupDB = compressorMakeupDB
+        self.compressorMix = compressorMix
         self.reverbMix = reverbMix
         self.reverbSize = reverbSize
         self.stereoWidthAmount = stereoWidthAmount
         self.delayTime = delayTime
         self.delayFeedback = delayFeedback
         self.delayMix = delayMix
+        self.ampInputGain = ampInputGain
+        self.ampDrive = ampDrive
+        self.ampOutputGain = ampOutputGain
+        self.ampMix = ampMix
         self.distortionDrive = distortionDrive
         self.distortionMix = distortionMix
         self.tremoloRate = tremoloRate
         self.tremoloDepth = tremoloDepth
+        self.autoPanRate = autoPanRate
+        self.autoPanDepth = autoPanDepth
         self.chorusRate = chorusRate
         self.chorusDepth = chorusDepth
         self.chorusMix = chorusMix
@@ -162,6 +214,14 @@ struct NodeEffectParameters: Codable, Equatable {
         self.resampleRate = resampleRate
         self.resampleCrossfade = resampleCrossfade
         self.rubberBandPitchSemitones = rubberBandPitchSemitones
+        self.nightDriveIntensity = nightDriveIntensity
+        self.nightDriveWidth = nightDriveWidth
+        self.chromePunchPunch = chromePunchPunch
+        self.chromePunchBody = chromePunchBody
+        self.midnightGlowGlow = midnightGlowGlow
+        self.midnightGlowWarmth = midnightGlowWarmth
+        self.afterglowAir = afterglowAir
+        self.afterglowSpace = afterglowSpace
     }
 
     static func defaults() -> NodeEffectParameters {
@@ -176,16 +236,28 @@ struct NodeEffectParameters: Codable, Equatable {
             eqTreble: 0,
             tenBandGains: Array(repeating: 0, count: 10),
             compressorStrength: 0.4,
+            compressorThresholdDB: -18.0,
+            compressorRatio: 3.0,
+            compressorAttackMS: 10.0,
+            compressorReleaseMS: 120.0,
+            compressorMakeupDB: 0.0,
+            compressorMix: 1.0,
             reverbMix: 0.3,
             reverbSize: 0.5,
             stereoWidthAmount: 0.3,
             delayTime: 0.25,
             delayFeedback: 0.4,
             delayMix: 0.3,
+            ampInputGain: 0.0,
+            ampDrive: 0.25,
+            ampOutputGain: 0.0,
+            ampMix: 1.0,
             distortionDrive: 0.5,
             distortionMix: 0.5,
             tremoloRate: 5.0,
             tremoloDepth: 0.5,
+            autoPanRate: 0.35,
+            autoPanDepth: 0.7,
             chorusRate: 0.8,
             chorusDepth: 0.4,
             chorusMix: 0.35,
@@ -202,7 +274,15 @@ struct NodeEffectParameters: Codable, Equatable {
             tapeSaturationMix: 0.5,
             resampleRate: 1.0,
             resampleCrossfade: 0.3,
-            rubberBandPitchSemitones: 0.0
+            rubberBandPitchSemitones: 0.0,
+            nightDriveIntensity: 0.78,
+            nightDriveWidth: 0.62,
+            chromePunchPunch: 0.76,
+            chromePunchBody: 0.58,
+            midnightGlowGlow: 0.72,
+            midnightGlowWarmth: 0.60,
+            afterglowAir: 0.78,
+            afterglowSpace: 0.58
         )
     }
 
@@ -217,16 +297,28 @@ struct NodeEffectParameters: Codable, Equatable {
         case eqTreble
         case tenBandGains
         case compressorStrength
+        case compressorThresholdDB
+        case compressorRatio
+        case compressorAttackMS
+        case compressorReleaseMS
+        case compressorMakeupDB
+        case compressorMix
         case reverbMix
         case reverbSize
         case stereoWidthAmount
         case delayTime
         case delayFeedback
         case delayMix
+        case ampInputGain
+        case ampDrive
+        case ampOutputGain
+        case ampMix
         case distortionDrive
         case distortionMix
         case tremoloRate
         case tremoloDepth
+        case autoPanRate
+        case autoPanDepth
         case chorusRate
         case chorusDepth
         case chorusMix
@@ -244,6 +336,14 @@ struct NodeEffectParameters: Codable, Equatable {
         case resampleRate
         case resampleCrossfade
         case rubberBandPitchSemitones
+        case nightDriveIntensity
+        case nightDriveWidth
+        case chromePunchPunch
+        case chromePunchBody
+        case midnightGlowGlow
+        case midnightGlowWarmth
+        case afterglowAir
+        case afterglowSpace
     }
 
     init(from decoder: Decoder) throws {
@@ -259,16 +359,28 @@ struct NodeEffectParameters: Codable, Equatable {
         eqTreble = try container.decodeIfPresent(Double.self, forKey: .eqTreble) ?? defaults.eqTreble
         tenBandGains = try container.decodeIfPresent([Double].self, forKey: .tenBandGains) ?? defaults.tenBandGains
         compressorStrength = try container.decodeIfPresent(Double.self, forKey: .compressorStrength) ?? defaults.compressorStrength
+        compressorThresholdDB = try container.decodeIfPresent(Double.self, forKey: .compressorThresholdDB) ?? defaults.compressorThresholdDB
+        compressorRatio = try container.decodeIfPresent(Double.self, forKey: .compressorRatio) ?? defaults.compressorRatio
+        compressorAttackMS = try container.decodeIfPresent(Double.self, forKey: .compressorAttackMS) ?? defaults.compressorAttackMS
+        compressorReleaseMS = try container.decodeIfPresent(Double.self, forKey: .compressorReleaseMS) ?? defaults.compressorReleaseMS
+        compressorMakeupDB = try container.decodeIfPresent(Double.self, forKey: .compressorMakeupDB) ?? defaults.compressorMakeupDB
+        compressorMix = try container.decodeIfPresent(Double.self, forKey: .compressorMix) ?? defaults.compressorMix
         reverbMix = try container.decodeIfPresent(Double.self, forKey: .reverbMix) ?? defaults.reverbMix
         reverbSize = try container.decodeIfPresent(Double.self, forKey: .reverbSize) ?? defaults.reverbSize
         stereoWidthAmount = try container.decodeIfPresent(Double.self, forKey: .stereoWidthAmount) ?? defaults.stereoWidthAmount
         delayTime = try container.decodeIfPresent(Double.self, forKey: .delayTime) ?? defaults.delayTime
         delayFeedback = try container.decodeIfPresent(Double.self, forKey: .delayFeedback) ?? defaults.delayFeedback
         delayMix = try container.decodeIfPresent(Double.self, forKey: .delayMix) ?? defaults.delayMix
+        ampInputGain = try container.decodeIfPresent(Double.self, forKey: .ampInputGain) ?? defaults.ampInputGain
+        ampDrive = try container.decodeIfPresent(Double.self, forKey: .ampDrive) ?? defaults.ampDrive
+        ampOutputGain = try container.decodeIfPresent(Double.self, forKey: .ampOutputGain) ?? defaults.ampOutputGain
+        ampMix = try container.decodeIfPresent(Double.self, forKey: .ampMix) ?? defaults.ampMix
         distortionDrive = try container.decodeIfPresent(Double.self, forKey: .distortionDrive) ?? defaults.distortionDrive
         distortionMix = try container.decodeIfPresent(Double.self, forKey: .distortionMix) ?? defaults.distortionMix
         tremoloRate = try container.decodeIfPresent(Double.self, forKey: .tremoloRate) ?? defaults.tremoloRate
         tremoloDepth = try container.decodeIfPresent(Double.self, forKey: .tremoloDepth) ?? defaults.tremoloDepth
+        autoPanRate = try container.decodeIfPresent(Double.self, forKey: .autoPanRate) ?? defaults.autoPanRate
+        autoPanDepth = try container.decodeIfPresent(Double.self, forKey: .autoPanDepth) ?? defaults.autoPanDepth
         chorusRate = try container.decodeIfPresent(Double.self, forKey: .chorusRate) ?? defaults.chorusRate
         chorusDepth = try container.decodeIfPresent(Double.self, forKey: .chorusDepth) ?? defaults.chorusDepth
         chorusMix = try container.decodeIfPresent(Double.self, forKey: .chorusMix) ?? defaults.chorusMix
@@ -286,6 +398,14 @@ struct NodeEffectParameters: Codable, Equatable {
         resampleRate = try container.decodeIfPresent(Double.self, forKey: .resampleRate) ?? defaults.resampleRate
         resampleCrossfade = try container.decodeIfPresent(Double.self, forKey: .resampleCrossfade) ?? defaults.resampleCrossfade
         rubberBandPitchSemitones = try container.decodeIfPresent(Double.self, forKey: .rubberBandPitchSemitones) ?? defaults.rubberBandPitchSemitones
+        nightDriveIntensity = try container.decodeIfPresent(Double.self, forKey: .nightDriveIntensity) ?? defaults.nightDriveIntensity
+        nightDriveWidth = try container.decodeIfPresent(Double.self, forKey: .nightDriveWidth) ?? defaults.nightDriveWidth
+        chromePunchPunch = try container.decodeIfPresent(Double.self, forKey: .chromePunchPunch) ?? defaults.chromePunchPunch
+        chromePunchBody = try container.decodeIfPresent(Double.self, forKey: .chromePunchBody) ?? defaults.chromePunchBody
+        midnightGlowGlow = try container.decodeIfPresent(Double.self, forKey: .midnightGlowGlow) ?? defaults.midnightGlowGlow
+        midnightGlowWarmth = try container.decodeIfPresent(Double.self, forKey: .midnightGlowWarmth) ?? defaults.midnightGlowWarmth
+        afterglowAir = try container.decodeIfPresent(Double.self, forKey: .afterglowAir) ?? defaults.afterglowAir
+        afterglowSpace = try container.decodeIfPresent(Double.self, forKey: .afterglowSpace) ?? defaults.afterglowSpace
     }
 }
 
@@ -374,7 +494,7 @@ struct BeginnerConnection: Identifiable, Codable {
 extension BeginnerNode {
     var displayName: String {
         if type == .plugin {
-            return plugin?.name ?? type.rawValue
+            return plugin?.displayName ?? type.rawValue
         }
         return type.rawValue
     }
@@ -478,4 +598,16 @@ struct GraphSnapshot: Codable {
         self.rightEndNodeID = try container.decodeIfPresent(UUID.self, forKey: .rightEndNodeID)
         self.hasNodeParameters = try container.decodeIfPresent(Bool.self, forKey: .hasNodeParameters) ?? false
     }
+}
+
+enum GraphLoadMode {
+    case visualOnly
+    case audioAndVisual
+}
+
+struct GraphLoadRequest {
+    let id = UUID()
+    let snapshot: GraphSnapshot
+    let mode: GraphLoadMode
+    let reason: String
 }

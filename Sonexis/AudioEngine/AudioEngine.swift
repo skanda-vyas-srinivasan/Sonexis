@@ -1,8 +1,6 @@
 import AVFoundation
 import Combine
 import CoreAudio
-import AudioToolbox
-import os
 
 struct ProcessingSnapshot {
     let useSplitGraph: Bool
@@ -45,6 +43,12 @@ struct ProcessingSnapshot {
     let tenBandGains: [Double]
     let compressorEnabled: Bool
     let compressorStrength: Double
+    let compressorThresholdDB: Double
+    let compressorRatio: Double
+    let compressorAttackMS: Double
+    let compressorReleaseMS: Double
+    let compressorMakeupDB: Double
+    let compressorMix: Double
     let reverbEnabled: Bool
     let reverbMix: Double
     let reverbSize: Double
@@ -52,12 +56,20 @@ struct ProcessingSnapshot {
     let delayTime: Double
     let delayFeedback: Double
     let delayMix: Double
+    let ampEnabled: Bool
+    let ampInputGain: Double
+    let ampDrive: Double
+    let ampOutputGain: Double
+    let ampMix: Double
     let distortionEnabled: Bool
     let distortionDrive: Double
     let distortionMix: Double
     let tremoloEnabled: Bool
     let tremoloRate: Double
     let tremoloDepth: Double
+    let autoPanEnabled: Bool
+    let autoPanRate: Double
+    let autoPanDepth: Double
     let chorusEnabled: Bool
     let chorusRate: Double
     let chorusDepth: Double
@@ -127,6 +139,12 @@ struct ProcessingSnapshot {
         tenBandGains: [],
         compressorEnabled: false,
         compressorStrength: 0,
+        compressorThresholdDB: -18,
+        compressorRatio: 3,
+        compressorAttackMS: 10,
+        compressorReleaseMS: 120,
+        compressorMakeupDB: 0,
+        compressorMix: 1,
         reverbEnabled: false,
         reverbMix: 0,
         reverbSize: 0,
@@ -134,12 +152,20 @@ struct ProcessingSnapshot {
         delayTime: 0,
         delayFeedback: 0,
         delayMix: 0,
+        ampEnabled: false,
+        ampInputGain: 0,
+        ampDrive: 0,
+        ampOutputGain: 0,
+        ampMix: 0,
         distortionEnabled: false,
         distortionDrive: 0,
         distortionMix: 0,
         tremoloEnabled: false,
         tremoloRate: 0,
         tremoloDepth: 0,
+        autoPanEnabled: false,
+        autoPanRate: 0,
+        autoPanDepth: 0,
         chorusEnabled: false,
         chorusRate: 0,
         chorusDepth: 0,
@@ -185,7 +211,9 @@ struct ResetFlags: OptionSet {
     static let flanger = ResetFlags(rawValue: 1 << 9)
     static let phaser = ResetFlags(rawValue: 1 << 10)
     static let bitcrusher = ResetFlags(rawValue: 1 << 11)
-    static let all = ResetFlags(rawValue: 1 << 12)
+    static let rubberBand = ResetFlags(rawValue: 1 << 12)
+    static let autoPan = ResetFlags(rawValue: 1 << 13)
+    static let all = ResetFlags(rawValue: 1 << 14)
 }
 
 struct RubberBandScratch {
@@ -202,8 +230,152 @@ struct RubberBandScratch {
     }
 }
 
+struct ReverbTankState {
+    private static let baseCombLengths = [1116, 1188, 1277, 1356]
+    private static let baseAllPassLengths = [556, 441]
+
+    var sampleRate: Double = 0
+    var channelCount: Int = 0
+    var combBuffers: [[[Float]]] = []
+    var combWriteIndices: [[Int]] = []
+    var combDampState: [[Float]] = []
+    var allPassBuffers: [[[Float]]] = []
+    var allPassWriteIndices: [[Int]] = []
+
+    mutating func configure(sampleRate: Double, channelCount: Int) {
+        guard sampleRate > 0, channelCount > 0 else { return }
+        guard self.sampleRate != sampleRate || self.channelCount != channelCount else { return }
+
+        let scale = sampleRate / 44_100.0
+        self.sampleRate = sampleRate
+        self.channelCount = channelCount
+        combBuffers = []
+        combWriteIndices = []
+        combDampState = []
+        allPassBuffers = []
+        allPassWriteIndices = []
+
+        for channel in 0..<channelCount {
+            let stereoOffset = channel * 23
+            let combLengths = Self.baseCombLengths.map { max(1, Int(Double($0) * scale) + stereoOffset) }
+            let allPassLengths = Self.baseAllPassLengths.map { max(1, Int(Double($0) * scale) + stereoOffset) }
+            combBuffers.append(combLengths.map { [Float](repeating: 0, count: $0) })
+            combWriteIndices.append([Int](repeating: 0, count: combLengths.count))
+            combDampState.append([Float](repeating: 0, count: combLengths.count))
+            allPassBuffers.append(allPassLengths.map { [Float](repeating: 0, count: $0) })
+            allPassWriteIndices.append([Int](repeating: 0, count: allPassLengths.count))
+        }
+    }
+
+    mutating func reset() {
+        sampleRate = 0
+        channelCount = 0
+        combBuffers.removeAll()
+        combWriteIndices.removeAll()
+        combDampState.removeAll()
+        allPassBuffers.removeAll()
+        allPassWriteIndices.removeAll()
+    }
+
+    mutating func process(input: Float, channel: Int, feedback: Float, damping: Float) -> Float {
+        guard channel < combBuffers.count,
+              channel < combWriteIndices.count,
+              channel < combDampState.count,
+              channel < allPassBuffers.count,
+              channel < allPassWriteIndices.count else {
+            return 0
+        }
+
+        var wet: Float = 0
+        for index in 0..<combBuffers[channel].count {
+            let writeIndex = combWriteIndices[channel][index]
+            let delayed = combBuffers[channel][index][writeIndex]
+            let damped = delayed * (1 - damping) + combDampState[channel][index] * damping
+            combDampState[channel][index] = damped
+            combBuffers[channel][index][writeIndex] = input + damped * feedback
+            combWriteIndices[channel][index] = (writeIndex + 1) % combBuffers[channel][index].count
+            wet += delayed
+        }
+        wet *= 0.25
+
+        for index in 0..<allPassBuffers[channel].count {
+            let writeIndex = allPassWriteIndices[channel][index]
+            let delayed = allPassBuffers[channel][index][writeIndex]
+            let output = -wet + delayed
+            allPassBuffers[channel][index][writeIndex] = wet + delayed * 0.5
+            allPassWriteIndices[channel][index] = (writeIndex + 1) % allPassBuffers[channel][index].count
+            wet = output
+        }
+
+        return wet * 0.7
+    }
+}
+
+struct ModulatedEffectParameterState {
+    var initialized = false
+    var delaySamples: Float = 0
+    var rate: Float = 0
+    var depth: Float = 0
+    var feedback: Float = 0
+    var mix: Float = 0
+}
+
+struct SignatureEffectDSPState {
+    var lowStates: [BiquadState] = []
+    var midStates: [BiquadState] = []
+    var highStates: [BiquadState] = []
+    var previousSamples: [Float] = []
+    var smoothedGain: Float = 0
+    var envelope: Float = 0
+    var reverb = ReverbTankState()
+
+    mutating func configure(channelCount: Int) {
+        if lowStates.count != channelCount {
+            lowStates = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if midStates.count != channelCount {
+            midStates = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if highStates.count != channelCount {
+            highStates = [BiquadState](repeating: BiquadState(), count: channelCount)
+        }
+        if previousSamples.count != channelCount {
+            previousSamples = [Float](repeating: 0, count: channelCount)
+        }
+    }
+}
+
+struct ProcessTapRuntimeSettings {
+    let inputTrimDB: Double
+    let outputMakeupDB: Double
+    let outputCeilingEnabled: Bool
+    let inputTrimGain: Float
+    let outputMakeupGain: Float
+
+    init(
+        inputTrimDB: Double,
+        outputMakeupDB: Double,
+        outputCeilingEnabled: Bool
+    ) {
+        let clampedInputTrimDB = min(max(inputTrimDB, -30), 0)
+        let clampedOutputMakeupDB = min(max(outputMakeupDB, -12), 30)
+        self.inputTrimDB = clampedInputTrimDB
+        self.outputMakeupDB = clampedOutputMakeupDB
+        self.outputCeilingEnabled = outputCeilingEnabled
+        self.inputTrimGain = Float(pow(10.0, clampedInputTrimDB / 20.0))
+        self.outputMakeupGain = Float(pow(10.0, clampedOutputMakeupDB / 20.0))
+    }
+
+    static let defaults = ProcessTapRuntimeSettings(
+        inputTrimDB: -12,
+        outputMakeupDB: 12,
+        outputCeilingEnabled: false
+    )
+}
+
 class AudioEngine: ObservableObject {
-    var engine = AVAudioEngine()
+    var processTapEngine: ProcessTapDSPEngine?
+    var processTapStopInProgress = false
     @Published var isRunning = false
     @Published var errorMessage: String?
     @Published var inputDeviceName: String = "Searching..."
@@ -212,17 +384,53 @@ class AudioEngine: ObservableObject {
     @Published var betaRecordingUnlocked = false
     @Published var isRecording = false
     @Published var pluginStatusToken: Int = 0
+    @Published var outputMeterLevel: Float = 0
+    @Published var outputMeterPeakDBFS: Float = -96
+    @Published var processTapInputTrimDB: Double = ProcessTapRuntimeSettings.defaults.inputTrimDB {
+        didSet {
+            let clampedValue = min(max(processTapInputTrimDB, -30), 0)
+            if processTapInputTrimDB != clampedValue {
+                processTapInputTrimDB = clampedValue
+            }
+            updateProcessTapRuntimeSettings()
+        }
+    }
+    @Published var processTapOutputMakeupDB: Double = ProcessTapRuntimeSettings.defaults.outputMakeupDB {
+        didSet {
+            let clampedValue = min(max(processTapOutputMakeupDB, -12), 30)
+            if processTapOutputMakeupDB != clampedValue {
+                processTapOutputMakeupDB = clampedValue
+            }
+            updateProcessTapRuntimeSettings()
+        }
+    }
+    @Published var processTapOutputCeilingEnabled: Bool = ProcessTapRuntimeSettings.defaults.outputCeilingEnabled {
+        didSet {
+            updateProcessTapRuntimeSettings()
+        }
+    }
+    @Published var processTapRawInputPeakDBFS: Float = -96
+    @Published var processTapTrimmedInputPeakDBFS: Float = -96
+    @Published var processTapWarningText: String?
 
     private var recordingFile: AVAudioFile?
     private let recordingLock = NSLock()
+    private let recordingQueue = DispatchQueue(label: "Sonexis.AudioRecordingWriter", qos: .utility)
+    private let recordingBufferPoolSize = 8
     private var recordingSampleRate: Double = 44100
     private var recordingChannelCount: AVAudioChannelCount = 2
     private var recordingFormat: AVAudioFormat?
-    private var recordingBuffer: AVAudioPCMBuffer?
+    private var recordingBufferPool: [AVAudioPCMBuffer] = []
     private var recordingFrameCapacity: Int = 0
     private var tapFrameLength: Int = 0
     private var tapChannelCount: Int = 0
     private var tapSampleRate: Double = 0
+    private var processTapWarningClearTask: DispatchWorkItem?
+    private var processTapInputMeterRawPeak: Float = 0
+    private var processTapInputMeterTrimmedPeak: Float = 0
+    private var processTapInputMeterUpdateCounter: Int = 0
+    let processTapSettingsLock = NSLock()
+    var processTapRuntimeSettings = ProcessTapRuntimeSettings.defaults
 
     init() {
         setupNotifications()
@@ -233,6 +441,109 @@ class AudioEngine: ObservableObject {
             DispatchQueue.main.async {
                 self?.pluginStatusToken += 1
             }
+        }
+    }
+
+    func publishOutputMeter(sumSquares: Float, peak: Float, sampleCount: Int) {
+        guard sampleCount > 0 else {
+            publishOutputMeter(rms: 0, peak: 0)
+            return
+        }
+
+        let safeSum = sumSquares.isFinite ? max(0, sumSquares) : 0
+        let rms = sqrtf(safeSum / Float(sampleCount))
+        publishOutputMeter(rms: rms, peak: peak)
+    }
+
+    func publishOutputMeter(rms: Float, peak: Float) {
+        let safeRMS = rms.isFinite ? min(max(rms, 0), 1.5) : 0
+        let safePeak = peak.isFinite ? min(max(peak, 0), 1.5) : 0
+
+        let rmsCoefficient: Float = safeRMS > outputMeterSmoothedRMS ? 0.34 : 0.12
+        let peakCoefficient: Float = safePeak > outputMeterSmoothedPeak ? 0.55 : 0.08
+        outputMeterSmoothedRMS += (safeRMS - outputMeterSmoothedRMS) * rmsCoefficient
+        outputMeterSmoothedPeak += (safePeak - outputMeterSmoothedPeak) * peakCoefficient
+
+        outputMeterUpdateCounter += 1
+        guard outputMeterUpdateCounter % 4 == 0 else { return }
+
+        let level = outputMeterSmoothedRMS
+        let peakDBFS = 20 * log10f(max(outputMeterSmoothedPeak, 0.000_001))
+        DispatchQueue.main.async { [weak self] in
+            self?.outputMeterLevel = level
+            self?.outputMeterPeakDBFS = peakDBFS
+        }
+    }
+
+    func publishOutputMeter(samples: [Float], sampleCount: Int) {
+        let count = min(sampleCount, samples.count)
+        guard count > 0 else {
+            publishOutputMeter(rms: 0, peak: 0)
+            return
+        }
+
+        var sumSquares: Float = 0
+        var peak: Float = 0
+        for index in 0..<count {
+            let sample = samples[index]
+            guard sample.isFinite else { continue }
+            let magnitude = abs(sample)
+            peak = max(peak, magnitude)
+            sumSquares += sample * sample
+        }
+        publishOutputMeter(sumSquares: sumSquares, peak: peak, sampleCount: count)
+    }
+
+    func resetOutputMeter() {
+        outputMeterSmoothedRMS = 0
+        outputMeterSmoothedPeak = 0
+        outputMeterUpdateCounter = 0
+        DispatchQueue.main.async { [weak self] in
+            self?.outputMeterLevel = 0
+            self?.outputMeterPeakDBFS = -96
+        }
+    }
+
+    func resetProcessTapInputMeter() {
+        processTapInputMeterRawPeak = 0
+        processTapInputMeterTrimmedPeak = 0
+        processTapInputMeterUpdateCounter = 0
+        DispatchQueue.main.async { [weak self] in
+            self?.processTapRawInputPeakDBFS = -96
+            self?.processTapTrimmedInputPeakDBFS = -96
+        }
+    }
+
+    func publishProcessTapInputMeter(rawPeak: Float, trimmedPeak: Float) {
+        let safeRawPeak = rawPeak.isFinite ? min(max(rawPeak, 0), 4) : 0
+        let safeTrimmedPeak = trimmedPeak.isFinite ? min(max(trimmedPeak, 0), 4) : 0
+        let rawCoefficient: Float = safeRawPeak > processTapInputMeterRawPeak ? 0.55 : 0.08
+        let trimmedCoefficient: Float = safeTrimmedPeak > processTapInputMeterTrimmedPeak ? 0.55 : 0.08
+        processTapInputMeterRawPeak += (safeRawPeak - processTapInputMeterRawPeak) * rawCoefficient
+        processTapInputMeterTrimmedPeak += (safeTrimmedPeak - processTapInputMeterTrimmedPeak) * trimmedCoefficient
+
+        processTapInputMeterUpdateCounter += 1
+        guard processTapInputMeterUpdateCounter % 4 == 0 else { return }
+
+        let rawDBFS = 20 * log10f(max(processTapInputMeterRawPeak, 0.000_001))
+        let trimmedDBFS = 20 * log10f(max(processTapInputMeterTrimmedPeak, 0.000_001))
+        DispatchQueue.main.async { [weak self] in
+            self?.processTapRawInputPeakDBFS = rawDBFS
+            self?.processTapTrimmedInputPeakDBFS = trimmedDBFS
+        }
+    }
+
+    func publishProcessTapWarning(_ message: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            processTapWarningClearTask?.cancel()
+            processTapWarningText = message
+
+            let clearTask = DispatchWorkItem { [weak self] in
+                self?.processTapWarningText = nil
+            }
+            processTapWarningClearTask = clearTask
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: clearTask)
         }
     }
 
@@ -323,6 +634,36 @@ class AudioEngine: ObservableObject {
         }
     }
     @Published var compressorStrength: Double = 0.4 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorThresholdDB: Double = -18.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorRatio: Double = 3.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorAttackMS: Double = 10.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorReleaseMS: Double = 120.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorMakeupDB: Double = 0.0 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var compressorMix: Double = 1.0 {
         didSet {
             scheduleSnapshotUpdate()
         }
@@ -446,6 +787,33 @@ class AudioEngine: ObservableObject {
         }
     }
 
+    // Amp effect
+    @Published var ampEnabled = false {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampInputGain: Double = 0.0 { // dB
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampDrive: Double = 0.25 { // 0 to 1
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampOutputGain: Double = 0.0 { // dB
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var ampMix: Double = 1.0 { // 0 to 1
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+
     // Distortion effect
     @Published var distortionEnabled = false {
         didSet {
@@ -478,6 +846,26 @@ class AudioEngine: ObservableObject {
         }
     }
     @Published var tremoloDepth: Double = 0.5 { // 0 to 1
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+
+    // Auto pan effect
+    @Published var autoPanEnabled = false {
+        didSet {
+            if !autoPanEnabled {
+                resetAutoPanState()
+            }
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var autoPanRate: Double = 0.35 {
+        didSet {
+            scheduleSnapshotUpdate()
+        }
+    }
+    @Published var autoPanDepth: Double = 0.7 {
         didSet {
             scheduleSnapshotUpdate()
         }
@@ -645,46 +1033,16 @@ class AudioEngine: ObservableObject {
     @Published var effectLevels: [UUID: Float] = [:]
 
     @Published var outputDevices: [AudioDevice] = []
-    @Published var selectedOutputDeviceID: AudioDeviceID? {
-        didSet {
-            if let deviceID = selectedOutputDeviceID {
-                outputVolume = getOutputDeviceVolume(deviceID: deviceID)
-            }
-            if isRunning {
-                reconfigureAudio()
-            }
-        }
-    }
-    @Published var outputVolume: Float = 1.0 {
-        didSet {
-            if let deviceID = selectedOutputDeviceID ?? outputDeviceID {
-                setOutputDeviceVolume(deviceID: deviceID, volume: outputVolume)
-            }
-            if let queue = outputQueue {
-                AudioQueueSetParameter(queue, kAudioQueueParam_Volume, outputVolume)
-            }
-        }
-    }
+    @Published var selectedOutputDeviceID: AudioDeviceID?
     @Published var setupReady = true
-    @Published var pendingGraphSnapshot: GraphSnapshot?
+    @Published var pendingGraphLoadRequest: GraphLoadRequest?
 
     var currentGraphSnapshot: GraphSnapshot?
 
-    var outputQueue: AudioQueueRef?
-    var outputDeviceID: AudioDeviceID?
-    var outputQueueStarted = false
-    let outputQueueStartLock = NSLock()
-    var chainLogTimer: DispatchSourceTimer?
-    var setupMonitorTimer: DispatchSourceTimer?
-    var setupMonitorListener: AudioObjectPropertyListenerBlock?
-    let setupMonitorQueue = DispatchQueue(label: "AudioEngine.SetupMonitor", qos: .utility)
     var deviceListMonitorTimer: DispatchSourceTimer?
     var deviceListMonitorListener: AudioObjectPropertyListenerBlock?
     let deviceListMonitorQueue = DispatchQueue(label: "AudioEngine.DeviceListMonitor", qos: .utility)
 
-    // Store original devices before switching to BlackHole
-    var originalInputDeviceID: AudioDeviceID?
-    var originalOutputDeviceID: AudioDeviceID?
     var nightcoreRestartWorkItem: DispatchWorkItem?
     var effectChainOrder: [BeginnerNode] = []
     var manualGraphNodes: [BeginnerNode] = []
@@ -707,6 +1065,9 @@ class AudioEngine: ObservableObject {
     var nodeEnabled: [UUID: Bool] = [:]
     let pluginHost = PluginHost()
     var levelUpdateCounter = 0
+    var outputMeterUpdateCounter = 0
+    var outputMeterSmoothedRMS: Float = 0
+    var outputMeterSmoothedPeak: Float = 0
     let effectStateLock = NSLock()
     private let snapshotLock = NSLock()
     private var snapshotUpdateScheduled = false
@@ -786,6 +1147,9 @@ class AudioEngine: ObservableObject {
     var eqTrebleStatesByNode: [UUID: [BiquadState]] = [:]
     var simpleEQSmoothedGain: Float = 0
     var simpleEQSmoothedGainByNode: [UUID: Float] = [:]
+    var appleThreeBandEQProcessorsByNode: [UUID: AppleThreeBandEQProcessor] = [:]
+    var appleThreeBandEQDryScratchByNode: [UUID: [[Float]]] = [:]
+    var appleThreeBandEQSmoothedGainByNode: [UUID: Float] = [:]
 
     // 10-band EQ state (peaking filters)
     let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -800,16 +1164,15 @@ class AudioEngine: ObservableObject {
     var tenBandVDSPDelays: [[[Float]]] = []
     var tenBandVDSPDelaysByNode: [UUID: [[[Float]]]] = [:]
 
-    // Compressor state (simple dynamic range compression)
-    var compressorEnvelope: [Float] = []
+    // Compressor state (stereo-linked detector envelope)
+    var compressorEnvelope: Float = 1
+    var compressorEnvelopeByNode: [UUID: Float] = [:]
     var compressorSmoothedGain: Float = 0
     var compressorSmoothedGainByNode: [UUID: Float] = [:]
 
-    // Reverb buffer (simple delay-based reverb)
-    var reverbBuffer: [[Float]] = []
-    var reverbWriteIndex = 0
-    var reverbBuffersByNode: [UUID: [[Float]]] = [:]
-    var reverbWriteIndexByNode: [UUID: Int] = [:]
+    // Reverb tank (parallel comb filters with all-pass diffusion)
+    var reverbState = ReverbTankState()
+    var reverbStatesByNode: [UUID: ReverbTankState] = [:]
     var reverbSmoothedGain: Float = 0
     var reverbSmoothedGainByNode: [UUID: Float] = [:]
 
@@ -820,12 +1183,20 @@ class AudioEngine: ObservableObject {
     var delayWriteIndexByNode: [UUID: Int] = [:]
     var delaySmoothedGain: Float = 0
     var delaySmoothedGainByNode: [UUID: Float] = [:]
+    var delayParameterState = ModulatedEffectParameterState()
+    var delayParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Tremolo state (LFO phase)
     var tremoloPhase: Double = 0
     var tremoloPhaseByNode: [UUID: Double] = [:]
     var tremoloSmoothedGain: Float = 0
     var tremoloSmoothedGainByNode: [UUID: Float] = [:]
+    var autoPanPhase: Double = 0
+    var autoPanPhaseByNode: [UUID: Double] = [:]
+    var autoPanSmoothedGain: Float = 0
+    var autoPanSmoothedGainByNode: [UUID: Float] = [:]
+    var autoPanParameterState = ModulatedEffectParameterState()
+    var autoPanParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Chorus state (delay modulation)
     var chorusBuffer: [[Float]] = []
@@ -836,6 +1207,8 @@ class AudioEngine: ObservableObject {
     var chorusPhaseByNode: [UUID: Double] = [:]
     var chorusSmoothedGain: Float = 0
     var chorusSmoothedGainByNode: [UUID: Float] = [:]
+    var chorusParameterState = ModulatedEffectParameterState()
+    var chorusParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Flanger state (short delay modulation with feedback)
     var flangerBuffer: [[Float]] = []
@@ -846,15 +1219,21 @@ class AudioEngine: ObservableObject {
     var flangerPhaseByNode: [UUID: Double] = [:]
     var flangerSmoothedGain: Float = 0
     var flangerSmoothedGainByNode: [UUID: Float] = [:]
+    var flangerParameterState = ModulatedEffectParameterState()
+    var flangerParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Phaser state (all-pass)
-    let phaserStageCount = 2
+    let phaserStageCount = 4
     var phaserStates: [[AllPassState]] = []
     var phaserStatesByNode: [UUID: [[AllPassState]]] = [:]
     var phaserPhase: Double = 0
     var phaserPhaseByNode: [UUID: Double] = [:]
+    var phaserFeedbackSamples: [Float] = []
+    var phaserFeedbackSamplesByNode: [UUID: [Float]] = [:]
     var phaserSmoothedGain: Float = 0
     var phaserSmoothedGainByNode: [UUID: Float] = [:]
+    var phaserParameterState = ModulatedEffectParameterState()
+    var phaserParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
 
     // Resampling state
     var resampleBuffer: [[Float]] = []
@@ -891,12 +1270,18 @@ class AudioEngine: ObservableObject {
     var bitcrusherSmoothedGainByNode: [UUID: Float] = [:]
 
     // Distortion state (stateless effect, but needs smoothing)
+    var ampSmoothedGain: Float = 0
+    var ampSmoothedGainByNode: [UUID: Float] = [:]
     var distortionSmoothedGain: Float = 0
     var distortionSmoothedGainByNode: [UUID: Float] = [:]
 
     // Tape Saturation state
     var tapeSaturationSmoothedGain: Float = 0
     var tapeSaturationSmoothedGainByNode: [UUID: Float] = [:]
+
+    // Signature effect combo blocks
+    var signatureEffectStatesByNode: [UUID: SignatureEffectDSPState] = [:]
+    var signatureEffectStatesByType: [EffectType: SignatureEffectDSPState] = [:]
 
     // Stereo Width state
     var stereoWidthSmoothedGain: Float = 0
@@ -922,6 +1307,10 @@ class AudioEngine: ObservableObject {
     var processingFrameCapacity: Int = 0
     var deinterleavedInputBuffer: [[Float]] = []
     var deinterleavedInputCapacity: Int = 0
+    var processTapPCMBuffer: AVAudioPCMBuffer?
+    var processTapPCMBufferFrameCapacity: Int = 0
+    var processTapPCMBufferChannelCount: Int = 0
+    var processTapPCMBufferSampleRate: Double = 0
     // Graph processing scratch buffers (reused to avoid allocations)
     var graphOutEdges: [UUID: [UUID]] = [:]
     var graphInEdges: [UUID: [(UUID, Double)]] = [:]
@@ -935,28 +1324,12 @@ class AudioEngine: ObservableObject {
     var lastGraphSignature: Int = 0
     var graphChangeSamplesRemaining: Int = 0
     var graphChangeSamplesTotal: Int = 0
+    var graphChangeFadeOutSamplesTotal: Int = 0
+    var graphChangeFadeInSamplesTotal: Int = 0
     var graphChangePrevOutput: [[Float]] = []
     var lastOutputBuffer: [[Float]] = []
-
-    // Ring buffer for audio data (interleaved frames)
-    var ringBuffer: UnsafeMutablePointer<Float>?
-    var ringBufferFrameSize: Int = 0
-    var ringBufferCapacity: Int = 0
-    var ringWriteIndex: Int = 0
-    var ringReadIndex: Int = 0
-    var ringBufferLock = os_unfair_lock()  // Real-time safe lock (no priority inversion)
-    let maxRingBufferSize = 10
-
-    // Track whether we have a retained reference in the AudioQueue callback
-    var audioQueueRetainedSelf = false
-
-    // Audio format: 48kHz, stereo, Float32 (matches what we're seeing in console)
-    let audioFormat: AVAudioFormat? = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: 48000,
-        channels: 2,
-        interleaved: false
-    )
+    var dspFaultCountsByEffect: [EffectType: Int] = [:]
+    var dspFaultCountsByNode: [UUID: Int] = [:]
 
     func scheduleSnapshotUpdate() {
         if !Thread.isMainThread {
@@ -1067,8 +1440,8 @@ class AudioEngine: ObservableObject {
             isReconfiguring: isReconfiguring,
             bassBoostEnabled: bassBoostEnabled,
             bassBoostAmount: bassBoostAmount,
-            enhancerEnabled: enhancerEnabled,
-            enhancerAmount: enhancerAmount,
+            enhancerEnabled: false,
+            enhancerAmount: 0,
             nightcoreEnabled: nightcoreEnabled,
             nightcoreIntensity: nightcoreIntensity,
             clarityEnabled: clarityEnabled,
@@ -1083,6 +1456,12 @@ class AudioEngine: ObservableObject {
             tenBandGains: tenBandGains,
             compressorEnabled: compressorEnabled,
             compressorStrength: compressorStrength,
+            compressorThresholdDB: compressorThresholdDB,
+            compressorRatio: compressorRatio,
+            compressorAttackMS: compressorAttackMS,
+            compressorReleaseMS: compressorReleaseMS,
+            compressorMakeupDB: compressorMakeupDB,
+            compressorMix: compressorMix,
             reverbEnabled: reverbEnabled,
             reverbMix: reverbMix,
             reverbSize: reverbSize,
@@ -1090,12 +1469,20 @@ class AudioEngine: ObservableObject {
             delayTime: delayTime,
             delayFeedback: delayFeedback,
             delayMix: delayMix,
+            ampEnabled: ampEnabled,
+            ampInputGain: ampInputGain,
+            ampDrive: ampDrive,
+            ampOutputGain: ampOutputGain,
+            ampMix: ampMix,
             distortionEnabled: distortionEnabled,
             distortionDrive: distortionDrive,
             distortionMix: distortionMix,
             tremoloEnabled: tremoloEnabled,
             tremoloRate: tremoloRate,
             tremoloDepth: tremoloDepth,
+            autoPanEnabled: autoPanEnabled,
+            autoPanRate: autoPanRate,
+            autoPanDepth: autoPanDepth,
             chorusEnabled: chorusEnabled,
             chorusRate: chorusRate,
             chorusDepth: chorusDepth,
@@ -1117,9 +1504,9 @@ class AudioEngine: ObservableObject {
             tapeSaturationMix: tapeSaturationMix,
             stereoWidthEnabled: stereoWidthEnabled,
             stereoWidthAmount: stereoWidthAmount,
-            resampleEnabled: resampleEnabled,
-            resampleRate: resampleRate,
-            resampleCrossfade: resampleCrossfade,
+            resampleEnabled: false,
+            resampleRate: 1.0,
+            resampleCrossfade: 0,
             rubberBandPitchEnabled: rubberBandPitchEnabled,
             rubberBandPitchSemitones: rubberBandPitchSemitones,
             graphSignature: graphSignature
@@ -1135,6 +1522,24 @@ class AudioEngine: ObservableObject {
         let snapshot = processingSnapshot
         snapshotLock.unlock()
         return snapshot
+    }
+
+    func currentProcessTapRuntimeSettings() -> ProcessTapRuntimeSettings {
+        processTapSettingsLock.lock()
+        let settings = processTapRuntimeSettings
+        processTapSettingsLock.unlock()
+        return settings
+    }
+
+    func updateProcessTapRuntimeSettings() {
+        let settings = ProcessTapRuntimeSettings(
+            inputTrimDB: processTapInputTrimDB,
+            outputMakeupDB: processTapOutputMakeupDB,
+            outputCeilingEnabled: processTapOutputCeilingEnabled
+        )
+        processTapSettingsLock.lock()
+        processTapRuntimeSettings = settings
+        processTapSettingsLock.unlock()
     }
 
     private func computeGraphSignature(
@@ -1215,9 +1620,15 @@ class AudioEngine: ObservableObject {
 
     func updateTapFormat(frameLength: Int, channelCount: Int, sampleRate: Double) {
         recordingLock.lock()
-        tapFrameLength = frameLength
+        if tapChannelCount == channelCount, tapSampleRate == sampleRate {
+            tapFrameLength = max(tapFrameLength, frameLength)
+        } else {
+            tapFrameLength = frameLength
+        }
         tapChannelCount = channelCount
         tapSampleRate = sampleRate
+        recordingSampleRate = sampleRate
+        recordingChannelCount = AVAudioChannelCount(channelCount)
         recordingLock.unlock()
     }
 
@@ -1255,18 +1666,23 @@ class AudioEngine: ObservableObject {
         }
 
         do {
-            guard let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(targetFrameLength)
-            ) else {
-                errorMessage = "Unable to create recording buffer."
-                return
+            var bufferPool: [AVAudioPCMBuffer] = []
+            bufferPool.reserveCapacity(recordingBufferPoolSize)
+            for _ in 0..<recordingBufferPoolSize {
+                guard let buffer = AVAudioPCMBuffer(
+                    pcmFormat: format,
+                    frameCapacity: AVAudioFrameCount(targetFrameLength)
+                ) else {
+                    errorMessage = "Unable to create recording buffer."
+                    return
+                }
+                bufferPool.append(buffer)
             }
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
             recordingLock.lock()
             recordingFile = file
             recordingFormat = format
-            recordingBuffer = buffer
+            recordingBufferPool = bufferPool
             recordingFrameCapacity = targetFrameLength
             isRecording = true
             recordingLock.unlock()
@@ -1279,7 +1695,7 @@ class AudioEngine: ObservableObject {
         recordingLock.lock()
         recordingFile = nil
         recordingFormat = nil
-        recordingBuffer = nil
+        recordingBufferPool.removeAll(keepingCapacity: false)
         recordingFrameCapacity = 0
         isRecording = false
         recordingLock.unlock()
@@ -1296,12 +1712,31 @@ class AudioEngine: ObservableObject {
         let targetSampleRate = recordingSampleRate
         let targetChannelCount = recordingChannelCount
         let cachedFormat = recordingFormat
-        let cachedBuffer = recordingBuffer
+        let cachedFile = recordingFile
+        let pooledBuffer = active ? recordingBufferPool.popLast() : nil
         recordingLock.unlock()
         guard active else { return }
-        guard channelCount > 0, frameLength > 0 else { return }
+        guard channelCount > 0, frameLength > 0, buffer.count >= channelCount else {
+            recycleRecordingBuffer(pooledBuffer, file: cachedFile)
+            return
+        }
 
         if sampleRate != targetSampleRate || AVAudioChannelCount(channelCount) != targetChannelCount {
+            if let pooledBuffer {
+                recycleRecordingBuffer(pooledBuffer, file: cachedFile)
+            }
+            DispatchQueue.main.async {
+                self.errorMessage = "Recording format changed. Stop and start recording again."
+                self.stopRecording()
+            }
+            return
+        }
+
+        if let format = cachedFormat,
+           format.sampleRate != sampleRate || format.channelCount != AVAudioChannelCount(channelCount) {
+            if let pooledBuffer {
+                recycleRecordingBuffer(pooledBuffer, file: cachedFile)
+            }
             DispatchQueue.main.async {
                 self.errorMessage = "Recording format changed. Stop and start recording again."
                 self.stopRecording()
@@ -1310,68 +1745,63 @@ class AudioEngine: ObservableObject {
         }
 
         guard let format = cachedFormat,
-              let pcmBuffer = cachedBuffer,
+              let file = cachedFile,
+              let pcmBuffer = pooledBuffer,
               pcmBuffer.frameCapacity >= AVAudioFrameCount(frameLength),
               format.sampleRate == sampleRate,
               format.channelCount == AVAudioChannelCount(channelCount)
         else {
-            DispatchQueue.main.async {
-                self.errorMessage = "Recording format changed. Stop and start recording again."
-                self.stopRecording()
-            }
+            // If the writer queue is behind, drop the recording block instead of stalling live audio.
+            if pooledBuffer == nil { return }
+            recycleRecordingBuffer(pooledBuffer, file: cachedFile)
             return
         }
 
         pcmBuffer.frameLength = AVAudioFrameCount(frameLength)
 
-        if let channelData = pcmBuffer.floatChannelData {
-            for channel in 0..<channelCount {
-                buffer[channel].withUnsafeBufferPointer { src in
-                    guard let base = src.baseAddress else { return }
-                    channelData[channel].assign(from: base, count: frameLength)
-                }
+        guard let channelData = pcmBuffer.floatChannelData else {
+            recycleRecordingBuffer(pcmBuffer, file: file)
+            return
+        }
+
+        for channel in 0..<channelCount {
+            buffer[channel].withUnsafeBufferPointer { src in
+                guard let base = src.baseAddress else { return }
+                channelData[channel].update(from: base, count: frameLength)
             }
         }
 
-        var writeError: Error?
-        recordingLock.lock()
-        if let recordingFile {
+        recordingQueue.async { [weak self] in
+            var writeError: Error?
             do {
-                try recordingFile.write(from: pcmBuffer)
+                try file.write(from: pcmBuffer)
             } catch {
                 writeError = error
             }
-        }
-        recordingLock.unlock()
 
-        if let writeError {
-            DispatchQueue.main.async {
-                self.errorMessage = "Recording failed: \(writeError.localizedDescription)"
-                self.stopRecording()
+            self?.recycleRecordingBuffer(pcmBuffer, file: file)
+
+            if let writeError {
+                DispatchQueue.main.async {
+                    self?.errorMessage = "Recording failed: \(writeError.localizedDescription)"
+                    self?.stopRecording()
+                }
             }
         }
     }
 
+    private func recycleRecordingBuffer(_ buffer: AVAudioPCMBuffer?, file: AVAudioFile?) {
+        guard let buffer, let file else { return }
+        recordingLock.lock()
+        defer { recordingLock.unlock() }
+        if isRecording, recordingFile === file {
+            recordingBufferPool.append(buffer)
+        }
+    }
+
     deinit {
-        engine.inputNode.removeTap(onBus: 0)
-        // Stop audio queue before deallocation to prevent callback accessing freed memory
-        if let queue = outputQueue {
-            AudioQueueStop(queue, true)
-            AudioQueueDispose(queue, true)
-            // Note: We don't release the retained self here because if we're in deinit,
-            // the retain count is already being decremented by ARC. Releasing here would
-            // cause a double-release. The audioQueueRetainedSelf flag tracks this for
-            // explicit stop() calls, but deinit means ARC is handling it.
-        }
-        engine.stop()
-
-        // Clean up ring buffer
-        os_unfair_lock_lock(&ringBufferLock)
-        if let buffer = ringBuffer {
-            buffer.deallocate()
-        }
-        os_unfair_lock_unlock(&ringBufferLock)
-
+        stopProcessTapBackendImmediately(reason: "Sonexis deinit")
+        stopDeviceListMonitor()
         NotificationCenter.default.removeObserver(self)
     }
 

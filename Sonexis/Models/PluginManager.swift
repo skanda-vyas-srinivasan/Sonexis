@@ -6,16 +6,16 @@ import Foundation
 final class PluginManager: ObservableObject {
     @Published private(set) var plugins: [PluginDescriptor] = []
     @Published private(set) var isScanning = false
+    @Published private(set) var hasScannedPlugins = false
     @Published var scanError: String?
     @Published private(set) var customFolders: [URL] = []
 
-    private let debugLogAUScan = true
+    private let debugLogAUScan = false
     private let customFoldersKey = "pluginCustomFolders"
     private let scanQueue = DispatchQueue(label: "Sonexis.PluginScan", qos: .userInitiated)
 
     init() {
         customFolders = loadCustomFolders()
-        scanPlugins()
     }
 
     func scanPlugins() {
@@ -27,10 +27,11 @@ final class PluginManager: ObservableObject {
             guard let self else { return }
             let auPlugins = self.scanAudioUnits()
             let combined = auPlugins
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
             DispatchQueue.main.async {
                 self.plugins = combined
+                self.hasScannedPlugins = true
                 self.isScanning = false
             }
         }

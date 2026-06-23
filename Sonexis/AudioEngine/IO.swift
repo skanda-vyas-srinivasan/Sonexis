@@ -1,8 +1,6 @@
 import Accelerate
 import AVFoundation
-import AudioToolbox
 import Foundation
-import os
 
 extension AudioEngine {
     func deinterleavedInput(
@@ -51,29 +49,30 @@ extension AudioEngine {
     ) {
         if lastGraphSignature != signature {
             if lastGraphSignature != 0 {
-                ensureGraphOutputBuffer(&graphChangePrevOutput, channelCount: channelCount, frameLength: frameLength)
-                ensureGraphOutputBuffer(&lastOutputBuffer, channelCount: channelCount, frameLength: frameLength)
-                for channel in 0..<channelCount {
-                    for frame in 0..<frameLength {
-                        graphChangePrevOutput[channel][frame] = lastOutputBuffer[channel][frame]
-                    }
-                }
-                let total = max(1, Int(sampleRate * 0.2))
-                graphChangeSamplesTotal = total
-                graphChangeSamplesRemaining = total
+                graphChangeFadeOutSamplesTotal = max(1, Int(sampleRate * 0.02))
+                graphChangeFadeInSamplesTotal = max(1, Int(sampleRate * 0.12))
+                graphChangeSamplesTotal = graphChangeFadeOutSamplesTotal + graphChangeFadeInSamplesTotal
+                graphChangeSamplesRemaining = graphChangeSamplesTotal
             }
             lastGraphSignature = signature
         }
 
         if graphChangeSamplesRemaining > 0 {
             let total = max(graphChangeSamplesTotal, 1)
+            let fadeOutTotal = max(graphChangeFadeOutSamplesTotal, 1)
+            let fadeInTotal = max(graphChangeFadeInSamplesTotal, 1)
             let start = max(0, total - graphChangeSamplesRemaining)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {
                     let pos = min(total, start + frame)
-                    let t = Float(pos) / Float(total)
-                    processed[channel][frame] = graphChangePrevOutput[channel][frame] * (1 - t)
-                        + processed[channel][frame] * t
+                    if pos < fadeOutTotal {
+                        processed[channel][frame] = 0
+                    } else {
+                        let fadeInPosition = min(fadeInTotal, pos - fadeOutTotal)
+                        let t = Double(fadeInPosition) / Double(fadeInTotal)
+                        let gain = Float(sin(t * 0.5 * Double.pi))
+                        processed[channel][frame] *= gain
+                    }
                 }
             }
             graphChangeSamplesRemaining = max(0, graphChangeSamplesRemaining - frameLength)
@@ -87,20 +86,6 @@ extension AudioEngine {
         }
     }
 
-    private func interleaveInput(
-        channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
-        frameLength: Int,
-        channelCount: Int
-    ) -> [Float] {
-        ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
-        for frame in 0..<frameLength {
-            for channel in 0..<channelCount {
-                interleavedOutputBuffer[frame * channelCount + channel] = channelData[channel][frame]
-            }
-        }
-        return interleavedOutputBuffer
-    }
-
     func interleaveBuffer(_ buffer: [[Float]], frameLength: Int, channelCount: Int) -> [Float] {
         ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for frame in 0..<frameLength {
@@ -109,39 +94,6 @@ extension AudioEngine {
             }
         }
         return interleavedOutputBuffer
-    }
-
-    func enqueueAudioData(_ data: [Float], queue: AudioQueueRef) {
-        os_unfair_lock_lock(&ringBufferLock)
-        defer { os_unfair_lock_unlock(&ringBufferLock) }
-
-        guard let buffer = ringBuffer else { return }
-
-        let available = (ringReadIndex - ringWriteIndex - 1 + ringBufferCapacity) % ringBufferCapacity
-        if available <= 0 {
-            ringReadIndex = (ringReadIndex + 1) % ringBufferCapacity
-        }
-
-        let offset = ringWriteIndex * ringBufferFrameSize
-        data.withUnsafeBufferPointer { src in
-            guard let base = src.baseAddress else { return }
-            buffer.advanced(by: offset).assign(from: base, count: min(data.count, ringBufferFrameSize))
-        }
-
-        ringWriteIndex = (ringWriteIndex + 1) % ringBufferCapacity
-    }
-
-    fileprivate func getAudioDataForOutput(into destination: UnsafeMutablePointer<Float>, count: Int) -> Bool {
-        os_unfair_lock_lock(&ringBufferLock)
-        defer { os_unfair_lock_unlock(&ringBufferLock) }
-
-        guard let buffer = ringBuffer else { return false }
-        guard ringReadIndex != ringWriteIndex else { return false }
-
-        let offset = ringReadIndex * ringBufferFrameSize
-        destination.assign(from: buffer.advanced(by: offset), count: min(count, ringBufferFrameSize))
-        ringReadIndex = (ringReadIndex + 1) % ringBufferCapacity
-        return true
     }
 
     func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
@@ -346,6 +298,13 @@ extension AudioEngine {
                     levelSnapshot: &levelSnapshot,
                     snapshot: snapshot
                 )
+                sanitizeEffectOutput(
+                    &processedAudio,
+                    effect: node.type,
+                    nodeId: node.id,
+                    frameLength: frameLength,
+                    channelCount: channelCount
+                )
             }
 
             let limited = snapshot.limiterEnabled ? applySoftLimiter(processedAudio) : processedAudio
@@ -470,43 +429,4 @@ extension AudioEngine {
         }
     }
 
-    func initializeRingBuffer(frameSize: Int, capacity: Int = 10) {
-        os_unfair_lock_lock(&ringBufferLock)
-        defer { os_unfair_lock_unlock(&ringBufferLock) }
-
-        if let buffer = ringBuffer {
-            buffer.deallocate()
-        }
-        ringBufferFrameSize = frameSize
-        ringBufferCapacity = max(2, capacity)
-        let totalFloats = ringBufferFrameSize * ringBufferCapacity
-        ringBuffer = UnsafeMutablePointer<Float>.allocate(capacity: totalFloats)
-        ringBuffer?.initialize(repeating: 0, count: totalFloats)
-        ringWriteIndex = 0
-        ringReadIndex = 0
-    }
-}
-
-// MARK: - AudioQueue Callback
-
-func audioQueueOutputCallback(
-    inUserData: UnsafeMutableRawPointer?,
-    inAQ: AudioQueueRef,
-    inBuffer: AudioQueueBufferRef
-) {
-    guard let userData = inUserData else { return }
-
-    let audioEngine = Unmanaged<AudioEngine>.fromOpaque(userData).takeUnretainedValue()
-
-    let floatBuffer = inBuffer.pointee.mAudioData.assumingMemoryBound(to: Float.self)
-    let floatCount = Int(inBuffer.pointee.mAudioDataBytesCapacity) / MemoryLayout<Float>.size
-    let bufferSize = Int(inBuffer.pointee.mAudioDataBytesCapacity)
-
-    if !audioEngine.getAudioDataForOutput(into: floatBuffer, count: floatCount) {
-        memset(inBuffer.pointee.mAudioData, 0, bufferSize)
-    }
-    inBuffer.pointee.mAudioDataByteSize = UInt32(bufferSize)
-
-    // Re-enqueue the buffer
-    AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nil)
 }

@@ -3,11 +3,32 @@ import AppKit
 
 // MARK: - Canvas View
 
+private let canvasRootCoordinateSpace = "CanvasViewRootLayer"
+
+private enum CanvasLayerZIndex {
+    static let canvasPane: Double = 0
+    static let effectTray: Double = 10
+    static let floatingBackdrop: Double = 90
+    static let floatingMenu: Double = 100
+}
+
+private struct CanvasFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
+        }
+    }
+}
+
 struct CanvasView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
     @ObservedObject var pluginManager: PluginManager
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
     @State private var effectChain: [BeginnerNode] = []
     @State private var draggedEffectType: EffectType?
     @State private var draggedPlugin: PluginDescriptor?
@@ -54,150 +75,229 @@ struct CanvasView: View {
     @State private var flagsMonitor: Any?
     @State private var isWindowKey = true
     @State private var betaUnlockBuffer = ""
+    @State private var lastAppliedAudioGraphSignature: Int?
+    @State private var pendingAudioGraphApplyWorkItem: DispatchWorkItem?
+    @State private var pendingAudioGraphApplyReason = "graph edit"
+    @State private var pendingAudioGraphApplyForce = false
+    @State private var canvasFrameInRoot: CGRect = .zero
+    @State private var didPrepareAdvancedTutorialCanvas = false
+    @State private var expandedControlPanelLifts: [UUID: CGFloat] = [:]
     private let connectionSnapRadius: CGFloat = 120
+    private let effectEndpointVisualSize = CGSize(width: 110, height: 110)
+    private let terminalEndpointVisualSize = CGSize(width: 60, height: 60)
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let betaUnlockPhrase = "poopymcbutt"
-    private let accentPalette: [AccentStyle] = [
-        AccentStyle(
-            fill: Color(hex: "#00F5FF"),
-            fillDark: Color(hex: "#007C88"),
-            highlight: Color(hex: "#FF5FBF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#FF5FBF"),
-            fillDark: Color(hex: "#7A1F4A"),
-            highlight: Color(hex: "#00F5FF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#8B3DFF"),
-            fillDark: Color(hex: "#3A0B73"),
-            highlight: Color(hex: "#FFB800"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#00FF88"),
-            fillDark: Color(hex: "#00733D"),
-            highlight: Color(hex: "#00D9FF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#FFB800"),
-            fillDark: Color(hex: "#7A4C00"),
-            highlight: Color(hex: "#FF5FBF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#FF6B00"),
-            fillDark: Color(hex: "#7A2E00"),
-            highlight: Color(hex: "#8B3DFF"),
-            text: .white
-        ),
-        AccentStyle(
-            fill: Color(hex: "#00D9FF"),
-            fillDark: Color(hex: "#004866"),
-            highlight: Color(hex: "#00FF88"),
-            text: .white
-        )
-    ]
+    private let debugGraphLifecycle = false
+
+    private var activeTheme: AppTheme {
+        AppTheme.theme(for: selectedThemeID)
+    }
+
+    private var accentPalette: [AccentStyle] {
+        let palette = activeTheme.palette
+
+        if activeTheme == .gold {
+            return [
+                AccentStyle(
+                    fill: palette.neonCyan,
+                    fillDark: palette.textSecondary.opacity(0.38),
+                    highlight: palette.neonPink,
+                    text: palette.textPrimary
+                ),
+                AccentStyle(
+                    fill: palette.neonPink,
+                    fillDark: palette.neonPink.opacity(0.34),
+                    highlight: palette.neonCyan,
+                    text: palette.textPrimary
+                ),
+                AccentStyle(
+                    fill: palette.textSecondary,
+                    fillDark: palette.textSecondary.opacity(0.34),
+                    highlight: palette.neonPink,
+                    text: palette.textPrimary
+                ),
+                AccentStyle(
+                    fill: palette.synthPink,
+                    fillDark: palette.synthPink.opacity(0.30),
+                    highlight: palette.neonCyan,
+                    text: palette.textPrimary
+                )
+            ]
+        }
+
+        return [
+            AccentStyle(
+                fill: palette.neonCyan,
+                fillDark: palette.neonCyan.opacity(0.34),
+                highlight: palette.neonPink,
+                text: palette.textPrimary
+            ),
+            AccentStyle(
+                fill: palette.neonPink,
+                fillDark: palette.neonPink.opacity(0.34),
+                highlight: palette.neonCyan,
+                text: palette.textPrimary
+            ),
+            AccentStyle(
+                fill: palette.synthPurple,
+                fillDark: palette.synthPurple.opacity(0.34),
+                highlight: palette.warning,
+                text: palette.textPrimary
+            ),
+            AccentStyle(
+                fill: palette.success,
+                fillDark: palette.success.opacity(0.34),
+                highlight: palette.electricBlue,
+                text: palette.textPrimary
+            ),
+            AccentStyle(
+                fill: palette.warning,
+                fillDark: palette.warning.opacity(0.34),
+                highlight: palette.neonPink,
+                text: palette.textPrimary
+            ),
+            AccentStyle(
+                fill: palette.synthOrange,
+                fillDark: palette.synthOrange.opacity(0.34),
+                highlight: palette.synthPurple,
+                text: palette.textPrimary
+            ),
+            AccentStyle(
+                fill: palette.electricBlue,
+                fillDark: palette.electricBlue.opacity(0.34),
+                highlight: palette.success,
+                text: palette.textPrimary
+            )
+        ]
+    }
+
+    private var isCanvasMenuLimitedForTutorial: Bool {
+        tutorial.step == .buildResetWiringForParallel || tutorial.step == .buildClearCanvasForDualMono
+    }
+
+    private var canUseClearCanvasAction: Bool {
+        !isCanvasMenuLimitedForTutorial || tutorial.step == .buildClearCanvasForDualMono
+    }
+
+    private var canUseResetWiringAction: Bool {
+        !isCanvasMenuLimitedForTutorial || tutorial.step == .buildResetWiringForParallel
+    }
 
     enum WiringMode {
         case automatic  // Position-based with manual override
         case manual     // Pure manual wiring only
     }
 
+    private var graphModeLabel: String {
+        graphMode == .single ? "Stereo" : "Dual Mono"
+    }
+
+    private var wiringModeLabel: String {
+        wiringMode == .automatic ? "Automatic" : "Manual"
+    }
+
     @ViewBuilder
     private var toolbarView: some View {
         HStack(spacing: 18) {
-            HStack(spacing: 8) {
-                Text("Graph Mode")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-                Picker("", selection: $graphMode) {
-                    Text("Stereo").tag(GraphMode.single)
-                    Text("Dual Mono (L/R)").tag(GraphMode.split)
+            Menu {
+                Button("Stereo") {
+                    graphMode = .single
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .disabled(tutorial.isBuildStep && ![.buildGraphMode, .buildReturnStereoAuto].contains(tutorial.step))
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TutorialTargetPreferenceKey.self,
-                            value: [.buildGraphMode: proxy.frame(in: .global)]
-                        )
-                    }
+                Button("Dual Mono") {
+                    graphMode = .split
+                }
+            } label: {
+                CanvasToolbarMenuLabel(
+                    title: "Graph Mode",
+                    value: graphModeLabel,
+                    tint: AppColors.neonCyan
                 )
-                .onChange(of: graphMode) { _ in
-                    if graphMode == .split {
-                        syncLanesForSplit()
-                    }
-                    applyChainToEngine()
-                    tutorial.advanceIf(.buildGraphMode)
-                    if tutorial.step == .buildReturnStereoAuto,
-                       graphMode == .single,
-                       wiringMode == .automatic {
-                        tutorial.advance()
-                    }
-                    // Ensure animations continue after picker interaction
-                    DispatchQueue.main.async {
-                        let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
-                        if keyWindow && scenePhase == .active {
-                            isAppActive = true
-                            showSignalFlow = audioEngine.isRunning
-                        }
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .disabled(tutorial.isBuildStep && ![.buildGraphMode, .buildReturnStereoAuto].contains(tutorial.step))
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildGraphMode: proxy.frame(in: .global)]
+                    )
+                }
+            )
+            .onChange(of: graphMode) { _ in
+                guard !isRestoringSnapshot else { return }
+                if graphMode == .split {
+                    syncLanesForSplit()
+                }
+                applyChainToEngine()
+                tutorial.advanceIf(.buildGraphMode)
+                if tutorial.step == .buildReturnStereoAuto,
+                   graphMode == .single,
+                   wiringMode == .automatic {
+                    tutorial.advance()
+                }
+                // Ensure animations continue after picker interaction
+                DispatchQueue.main.async {
+                    let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
+                    if keyWindow && scenePhase == .active {
+                        isAppActive = true
+                        showSignalFlow = audioEngine.isRunning
                     }
                 }
             }
 
-            HStack(spacing: 8) {
-                Text("Wiring")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-                Picker("", selection: $wiringMode) {
-                    Text("Automatic").tag(WiringMode.automatic)
-                    Text("Manual").tag(WiringMode.manual)
+            Menu {
+                Button("Automatic") {
+                    wiringMode = .automatic
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .disabled(tutorial.isBuildStep && ![.buildWiringManual, .buildReturnStereoAuto, .buildDualMonoConnect].contains(tutorial.step))
-                .help(wiringMode == .automatic ?
-                      "Automatic: Effects flow left-to-right by position." :
-                      "Manual: Pure manual wiring. Option+drag to connect.")
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TutorialTargetPreferenceKey.self,
-                            value: [.buildWiringMode: proxy.frame(in: .global)]
-                        )
-                    }
+                Button("Manual") {
+                    wiringMode = .manual
+                }
+            } label: {
+                CanvasToolbarMenuLabel(
+                    title: "Wiring",
+                    value: wiringModeLabel,
+                    tint: AppColors.neonPink
                 )
-                .onChange(of: wiringMode) { newMode in
-                    guard !isRestoringSnapshot else { return }
-                    if newMode == .automatic {
-                        activeConnectionFromID = nil
-                        activeConnectionPoint = .zero
-                        isOptionHeld = false
-                    } else if newMode == .manual {
-                        // Clear all wiring when switching to manual
-                        manualConnections.removeAll()
-                    }
-                    applyChainToEngine()
-                    updateCursor()
-                    tutorial.advanceIf(.buildWiringManual)
-                    if tutorial.step == .buildReturnStereoAuto,
-                       graphMode == .single,
-                       wiringMode == .automatic {
-                        tutorial.advance()
-                    }
-                    // Ensure animations continue after picker interaction
-                    DispatchQueue.main.async {
-                        let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
-                        if keyWindow && scenePhase == .active {
-                            isAppActive = true
-                            showSignalFlow = audioEngine.isRunning
-                        }
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .disabled(tutorial.isBuildStep && ![.buildWiringManual, .buildReturnStereoAuto].contains(tutorial.step))
+            .help(wiringMode == .automatic ?
+                  "Automatic: Effects flow left-to-right by position." :
+                  "Manual: Pure manual wiring. Option+drag to connect.")
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialTargetPreferenceKey.self,
+                        value: [.buildWiringMode: proxy.frame(in: .global)]
+                    )
+                }
+            )
+            .onChange(of: wiringMode) { newMode in
+                guard !isRestoringSnapshot else { return }
+                if newMode == .automatic {
+                    activeConnectionFromID = nil
+                    activeConnectionPoint = .zero
+                    isOptionHeld = false
+                } else if newMode == .manual {
+                    // Clear all wiring when switching to manual
+                    manualConnections.removeAll()
+                }
+                applyChainToEngine()
+                updateCursor()
+                tutorial.advanceIf(.buildWiringManual)
+                if tutorial.step == .buildReturnStereoAuto,
+                   graphMode == .single,
+                   wiringMode == .automatic {
+                    tutorial.advance()
+                }
+                // Ensure animations continue after picker interaction
+                DispatchQueue.main.async {
+                    let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
+                    if keyWindow && scenePhase == .active {
+                        isAppActive = true
+                        showSignalFlow = audioEngine.isRunning
                     }
                 }
             }
@@ -209,14 +309,15 @@ struct CanvasView: View {
                 Toggle("", isOn: $autoConnectEnd)
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .disabled(wiringMode == .automatic || (tutorial.isBuildStep && tutorial.step != .buildAutoConnectEnd))
-                    .opacity(wiringMode == .automatic ? 0.4 : 1.0)
+                    .disabled(wiringMode == .automatic || tutorial.isBuildStep)
+                    .opacity(wiringMode == .automatic || tutorial.isBuildStep ? 0.4 : 1.0)
                     .help(wiringMode == .automatic ?
                           "Automatic mode handles all connections." :
                           (autoConnectEnd ?
                            "Auto-connect End: On - Last nodes auto-connect to End." :
                            "Auto-connect End: Off - Manually connect to End."))
                     .onChange(of: autoConnectEnd) { _ in
+                        guard !isRestoringSnapshot else { return }
                         applyChainToEngine()
                         // Ensure animations continue after toggle interaction
                         DispatchQueue.main.async {
@@ -246,6 +347,14 @@ struct CanvasView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(AppColors.textSecondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AppColors.controlPurple.opacity(0.56))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(arrowFps == 0 ? AppColors.controlStroke.opacity(0.50) : AppColors.neonCyan.opacity(0.42), lineWidth: 1)
+                )
+                .cornerRadius(8)
                 .disabled(tutorial.isBuildStep)
             }
 
@@ -255,6 +364,13 @@ struct CanvasView: View {
                 } label: {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 24)
+                        .background(AppColors.controlPurple.opacity(0.50))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(undoStack.isEmpty ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
+                        )
+                        .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(undoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
@@ -265,6 +381,13 @@ struct CanvasView: View {
                 } label: {
                     Image(systemName: "arrow.uturn.forward")
                         .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 24)
+                        .background(AppColors.controlPurple.opacity(0.50))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(redoStack.isEmpty ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
+                        )
+                        .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(redoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
@@ -274,18 +397,26 @@ struct CanvasView: View {
             Spacer()
 
             Menu {
-                Button("Clear Canvas") {
-                    clearCanvas()
+                if canUseClearCanvasAction {
+                    Button("Clear Canvas") {
+                        clearCanvas()
+                    }
                 }
-                Button("Reset Wiring") {
-                    resetWiring()
+                if canUseResetWiringAction {
+                    Button("Reset Wiring") {
+                        resetWiring()
+                    }
+                    .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
                 }
-                .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
             } label: {
-                Text("Canvas")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textSecondary)
+                CanvasToolbarMenuLabel(
+                    title: "Canvas",
+                    value: nil,
+                    tint: AppColors.neonCyan
+                )
             }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -298,7 +429,12 @@ struct CanvasView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(AppColors.midPurple.opacity(0.9))
+        .background(AppColors.panelPurple.opacity(0.72))
+        .overlay(
+            AppColors.controlStroke.opacity(0.30)
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
 
     private var leftAutoPath: [BeginnerNode] {
@@ -327,18 +463,19 @@ struct CanvasView: View {
     @ViewBuilder
     private func canvasContent(in geometry: GeometryProxy) -> some View {
                     ZStack {
-                    AppGradients.background
+                    AppSurfaces.background
                         .ignoresSafeArea()
 
+                    CanvasWaveLinesBackground()
+
                     StaticGrid()
+                        .opacity(0.34)
 
                     Rectangle()
                         .fill(Color.clear)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if wiringMode == .manual {
-                                selectedNodeIDs.removeAll()
-                            }
+                            clearGraphSelection()
                         }
                         .gesture(
                             DragGesture()
@@ -393,7 +530,9 @@ struct CanvasView: View {
                                 level: levelForNode(connection.toNodeId),
                                 beatPulse: beatPulse,
                                 fps: arrowFps,
-                                allowAnimation: isAppActive
+                                allowAnimation: isAppActive,
+                                fromEndpointSize: endpointVisualSize(for: connection.fromNodeId),
+                                toEndpointSize: endpointVisualSize(for: connection.toNodeId)
                             )
                         }
                     } else {
@@ -409,7 +548,9 @@ struct CanvasView: View {
                                 level: levelForNode(connection.toNodeId),
                                 beatPulse: beatPulse,
                                 fps: arrowFps,
-                                allowAnimation: isAppActive
+                                allowAnimation: isAppActive,
+                                fromEndpointSize: endpointVisualSize(for: connection.fromNodeId),
+                                toEndpointSize: endpointVisualSize(for: connection.toNodeId)
                             )
                         }
                     }
@@ -450,27 +591,17 @@ struct CanvasView: View {
                         .zIndex(5)
                     }
 
-                    if let menu = customContextMenu {
-                        Color.black.opacity(0.001)
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                customContextMenu = nil
-                                tutorial.advanceIf(.buildCloseContextMenu)
-                            }
-
-                        CustomContextMenuView(menu: menu) {
-                            customContextMenu = nil
-                            tutorial.advanceIf(.buildCloseContextMenu)
-                        }
-                        .zIndex(10)
-                    }
-
                     if let start = lassoStart, let current = lassoCurrent {
                         let rect = selectionRect(from: start, to: current)
-                        Rectangle()
-                            .path(in: rect)
-                            .stroke(Color.blue.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                            .background(Color.blue.opacity(0.08))
+                        Path { path in
+                            path.addRect(rect)
+                        }
+                        .fill(Color.blue.opacity(0.08))
+
+                        Path { path in
+                            path.addRect(rect)
+                        }
+                        .stroke(Color.blue.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     }
 
                     if graphMode == .split {
@@ -613,10 +744,15 @@ struct CanvasView: View {
                             onUpdate: {
                                 applyChainToEngine()
                             },
+                            onParameterChange: {
+                                updateChainParametersOnly()
+                            },
                             onExpanded: {
+                                setControlPanelLift(for: effectValue, in: geometry.size)
                                 tutorial.advanceIf(.buildDoubleClick)
                             },
                             onCollapsed: {
+                                clearControlPanelLift(for: effectValue.id)
                                 tutorial.advanceIf(.buildCloseOverlay)
                             },
                             onOpenPluginEditor: {
@@ -687,6 +823,9 @@ struct CanvasView: View {
                                         if tutorial.isBuildStep && !allowMoveDuringTutorial {
                                             return
                                         }
+                                        if tutorial.step == .buildAutoReorder && effectValue.type != .clarity {
+                                            return
+                                        }
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
                                             draggingNodeID = effectValue.id
@@ -694,19 +833,21 @@ struct CanvasView: View {
                                                 dragUndoSnapshot = currentGraphSnapshot()
                                             }
                                             dragStartPosition = nodePosition(effectValue, in: geometry.size)
-                                            if wiringMode == .manual {
-                                                if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
-                                                    selectedNodeIDs = [effectValue.id]
-                                                }
+                                            if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
+                                                selectedNodeIDs = [effectValue.id]
+                                            }
+                                            if selectedNodeIDs.contains(effectValue.id) {
                                                 selectionDragStartPositions = selectedNodeIDs.reduce(into: [:]) { result, id in
                                                     if let node = effectChain.first(where: { $0.id == id }) {
                                                         result[id] = nodePosition(node, in: geometry.size)
                                                     }
                                                 }
+                                            } else {
+                                                selectionDragStartPositions.removeAll()
                                             }
                                         }
                                         let delta = CGSize(width: value.translation.width, height: value.translation.height)
-                                        if wiringMode == .manual, !selectedNodeIDs.isEmpty {
+                                        if selectedNodeIDs.contains(effectValue.id), !selectionDragStartPositions.isEmpty {
                                             moveSelectedNodes(by: delta, in: geometry.size)
                                         } else {
                                             let newPosition = CGPoint(
@@ -715,8 +856,9 @@ struct CanvasView: View {
                                             )
                                             updateNodePosition(
                                                 effectValue.id,
-                                                position: clamp(
+                                                position: clampNodePosition(
                                                     newPosition,
+                                                    id: effectValue.id,
                                                     to: geometry.size,
                                                     lane: graphMode == .split ? effectValue.lane : nil
                                                 )
@@ -744,6 +886,11 @@ struct CanvasView: View {
                                             activeConnectionPoint = .zero
                                             return
                                         }
+                                        if tutorial.step == .buildAutoReorder && effectValue.type != .clarity {
+                                            activeConnectionFromID = nil
+                                            activeConnectionPoint = .zero
+                                            return
+                                        }
                                         activeConnectionFromID = nil
                                         activeConnectionPoint = .zero
                                         // Finalize move
@@ -765,11 +912,11 @@ struct CanvasView: View {
                     if effectChain.isEmpty && graphMode != .split {
                         VStack(spacing: 8) {
                             Image(systemName: "waveform.path")
-                                .font(.system(size: 40))
-                                .foregroundColor(.secondary.opacity(0.3))
-                            Text("Drop effects anywhere")
-                                .font(.title3)
-                                .foregroundColor(.secondary.opacity(0.5))
+                                .font(.system(size: 30, weight: .light))
+                                .foregroundColor(AppColors.neonCyan.opacity(0.32))
+                            Text("Drop effects here")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(AppColors.textSecondary.opacity(0.62))
                         }
                     }
                 }
@@ -792,16 +939,13 @@ struct CanvasView: View {
                     updateCursor()
                 }
                 .onAppear {
-                    canvasSize = geometry.size
+                    updateCanvasSizeIfNeeded(geometry.size)
                 }
                 .onChange(of: geometry.size) { newSize in
-                    canvasSize = newSize
+                    updateCanvasSizeIfNeeded(newSize)
                 }
                 .background(WindowFocusReader { isKey in
-                    isWindowKey = isKey
-                    let active = scenePhase == .active && isWindowKey
-                    isAppActive = active
-                    showSignalFlow = active && audioEngine.isRunning
+                    updateFocusState(isKeyWindow: isKey)
                 })
                 .contentShape(Rectangle())
                 .overlay(
@@ -826,24 +970,30 @@ struct CanvasView: View {
                         laneForPoint(point, in: geometry.size)
                     },
                     onAdd: { newNode in
+                        let stepAtDrop = tutorial.step
                         if tutorial.isBuildStep && ![
                             TutorialStep.buildAddBass,
                             .buildAutoAddClarity,
                             .buildParallelAddReverb,
                             .buildDualMonoAdd
-                        ].contains(tutorial.step) {
+                        ].contains(stepAtDrop) {
                             return
                         }
-                        if tutorial.step == .buildAddBass && newNode.type != .bassBoost {
+                        if stepAtDrop == .buildAddBass && newNode.type != .bassBoost {
                             return
                         }
-                        if tutorial.step == .buildAutoAddClarity && newNode.type != .clarity {
+                        if stepAtDrop == .buildAutoAddClarity && newNode.type != .clarity {
                             return
                         }
-                        if tutorial.step == .buildParallelAddReverb && newNode.type != .reverb {
+                        if stepAtDrop == .buildAutoAddClarity,
+                           let bassNode = effectChain.first(where: { $0.type == .bassBoost }) {
+                            let bassPosition = displayNodePosition(bassNode, in: geometry.size)
+                            guard newNode.position.x < bassPosition.x else { return }
+                        }
+                        if stepAtDrop == .buildParallelAddReverb && newNode.type != .reverb {
                             return
                         }
-                        if tutorial.step == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(newNode.type) {
+                        if stepAtDrop == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(newNode.type) {
                             return
                         }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -854,10 +1004,14 @@ struct CanvasView: View {
                             effectChain.append(node)
                             triggerDropAnimation(for: node.id)
                             applyChainToEngine()
-                            tutorial.advanceIf(.buildAddBass)
-                            tutorial.advanceIf(.buildAutoAddClarity)
-                            tutorial.advanceIf(.buildParallelAddReverb)
-                            maybeAdvanceDualMonoTutorial()
+                            switch stepAtDrop {
+                            case .buildAddBass, .buildAutoAddClarity, .buildParallelAddReverb:
+                                tutorial.advance()
+                            case .buildDualMonoAdd:
+                                maybeAdvanceDualMonoTutorial()
+                            default:
+                                break
+                            }
                         }
                     }
                 ))
@@ -878,45 +1032,52 @@ struct CanvasView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            EffectTray(
-                isCollapsed: $isTrayCollapsed,
-                pluginManager: pluginManager,
-                previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
-                onSelect: { type in
-                    addEffectToChain(type)
-                },
-                onDrag: { type in
-                    draggedEffectType = type
-                },
-                onSelectPlugin: { plugin in
-                    addPluginToChain(plugin)
-                },
-                onDragPlugin: { plugin in
-                    draggedPlugin = plugin
-                },
-                onTabChange: { tab in
-                    if tutorial.step == .buildTrayTabs && tab != .builtIn {
-                        tutorial.hasVisitedTrayTabs = true
-                    }
-                },
-                allowTapToAdd: !tutorial.isBuildStep || ![
-                    .buildAddBass,
-                    .buildAutoAddClarity,
-                    .buildParallelAddReverb,
-                    .buildDualMonoAdd
-                ].contains(tutorial.step),
-                tutorialStep: tutorial.step
-            )
+        ZStack(alignment: .topLeading) {
+            HStack(spacing: 0) {
+                EffectTray(
+                    isCollapsed: $isTrayCollapsed,
+                    pluginManager: pluginManager,
+                    previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
+                    onDrag: { type in
+                        draggedEffectType = type
+                    },
+                    onDragPlugin: { plugin in
+                        draggedPlugin = plugin
+                    },
+                    onTabChange: { tab in
+                        if tutorial.step == .buildTrayTabs && tab != .builtIn {
+                            tutorial.hasVisitedTrayTabs = true
+                        }
+                    },
+                    tutorialStep: tutorial.step
+                )
+                .zIndex(CanvasLayerZIndex.effectTray)
 
-            VStack(spacing: 0) {
-                toolbarView
+                VStack(spacing: 0) {
+                    toolbarView
 
-                Divider()
-                    .background(AppColors.gridLines)
+                    Divider()
+                        .background(AppColors.gridLines)
 
-                canvasView
+                    canvasView
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: CanvasFramePreferenceKey.self,
+                                    value: proxy.frame(in: .named(canvasRootCoordinateSpace))
+                                )
+                            }
+                        )
+                }
+                .zIndex(CanvasLayerZIndex.canvasPane)
             }
+
+            floatingContextMenuLayer
+        }
+        .coordinateSpace(name: canvasRootCoordinateSpace)
+        .animation(.easeInOut(duration: 0.18), value: selectedThemeID)
+        .onPreferenceChange(CanvasFramePreferenceKey.self) { frame in
+            canvasFrameInRoot = frame
         }
         .overlay(
             HStack {
@@ -928,9 +1089,18 @@ struct CanvasView: View {
             .hidden()
         )
         .onAppear {
-            showSignalFlow = audioEngine.isRunning
+            updateSignalFlowVisibility()
+            prepareAdvancedTutorialCanvasIfNeeded()
         }
         .onChange(of: tutorial.step) { step in
+            if step == .advancedIntro {
+                prepareAdvancedTutorialCanvasIfNeeded()
+            } else if step == .inactive || step == .welcome {
+                didPrepareAdvancedTutorialCanvas = false
+            }
+            if step != .buildRightClick && step != .buildActionMenu {
+                customContextMenu = nil
+            }
             if step == .buildWiringManual && wiringMode == .manual {
                 tutorial.advance()
             }
@@ -939,44 +1109,34 @@ struct CanvasView: View {
             }
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
-            showSignalFlow = isRunning
+            updateSignalFlowVisibility(isRunning: isRunning)
         }
         .onChange(of: scenePhase) { phase in
-            let active = phase == .active && isWindowKey
-            isAppActive = active
-            showSignalFlow = active && audioEngine.isRunning
+            updateSignalFlowVisibility(scenePhase: phase)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            isWindowKey = true
-            let active = scenePhase == .active
-            isAppActive = active && isWindowKey
-            showSignalFlow = isAppActive && audioEngine.isRunning
+            updateFocusState(isKeyWindow: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
-            isWindowKey = false
-            isAppActive = false
-            showSignalFlow = false
+            updateFocusState(isKeyWindow: false)
         }
-        .onReceive(audioEngine.$pendingGraphSnapshot) { snapshot in
-            guard let snapshot else { return }
-            isRestoringSnapshot = true
-            applyGraphSnapshot(snapshot)
+        .onReceive(audioEngine.$pendingGraphLoadRequest) { request in
+            guard let request else { return }
             DispatchQueue.main.async {
-                isRestoringSnapshot = false
+                restorePendingGraphSnapshot(
+                    request.snapshot,
+                    mode: request.mode,
+                    reason: request.reason
+                )
+                audioEngine.pendingGraphLoadRequest = nil
             }
-            audioEngine.pendingGraphSnapshot = nil
         }
         .onReceive(audioEngine.$signalFlowToken) { _ in
             let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
-            isWindowKey = keyWindow
-            let active = scenePhase == .active && isWindowKey
-            isAppActive = active
-            showSignalFlow = active && audioEngine.isRunning
+            updateFocusState(isKeyWindow: keyWindow)
         }
         .onReceive(audioEngine.$pluginStatusToken) { token in
-            pluginStatusToken = token
-        }
-        .onReceive(audioEngine.$pluginStatusToken) { token in
+            guard pluginStatusToken != token else { return }
             pluginStatusToken = token
         }
         .onAppear {
@@ -993,6 +1153,154 @@ struct CanvasView: View {
                 NSEvent.removeMonitor(monitor)
                 flagsMonitor = nil
             }
+            if pendingAudioGraphApplyWorkItem != nil {
+                let reason = pendingAudioGraphApplyReason
+                let force = pendingAudioGraphApplyForce
+                cancelPendingAudioGraphApply()
+                performChainApplyToEngine(reason: "canvas disappear: \(reason)", forceAudioApply: force)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var floatingContextMenuLayer: some View {
+        if let menu = customContextMenu {
+            let rootMenu = contextMenuInRootCoordinates(menu)
+
+            ZStack(alignment: .topLeading) {
+                Color.black.opacity(0.001)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismissCustomContextMenu()
+                    }
+                    .zIndex(CanvasLayerZIndex.floatingBackdrop)
+
+                CustomContextMenuView(menu: rootMenu) {
+                    dismissCustomContextMenu()
+                }
+                .zIndex(CanvasLayerZIndex.floatingMenu)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func contextMenuInRootCoordinates(_ menu: CustomContextMenu) -> CustomContextMenu {
+        CustomContextMenu(
+            anchor: CGPoint(
+                x: menu.anchor.x + canvasFrameInRoot.minX,
+                y: menu.anchor.y + canvasFrameInRoot.minY
+            ),
+            position: CGPoint(
+                x: menu.position.x + canvasFrameInRoot.minX,
+                y: menu.position.y + canvasFrameInRoot.minY
+            ),
+            tint: menu.tint,
+            items: menu.items
+        )
+    }
+
+    private func dismissCustomContextMenu() {
+        customContextMenu = nil
+        tutorial.advanceIf(.buildCloseContextMenu)
+    }
+
+    private func updateCanvasSizeIfNeeded(_ newSize: CGSize) {
+        guard canvasSize != newSize else { return }
+        canvasSize = newSize
+        prepareAdvancedTutorialCanvasIfNeeded()
+    }
+
+    private func prepareAdvancedTutorialCanvasIfNeeded() {
+        guard tutorial.step == .advancedIntro, !didPrepareAdvancedTutorialCanvas else { return }
+        guard canvasSize.width > 1, canvasSize.height > 1 else { return }
+
+        let size = canvasSize
+        let centerY = max(size.height * 0.5, 120)
+        let bassPosition = clamp(
+            CGPoint(x: max(size.width * 0.42, 220), y: centerY),
+            to: size,
+            lane: nil
+        )
+        let clarityPosition = clamp(
+            CGPoint(x: max(size.width * 0.58, 360), y: centerY),
+            to: size,
+            lane: nil
+        )
+
+        didPrepareAdvancedTutorialCanvas = true
+        isRestoringSnapshot = true
+        graphMode = .single
+        wiringMode = .automatic
+        autoConnectEnd = false
+        manualConnections.removeAll()
+        autoGainOverrides.removeAll()
+        selectedNodeIDs.removeAll()
+        selectedWireID = nil
+        selectedAutoWire = nil
+        customContextMenu = nil
+        activeConnectionFromID = nil
+        activeConnectionPoint = .zero
+        lassoStart = nil
+        lassoCurrent = nil
+        undoStack.removeAll()
+        redoStack.removeAll()
+
+        effectChain = [
+            BeginnerNode(type: .bassBoost, position: bassPosition, lane: .left, accentIndex: 0),
+            BeginnerNode(type: .clarity, position: clarityPosition, lane: .left, accentIndex: 1)
+        ]
+        nextAccentIndex = accentPalette.isEmpty ? 0 : 2 % accentPalette.count
+        applyChainToEngine(reason: "advanced tutorial setup", forceAudioApply: true)
+
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+        }
+    }
+
+    private func updateFocusState(isKeyWindow: Bool) {
+        let active = scenePhase == .active && isKeyWindow
+        let shouldShowSignalFlow = active && audioEngine.isRunning
+        guard isWindowKey != isKeyWindow ||
+            isAppActive != active ||
+            showSignalFlow != shouldShowSignalFlow else {
+            return
+        }
+        isWindowKey = isKeyWindow
+        isAppActive = active
+        showSignalFlow = shouldShowSignalFlow
+    }
+
+    private func updateSignalFlowVisibility(
+        scenePhase phase: ScenePhase? = nil,
+        isRunning running: Bool? = nil
+    ) {
+        let resolvedPhase = phase ?? scenePhase
+        let resolvedRunning = running ?? audioEngine.isRunning
+        let active = resolvedPhase == .active && isWindowKey
+        let shouldShowSignalFlow = active && resolvedRunning
+        guard isAppActive != active || showSignalFlow != shouldShowSignalFlow else { return }
+        isAppActive = active
+        showSignalFlow = shouldShowSignalFlow
+    }
+
+    private func restorePendingGraphSnapshot(
+        _ snapshot: GraphSnapshot,
+        mode: GraphLoadMode,
+        reason: String
+    ) {
+        isRestoringSnapshot = true
+        expandedControlPanelLifts.removeAll()
+        applyGraphSnapshot(
+            snapshot,
+            mode: mode,
+            reason: reason
+        )
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+            if tutorial.step == .advancedIntro {
+                didPrepareAdvancedTutorialCanvas = false
+                prepareAdvancedTutorialCanvasIfNeeded()
+            }
         }
     }
 
@@ -1008,56 +1316,6 @@ struct CanvasView: View {
         }
     }
 
-    private func addEffectToChain(_ type: EffectType) {
-        if tutorial.isBuildStep && ![TutorialStep.buildAddBass, .buildDualMonoAdd].contains(tutorial.step) {
-            return
-        }
-        if tutorial.step == .buildAddBass && type != .bassBoost {
-            return
-        }
-        if tutorial.step == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(type) {
-            return
-        }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            recordUndoSnapshot()
-            let lane: GraphLane? = graphMode == .split ? .left : nil
-            let position = defaultNodePosition(in: canvasSize, lane: lane)
-            let newEffect = BeginnerNode(
-                type: type,
-                position: position,
-                lane: lane ?? .left,
-                accentIndex: nextAccentIndex
-            )
-            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
-            effectChain.append(newEffect)
-            triggerDropAnimation(for: newEffect.id)
-            applyChainToEngine()
-            tutorial.advanceIf(.buildAddBass)
-            maybeAdvanceDualMonoTutorial()
-        }
-    }
-
-    private func addPluginToChain(_ plugin: PluginDescriptor) {
-        guard !tutorial.isBuildStep else { return }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            recordUndoSnapshot()
-            let lane: GraphLane? = graphMode == .split ? .left : nil
-            let position = defaultNodePosition(in: canvasSize, lane: lane)
-            let reference = plugin.toReference()
-            let newEffect = BeginnerNode(
-                type: .plugin,
-                position: position,
-                lane: lane ?? .left,
-                accentIndex: nextAccentIndex,
-                plugin: reference
-            )
-            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
-            effectChain.append(newEffect)
-            triggerDropAnimation(for: newEffect.id)
-            applyChainToEngine()
-        }
-    }
-
     private func triggerDropAnimation(for id: UUID) {
         dropAnimatedNodeIDs.insert(id)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -1066,7 +1324,14 @@ struct CanvasView: View {
     }
 
     private func openPluginEditor(for nodeId: UUID) {
-        audioEngine.openPluginEditor(for: nodeId)
+        let fallbackView = NSHostingView(
+            rootView: PluginEditorFallbackView(
+                audioEngine: audioEngine,
+                nodeId: nodeId
+            )
+        )
+        fallbackView.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        audioEngine.openPluginEditor(for: nodeId, fallbackView: fallbackView)
     }
 
 
@@ -1076,6 +1341,7 @@ struct CanvasView: View {
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
         autoGainOverrides = autoGainOverrides.filter { $0.key.from != id && $0.key.to != id }
         selectedNodeIDs.remove(id)
+        expandedControlPanelLifts.removeValue(forKey: id)
         normalizeAllOutgoingGains()
         applyChainToEngine()
     }
@@ -1098,11 +1364,35 @@ struct CanvasView: View {
         applyChainToEngine()
     }
 
+    private func duplicateEffects(ids: Set<UUID>) {
+        let sources = effectChain.filter { ids.contains($0.id) }
+        guard !sources.isEmpty else { return }
+
+        recordUndoSnapshot()
+        let clones = sources.map { source in
+            var clone = BeginnerNode(
+                type: source.type,
+                position: CGPoint(x: source.position.x + 40, y: source.position.y + 40),
+                lane: source.lane,
+                isEnabled: source.isEnabled,
+                parameters: source.parameters,
+                accentIndex: source.accentIndex,
+                plugin: source.plugin
+            )
+            clone.position = clamp(clone.position, to: canvasSize, lane: graphMode == .split ? clone.lane : nil)
+            return clone
+        }
+
+        effectChain.append(contentsOf: clones)
+        selectedNodeIDs = Set(clones.map(\.id))
+        applyChainToEngine()
+    }
+
     private func resetEffectParameters(id: UUID) {
         recordUndoSnapshot()
         guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
         effectChain[index].parameters = NodeEffectParameters.defaults()
-        applyChainToEngine()
+        updateChainParametersOnly()
     }
 
     private func removeEffects(ids: Set<UUID>) {
@@ -1111,6 +1401,7 @@ struct CanvasView: View {
         manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
         autoGainOverrides = autoGainOverrides.filter { !ids.contains($0.key.from) && !ids.contains($0.key.to) }
         selectedNodeIDs.subtract(ids)
+        expandedControlPanelLifts = expandedControlPanelLifts.filter { !ids.contains($0.key) }
         normalizeAllOutgoingGains()
         applyChainToEngine()
     }
@@ -1122,7 +1413,54 @@ struct CanvasView: View {
         applyChainToEngine()
     }
 
-    private func applyChainToEngine() {
+    private func applyChainToEngine(
+        reason: String = "graph edit",
+        forceAudioApply: Bool = false
+    ) {
+        if forceAudioApply {
+            cancelPendingAudioGraphApply()
+            performChainApplyToEngine(reason: reason, forceAudioApply: true)
+            return
+        }
+
+        pendingAudioGraphApplyReason = reason
+        pendingAudioGraphApplyForce = pendingAudioGraphApplyForce || forceAudioApply
+        pendingAudioGraphApplyWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem {
+            let reason = pendingAudioGraphApplyReason
+            let force = pendingAudioGraphApplyForce
+            pendingAudioGraphApplyWorkItem = nil
+            pendingAudioGraphApplyForce = false
+            performChainApplyToEngine(reason: reason, forceAudioApply: force)
+        }
+        pendingAudioGraphApplyWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: workItem)
+    }
+
+    private func cancelPendingAudioGraphApply() {
+        pendingAudioGraphApplyWorkItem?.cancel()
+        pendingAudioGraphApplyWorkItem = nil
+        pendingAudioGraphApplyForce = false
+    }
+
+    private func performChainApplyToEngine(
+        reason: String,
+        forceAudioApply: Bool
+    ) {
+        let signature = currentAudioGraphSignature()
+        if !forceAudioApply, lastAppliedAudioGraphSignature == signature {
+            audioEngine.updateGraphSnapshot(currentGraphSnapshot())
+            if debugGraphLifecycle {
+                print("Audio graph apply skipped: reason=\(reason), unchanged signature=\(signature)")
+            }
+            return
+        }
+        lastAppliedAudioGraphSignature = signature
+        if debugGraphLifecycle {
+            print("Audio graph apply: reason=\(reason), force=\(forceAudioApply), signature=\(signature), nodes=\(effectChain.count)")
+        }
+
         if graphMode == .split {
             let leftNodes = effectChain.filter { $0.lane == .left }
             let rightNodes = effectChain.filter { $0.lane == .right }
@@ -1180,6 +1518,89 @@ struct CanvasView: View {
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
     }
 
+    private func updateChainParametersOnly() {
+        audioEngine.updateEffectNodeRuntimeState(effectChain)
+        audioEngine.updateGraphSnapshot(currentGraphSnapshot())
+    }
+
+    private func currentAudioGraphSignature() -> Int {
+        var hasher = Hasher()
+        hasher.combine(graphMode.rawValue)
+        hasher.combine(wiringMode == .manual ? "manual" : "automatic")
+        hasher.combine(autoConnectEnd)
+
+        switch graphMode {
+        case .single:
+            combineAudioNodes(into: &hasher, nodes: audioRelevantNodes(for: nil))
+            combineAudioConnections(into: &hasher, connections: audioRelevantConnections(for: nil))
+        case .split:
+            hasher.combine("left")
+            combineAudioNodes(into: &hasher, nodes: audioRelevantNodes(for: .left))
+            combineAudioConnections(into: &hasher, connections: audioRelevantConnections(for: .left))
+            hasher.combine("right")
+            combineAudioNodes(into: &hasher, nodes: audioRelevantNodes(for: .right))
+            combineAudioConnections(into: &hasher, connections: audioRelevantConnections(for: .right))
+        }
+
+        return hasher.finalize()
+    }
+
+    private func audioRelevantNodes(for lane: GraphLane?) -> [BeginnerNode] {
+        if wiringMode == .automatic {
+            return chainPath(for: lane)
+        }
+
+        let nodes = graphMode == .split
+            ? effectChain.filter { $0.lane == lane }
+            : effectChain
+        return nodes.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    private func audioRelevantConnections(for lane: GraphLane?) -> [BeginnerConnection] {
+        if wiringMode == .automatic {
+            if autoGainOverrides.isEmpty {
+                return []
+            }
+            return autoConnections(for: lane ?? .left)
+        }
+
+        let connections = graphMode == .split
+            ? manualConnections.filter { laneForConnection($0) == lane }
+            : manualConnections
+        return connections.sorted {
+            if $0.fromNodeId.uuidString != $1.fromNodeId.uuidString {
+                return $0.fromNodeId.uuidString < $1.fromNodeId.uuidString
+            }
+            return $0.toNodeId.uuidString < $1.toNodeId.uuidString
+        }
+    }
+
+    private func combineAudioNodes(into hasher: inout Hasher, nodes: [BeginnerNode]) {
+        hasher.combine(nodes.count)
+        for node in nodes {
+            hasher.combine(node.id)
+            hasher.combine(node.type.rawValue)
+            hasher.combine(node.isEnabled)
+            hasher.combine(node.lane.rawValue)
+            if let plugin = node.plugin {
+                hasher.combine(plugin.format.rawValue)
+                hasher.combine(plugin.identifier)
+                hasher.combine(plugin.componentType)
+                hasher.combine(plugin.componentSubType)
+                hasher.combine(plugin.componentManufacturer)
+            }
+        }
+    }
+
+    private func combineAudioConnections(into hasher: inout Hasher, connections: [BeginnerConnection]) {
+        hasher.combine(connections.count)
+        for connection in connections {
+            hasher.combine(connection.fromNodeId)
+            hasher.combine(connection.toNodeId)
+            hasher.combine(connection.gain)
+        }
+    }
+
     private func bindingForEffect(_ id: UUID) -> Binding<BeginnerNode> {
         Binding(
             get: {
@@ -1192,10 +1613,14 @@ struct CanvasView: View {
         )
     }
 
-    private func applyGraphSnapshot(_ snapshot: GraphSnapshot) {
+    private func applyGraphSnapshot(
+        _ snapshot: GraphSnapshot,
+        mode: GraphLoadMode = .audioAndVisual,
+        reason: String = "direct restore"
+    ) {
         let nodes = snapshot.hasNodeParameters ? snapshot.nodes : migrateNodeParameters(snapshot.nodes)
-        let removedIds = Set(nodes.filter { $0.type == .pitchShift }.map { $0.id })
-        let filteredNodes = nodes.filter { $0.type != .pitchShift }
+        let removedIds = Set(nodes.filter { $0.type == .pitchShift || $0.type.isRetired }.map { $0.id })
+        let filteredNodes = nodes.filter { $0.type != .pitchShift && !$0.type.isRetired }
         effectChain = filteredNodes
         manualConnections = snapshot.connections.filter { !removedIds.contains($0.fromNodeId) && !removedIds.contains($0.toNodeId) }
         let filteredAutoGains = snapshot.autoGainOverrides.filter {
@@ -1223,7 +1648,19 @@ struct CanvasView: View {
         selectedNodeIDs.removeAll()
         selectedWireID = nil
         selectedAutoWire = nil
-        applyChainToEngine()
+
+        switch mode {
+        case .visualOnly:
+            cancelPendingAudioGraphApply()
+            let signature = currentAudioGraphSignature()
+            lastAppliedAudioGraphSignature = signature
+            audioEngine.updateGraphSnapshot(currentGraphSnapshot())
+            if debugGraphLifecycle {
+                print("Graph restore visual-only: reason=\(reason), signature=\(signature), nodes=\(effectChain.count)")
+            }
+        case .audioAndVisual:
+            applyChainToEngine(reason: "restore: \(reason)", forceAudioApply: true)
+        }
     }
 
     private func migrateNodeParameters(_ nodes: [BeginnerNode]) -> [BeginnerNode] {
@@ -1243,7 +1680,7 @@ struct CanvasView: View {
                 params.clarityAmount = audioEngine.clarityAmount
             case .deMud:
                 params.deMudStrength = audioEngine.deMudStrength
-            case .simpleEQ:
+            case .simpleEQ, .appleThreeBandEQ:
                 params.eqBass = audioEngine.eqBass
                 params.eqMids = audioEngine.eqMids
                 params.eqTreble = audioEngine.eqTreble
@@ -1262,6 +1699,12 @@ struct CanvasView: View {
                 ]
             case .compressor:
                 params.compressorStrength = audioEngine.compressorStrength
+                params.compressorThresholdDB = audioEngine.compressorThresholdDB
+                params.compressorRatio = audioEngine.compressorRatio
+                params.compressorAttackMS = audioEngine.compressorAttackMS
+                params.compressorReleaseMS = audioEngine.compressorReleaseMS
+                params.compressorMakeupDB = audioEngine.compressorMakeupDB
+                params.compressorMix = audioEngine.compressorMix
             case .reverb:
                 params.reverbMix = audioEngine.reverbMix
                 params.reverbSize = audioEngine.reverbSize
@@ -1271,12 +1714,20 @@ struct CanvasView: View {
                 params.delayTime = audioEngine.delayTime
                 params.delayFeedback = audioEngine.delayFeedback
                 params.delayMix = audioEngine.delayMix
+            case .amp:
+                params.ampInputGain = audioEngine.ampInputGain
+                params.ampDrive = audioEngine.ampDrive
+                params.ampOutputGain = audioEngine.ampOutputGain
+                params.ampMix = audioEngine.ampMix
             case .distortion:
                 params.distortionDrive = audioEngine.distortionDrive
                 params.distortionMix = audioEngine.distortionMix
             case .tremolo:
                 params.tremoloRate = audioEngine.tremoloRate
                 params.tremoloDepth = audioEngine.tremoloDepth
+            case .autoPan:
+                params.autoPanRate = audioEngine.autoPanRate
+                params.autoPanDepth = audioEngine.autoPanDepth
             case .chorus:
                 params.chorusRate = audioEngine.chorusRate
                 params.chorusDepth = audioEngine.chorusDepth
@@ -1296,6 +1747,8 @@ struct CanvasView: View {
             case .tapeSaturation:
                 params.tapeSaturationDrive = audioEngine.tapeSaturationDrive
                 params.tapeSaturationMix = audioEngine.tapeSaturationMix
+            case .nightDrive, .chromePunch, .midnightGlow, .afterglow:
+                break
             case .resampling:
                 params.resampleRate = audioEngine.resampleRate
                 params.resampleCrossfade = audioEngine.resampleCrossfade
@@ -1440,12 +1893,24 @@ struct CanvasView: View {
                 y: startPos.y + delta.height
             )
             let lane = effectChain.first(where: { $0.id == id })?.lane
-            updateNodePosition(id, position: clamp(newPosition, to: size, lane: graphMode == .split ? lane : nil))
+            updateNodePosition(
+                id,
+                position: clampNodePosition(
+                    newPosition,
+                    id: id,
+                    to: size,
+                    lane: graphMode == .split ? lane : nil
+                )
+            )
         }
     }
 
     private func displayNodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
-        nodePosition(node, in: size)
+        var position = nodePosition(node, in: size)
+        if let lift = expandedControlPanelLifts[node.id] {
+            position.y -= lift
+        }
+        return position
     }
 
     private func zoomIn() {
@@ -1494,13 +1959,27 @@ struct CanvasView: View {
 
     private func updateSelection(in rect: CGRect, additive: Bool) {
         let matched = effectChain.filter { node in
-            rect.contains(displayNodePosition(node, in: canvasSize))
+            rect.intersects(selectionHitRect(for: node, in: canvasSize))
         }
         if additive {
             selectedNodeIDs.formUnion(matched.map { $0.id })
         } else {
             selectedNodeIDs = Set(matched.map { $0.id })
         }
+    }
+
+    private func selectionHitRect(for node: BeginnerNode, in size: CGSize) -> CGRect {
+        let center = displayNodePosition(node, in: size)
+        let tileSize = CGSize(
+            width: effectEndpointVisualSize.width * nodeScale,
+            height: effectEndpointVisualSize.height * nodeScale
+        )
+        return CGRect(
+            x: center.x - tileSize.width * 0.5,
+            y: center.y - tileSize.height * 0.5,
+            width: tileSize.width,
+            height: tileSize.height
+        )
     }
 
     private func handleRightClick(at point: CGPoint, in size: CGSize) {
@@ -1516,31 +1995,55 @@ struct CanvasView: View {
             if tutorial.step == .buildRightClick && hitNode.type != .bassBoost {
                 return
             }
+            let canUseBatchSelection = selectedNodeIDs.count > 1 && selectedNodeIDs.contains(hitNode.id)
+            let batchIDs = selectedNodeIDs
             var items: [CustomContextMenu.Item] = [
                 CustomContextMenu.Item(
-                    title: "Delete Node",
+                    title: "Delete",
                     role: .destructive,
                     action: { removeEffect(id: hitNode.id) }
-                ),
+                )
+            ]
+            if canUseBatchSelection {
+                items.append(
+                    CustomContextMenu.Item(
+                        title: "Delete all selected blocks",
+                        role: .destructive,
+                        action: { removeEffects(ids: batchIDs) }
+                    )
+                )
+            }
+            items.append(
                 CustomContextMenu.Item(
-                    title: "Duplicate Node",
+                    title: "Duplicate",
                     role: nil,
                     action: { duplicateEffect(id: hitNode.id) }
-                ),
+                )
+            )
+            if canUseBatchSelection {
+                items.append(
+                    CustomContextMenu.Item(
+                        title: "Duplicate all selected blocks",
+                        role: nil,
+                        action: { duplicateEffects(ids: batchIDs) }
+                    )
+                )
+            }
+            items.append(
                 CustomContextMenu.Item(
-                    title: "Reset Node Params",
+                    title: "Reset Params",
                     role: nil,
                     action: { resetEffectParameters(id: hitNode.id) }
                 )
-            ]
+            )
             if wiringMode == .manual {
                 items.insert(
                     CustomContextMenu.Item(
-                        title: "Delete Node Wires",
+                        title: "Clear Wires",
                         role: nil,
                         action: { removeWires(for: hitNode.id) }
                     ),
-                    at: 1
+                    at: canUseBatchSelection ? 2 : 1
                 )
             }
             let tint = accentPalette[hitNode.accentIndex % accentPalette.count].fill
@@ -1568,7 +2071,7 @@ struct CanvasView: View {
                             action: { deleteManualConnection(hit.id) }
                         ),
                         CustomContextMenu.Item(
-                            title: "Set Gain…",
+                            title: "Wire Gain",
                             role: nil,
                             action: {
                                 selectedAutoWire = nil
@@ -1597,7 +2100,7 @@ struct CanvasView: View {
                     tint: AppColors.neonCyan,
                     items: [
                         CustomContextMenu.Item(
-                            title: "Set Gain…",
+                            title: "Wire Gain",
                             role: nil,
                             action: {
                                 selectedWireID = nil
@@ -1625,7 +2128,7 @@ struct CanvasView: View {
                     tint: AppColors.neonCyan,
                     items: [
                         CustomContextMenu.Item(
-                            title: "Delete Node Wires",
+                            title: "Clear Wires",
                             role: nil,
                             action: { removeWires(for: startNodeID) }
                         )
@@ -1643,7 +2146,7 @@ struct CanvasView: View {
                     tint: AppColors.neonPink,
                     items: [
                         CustomContextMenu.Item(
-                            title: "Delete Node Wires",
+                            title: "Clear Wires",
                             role: nil,
                             action: { removeWires(for: endNodeID) }
                         )
@@ -1652,6 +2155,29 @@ struct CanvasView: View {
                 customContextMenu = menuAdjusted(menu)
                 return
             }
+        }
+
+        if selectedNodeIDs.count > 1 {
+            let batchIDs = selectedNodeIDs
+            let menu = CustomContextMenu(
+                anchor: point,
+                position: point,
+                tint: AppColors.neonPink,
+                items: [
+                    CustomContextMenu.Item(
+                        title: "Delete all selected blocks",
+                        role: .destructive,
+                        action: { removeEffects(ids: batchIDs) }
+                    ),
+                    CustomContextMenu.Item(
+                        title: "Duplicate all selected blocks",
+                        role: nil,
+                        action: { duplicateEffects(ids: batchIDs) }
+                    )
+                ]
+            )
+            customContextMenu = menuAtPoint(menu, point: point)
+            return
         }
 
         customContextMenu = nil
@@ -1671,6 +2197,12 @@ struct CanvasView: View {
         } else {
             selectedNodeIDs.insert(id)
         }
+    }
+
+    private func clearGraphSelection() {
+        selectedNodeIDs.removeAll()
+        selectedWireID = nil
+        selectedAutoWire = nil
     }
 
     private func removeWires(for nodeID: UUID) {
@@ -1734,11 +2266,14 @@ struct CanvasView: View {
     }
 
     private func clearCanvas() {
+        guard canUseClearCanvasAction else { return }
+
         recordUndoSnapshot()
         effectChain.removeAll()
         manualConnections.removeAll()
         autoGainOverrides.removeAll()
         selectedNodeIDs.removeAll()
+        expandedControlPanelLifts.removeAll()
         selectedWireID = nil
         selectedAutoWire = nil
         nextAccentIndex = 0
@@ -1747,6 +2282,8 @@ struct CanvasView: View {
     }
 
     private func resetWiring() {
+        guard canUseResetWiringAction else { return }
+
         recordUndoSnapshot()
         manualConnections.removeAll()
         autoGainOverrides.removeAll()
@@ -1773,16 +2310,20 @@ struct CanvasView: View {
         guard let snapshot = undoStack.popLast() else { return }
         isRestoringSnapshot = true
         redoStack.append(currentGraphSnapshot())
-        applyGraphSnapshot(snapshot)
-        isRestoringSnapshot = false
+        applyGraphSnapshot(snapshot, reason: "undo")
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+        }
     }
 
     private func redo() {
         guard let snapshot = redoStack.popLast() else { return }
         isRestoringSnapshot = true
         undoStack.append(currentGraphSnapshot())
-        applyGraphSnapshot(snapshot)
-        isRestoringSnapshot = false
+        applyGraphSnapshot(snapshot, reason: "redo")
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+        }
     }
 
     private func normalizeAllOutgoingGains() {
@@ -1999,16 +2540,46 @@ struct CanvasView: View {
         return CGPoint(x: max(size.width - 80, 100), y: size.height * 0.5)
     }
 
-    private func clamp(_ point: CGPoint, to size: CGSize, lane: GraphLane?) -> CGPoint {
+    private func endpointVisualSize(for nodeID: UUID) -> CGSize {
+        if isTerminalNode(nodeID) {
+            return terminalEndpointVisualSize
+        }
+        return CGSize(
+            width: effectEndpointVisualSize.width * nodeScale,
+            height: effectEndpointVisualSize.height * nodeScale
+        )
+    }
+
+    private func isTerminalNode(_ nodeID: UUID) -> Bool {
+        nodeID == startNodeID ||
+            nodeID == endNodeID ||
+            nodeID == leftStartNodeID ||
+            nodeID == leftEndNodeID ||
+            nodeID == rightStartNodeID ||
+            nodeID == rightEndNodeID
+    }
+
+    private func clampNodePosition(_ point: CGPoint, id: UUID, to size: CGSize, lane: GraphLane?) -> CGPoint {
+        let visualLift = expandedControlPanelLifts[id] ?? 0
+        return clamp(
+            point,
+            to: size,
+            lane: lane,
+            topPadding: 80 + visualLift
+        )
+    }
+
+    private func clamp(_ point: CGPoint, to size: CGSize, lane: GraphLane?, topPadding: CGFloat? = nil) -> CGPoint {
         let padding: CGFloat = 80
+        let resolvedTopPadding = topPadding ?? padding
         if graphMode == .split, let lane {
             let bounds = laneBounds(in: size, lane: lane)
             let x = min(max(point.x, bounds.minX + padding), max(bounds.maxX - padding, bounds.minX + padding))
-            let y = min(max(point.y, padding), max(size.height - padding, padding))
+            let y = min(max(point.y, resolvedTopPadding), max(size.height - padding, resolvedTopPadding))
             return CGPoint(x: x, y: y)
         }
         let x = min(max(point.x, padding), max(size.width - padding, padding))
-        let y = min(max(point.y, padding), max(size.height - padding, padding))
+        let y = min(max(point.y, resolvedTopPadding), max(size.height - padding, resolvedTopPadding))
         return CGPoint(x: x, y: y)
     }
 
@@ -2181,7 +2752,7 @@ struct CanvasView: View {
         else { return }
         let bassPos = displayNodePosition(bass, in: canvasSize)
         let clarityPos = displayNodePosition(clarity, in: canvasSize)
-        if clarityPos.x < bassPos.x {
+        if clarityPos.x > bassPos.x {
             tutorial.advance()
         }
     }
@@ -2443,5 +3014,153 @@ struct CanvasView: View {
 
     private func nodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
         node.position == .zero ? defaultNodePosition(in: size, lane: graphMode == .split ? node.lane : nil) : node.position
+    }
+
+    private func setControlPanelLift(for node: BeginnerNode, in size: CGSize) {
+        let lift = controlPanelLiftNeeded(for: node, in: size)
+        withAnimation(.easeOut(duration: 0.20)) {
+            if lift > 0 {
+                expandedControlPanelLifts[node.id] = lift
+            } else {
+                expandedControlPanelLifts.removeValue(forKey: node.id)
+            }
+        }
+    }
+
+    private func clearControlPanelLift(for id: UUID) {
+        withAnimation(.easeOut(duration: 0.18)) {
+            _ = expandedControlPanelLifts.removeValue(forKey: id)
+        }
+    }
+
+    private func controlPanelLiftNeeded(for node: BeginnerNode, in size: CGSize) -> CGFloat {
+        guard size.height > 0 else { return 0 }
+
+        let rawPosition = nodePosition(node, in: size)
+        guard rawPosition.y > size.height * 0.64 else { return 0 }
+
+        let panelTop = rawPosition.y + 73 * nodeScale
+        let panelBottom = panelTop + estimatedControlPanelHeight(for: node.type)
+        let overflow = panelBottom + 16 - size.height
+        guard overflow > 0 else { return 0 }
+
+        let topLimit: CGFloat = 82
+        let maxLift = max(rawPosition.y - topLimit, 0)
+        return min(overflow, maxLift)
+    }
+
+    private func estimatedControlPanelHeight(for type: EffectType) -> CGFloat {
+        let parameterRows = max(1, Int(ceil(Double(parameterCount(for: type)) / 2.0)))
+        let gridHeight = min(CGFloat(parameterRows) * 104 + CGFloat(max(0, parameterRows - 1)) * 10, 234)
+        return 110 + gridHeight
+    }
+
+    private func parameterCount(for type: EffectType) -> Int {
+        switch type {
+        case .enhancer, .bassBoost, .rubberBandPitch, .clarity, .deMud, .stereoWidth:
+            return 1
+        case .nightDrive, .chromePunch, .midnightGlow, .afterglow, .reverb, .tremolo, .autoPan, .phaser, .tapeSaturation, .resampling:
+            return 2
+        case .simpleEQ, .appleThreeBandEQ, .delay, .chorus, .bitcrusher:
+            return 3
+        case .amp, .distortion, .flanger:
+            return 4
+        case .compressor:
+            return 6
+        case .tenBandEQ:
+            return 10
+        case .pitchShift, .plugin:
+            return 0
+        }
+    }
+}
+
+private struct CanvasToolbarMenuLabel: View {
+    let title: String
+    let value: String?
+    let tint: Color
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(title)
+                .font(AppTypography.caption)
+                .foregroundColor(AppColors.textSecondary)
+
+            if let value {
+                Text(value)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(tint)
+                    .lineLimit(1)
+            }
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(tint.opacity(0.82))
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.70) : AppColors.controlPurple.opacity(0.46))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(isHovered ? tint.opacity(0.52) : AppColors.controlStrokeSoft.opacity(0.52), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
+private struct CanvasWaveLinesBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+
+            Canvas { context, size in
+                let width = max(size.width, 1)
+                let height = max(size.height, 1)
+                let centerY = height * 0.5
+                let offsets: [CGFloat] = [-0.34, -0.17, 0.17, 0.34]
+                let colors: [Color] = [
+                    AppColors.neonCyan,
+                    AppColors.neonPink,
+                    AppColors.neonPink,
+                    AppColors.neonCyan
+                ]
+
+                for index in offsets.indices {
+                    var path = Path()
+                    let drift = CGFloat(sin((time * 0.28) + Double(index) * 1.7)) * height * 0.018
+                    let yBase = centerY + (height * offsets[index]) + drift
+                    let amplitude = height * (index.isMultiple(of: 2) ? 0.021 : 0.017)
+                    let wavelength = width * (index.isMultiple(of: 2) ? 0.68 : 0.74)
+                    let phase = CGFloat(time * 0.22) + CGFloat(index) * 1.35
+
+                    for x in stride(from: CGFloat(0), through: width, by: 12) {
+                        let y = yBase + sin((x / wavelength * .pi * 2) + phase) * amplitude
+                        if x == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+
+                    context.stroke(
+                        path,
+                        with: .color(colors[index].opacity(0.20)),
+                        style: StrokeStyle(lineWidth: 1.35, lineCap: .round, lineJoin: .round)
+                    )
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

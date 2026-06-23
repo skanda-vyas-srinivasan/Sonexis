@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreAudio
 import Foundation
 
@@ -6,7 +5,7 @@ extension AudioEngine {
     func startDeviceListMonitor() {
         guard deviceListMonitorListener == nil else { return }
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            guard let self = self else { return }
+            guard let self else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 self.refreshOutputDevices()
             }
@@ -57,7 +56,7 @@ extension AudioEngine {
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
         timer.setEventHandler { [weak self] in
-            guard let self = self else { return }
+            guard let self else { return }
             DispatchQueue.main.async {
                 self.refreshOutputDevices()
             }
@@ -106,259 +105,12 @@ extension AudioEngine {
 
     @discardableResult
     func refreshSetupStatus() -> Bool {
-        let inputName = systemDefaultInputDeviceName()
-        let outputName = systemDefaultOutputDeviceName()
-        let ready = (inputName?.localizedCaseInsensitiveContains("BlackHole") == true) &&
-            (outputName?.localizedCaseInsensitiveContains("BlackHole") == true)
-        if setupReady != ready {
+        if setupReady != true {
             DispatchQueue.main.async {
-                self.setupReady = ready
+                self.setupReady = true
             }
         }
-        return ready
-    }
-
-    func findBlackHoleDeviceID() -> AudioDeviceID? {
-        if let device = findDevice(matching: "BlackHole") {
-            return device.id
-        }
-        return nil
-    }
-
-    func setSystemDefaultInputDevice(deviceID: AudioDeviceID) -> Bool {
-        var propertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        // Check if property is settable
-        var isSettable: DarwinBoolean = false
-        var status = AudioObjectIsPropertySettable(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            &isSettable
-        )
-
-        if status != noErr || !isSettable.boolValue {
-            return false
-        }
-
-        var deviceIDCopy = deviceID
-        status = AudioObjectSetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            UInt32(MemoryLayout<AudioDeviceID>.size),
-            &deviceIDCopy
-        )
-
-        return status == noErr
-    }
-
-    func setSystemDefaultOutputDevice(deviceID: AudioDeviceID) -> Bool {
-        var propertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        // Check if property is settable
-        var isSettable: DarwinBoolean = false
-        var status = AudioObjectIsPropertySettable(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            &isSettable
-        )
-
-        if status != noErr || !isSettable.boolValue {
-            return false
-        }
-
-        var deviceIDCopy = deviceID
-        status = AudioObjectSetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            UInt32(MemoryLayout<AudioDeviceID>.size),
-            &deviceIDCopy
-        )
-
-        return status == noErr
-    }
-
-    @discardableResult
-    func switchSystemAudioToBlackHole() async -> Bool {
-        guard let blackHoleID = findBlackHoleDeviceID() else {
-            return false
-        }
-
-        // Save current devices before switching
-        originalInputDeviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultInputDevice)
-        originalOutputDeviceID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice)
-
-        let inputSuccess = setSystemDefaultInputDevice(deviceID: blackHoleID)
-        let outputSuccess = setSystemDefaultOutputDevice(deviceID: blackHoleID)
-
-        // Let the system process the changes without blocking UI
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
-        return inputSuccess && outputSuccess
-    }
-
-    @discardableResult
-    func restoreOriginalAudioDevices() async -> Bool {
-        var success = true
-
-        if let originalInput = originalInputDeviceID {
-            success = setSystemDefaultInputDevice(deviceID: originalInput) && success
-        }
-
-        if let originalOutput = originalOutputDeviceID {
-            success = setSystemDefaultOutputDevice(deviceID: originalOutput) && success
-        }
-
-        // Let the system process the changes without blocking UI
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
-        return success
-    }
-
-    @discardableResult
-    func restoreOriginalAudioDevicesSync() -> Bool {
-        var success = true
-
-        if let originalInput = originalInputDeviceID {
-            success = setSystemDefaultInputDevice(deviceID: originalInput) && success
-        }
-
-        if let originalOutput = originalOutputDeviceID {
-            success = setSystemDefaultOutputDevice(deviceID: originalOutput) && success
-        }
-
-        return success
-    }
-
-    func startSetupMonitor() {
-        guard setupMonitorListener == nil else { return }
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            guard let self = self else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.refreshOutputDevices()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.refreshOutputDevices()
-            }
-            let ready = self.refreshSetupStatus()
-            if !ready && self.isRunning {
-                DispatchQueue.main.async {
-                    self.errorMessage = "Audio routing was changed. Stopped to restore your original audio setup."
-                    self.stop()
-                }
-            }
-        }
-        setupMonitorListener = listener
-
-        var addFailed = false
-        var addedAny = false
-        for address in setupMonitorAddresses() {
-            var mutableAddress = address
-            let status = AudioObjectAddPropertyListenerBlock(
-                AudioObjectID(kAudioObjectSystemObject),
-                &mutableAddress,
-                setupMonitorQueue,
-                listener
-            )
-            if status == noErr {
-                addedAny = true
-            } else {
-                addFailed = true
-            }
-        }
-
-        if addFailed {
-            if let listener = setupMonitorListener, addedAny {
-                for address in setupMonitorAddresses() {
-                    var mutableAddress = address
-                    AudioObjectRemovePropertyListenerBlock(
-                        AudioObjectID(kAudioObjectSystemObject),
-                        &mutableAddress,
-                        setupMonitorQueue,
-                        listener
-                    )
-                }
-            }
-            setupMonitorListener = nil
-            startSetupMonitorTimer()
-        }
-    }
-
-    func stopSetupMonitor() {
-        if let listener = setupMonitorListener {
-            for address in setupMonitorAddresses() {
-                var mutableAddress = address
-                AudioObjectRemovePropertyListenerBlock(
-                    AudioObjectID(kAudioObjectSystemObject),
-                    &mutableAddress,
-                    setupMonitorQueue,
-                    listener
-                )
-            }
-            setupMonitorListener = nil
-        }
-        setupMonitorTimer?.cancel()
-        setupMonitorTimer = nil
-    }
-
-    private func startSetupMonitorTimer() {
-        guard setupMonitorTimer == nil else { return }
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
-        timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
-        timer.setEventHandler { [weak self] in
-            guard let self = self else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.refreshOutputDevices()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.refreshOutputDevices()
-            }
-            let ready = self.refreshSetupStatus()
-            if !ready && self.isRunning {
-                DispatchQueue.main.async {
-                    self.errorMessage = "Audio routing was changed. Stopped to restore your original audio setup."
-                    self.stop()
-                }
-            }
-        }
-        setupMonitorTimer = timer
-        timer.resume()
-    }
-
-    private func setupMonitorAddresses() -> [AudioObjectPropertyAddress] {
-        [
-            AudioObjectPropertyAddress(
-                mSelector: kAudioHardwarePropertyDefaultInputDevice,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            ),
-            AudioObjectPropertyAddress(
-                mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            ),
-            AudioObjectPropertyAddress(
-                mSelector: kAudioHardwarePropertyDevices,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-        ]
-    }
-
-    func findDevice(matching name: String) -> AudioDevice? {
-        let devices = getAllAudioDevices()
-        return devices.first { $0.name.contains(name) }
+        return true
     }
 
     func getDeviceUID(deviceID: AudioDeviceID) -> String? {
@@ -379,135 +131,20 @@ extension AudioEngine {
 
         guard status == noErr else { return nil }
 
-        var uid: CFString = "" as CFString
-        status = AudioObjectGetPropertyData(
-            deviceID,
-            &propertyAddress,
-            0,
-            nil,
-            &dataSize,
-            &uid
-        )
-
-        guard status == noErr else { return nil }
-        return uid as String
-    }
-
-    func getOutputDeviceVolume(deviceID: AudioDeviceID) -> Float {
-        var volume: Float = 1.0
-        var size = UInt32(MemoryLayout<Float>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        var status = AudioObjectGetPropertyData(
-            deviceID,
-            &address,
-            0,
-            nil,
-            &size,
-            &volume
-        )
-
-        if status == noErr {
-            return volume
-        }
-
-        // Fallback to reading first channel volume when virtual master isn't supported.
-        var channelAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyVolumeScalar,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: 1
-        )
-
-        status = AudioObjectGetPropertyData(
-            deviceID,
-            &channelAddress,
-            0,
-            nil,
-            &size,
-            &volume
-        )
-
-        return status == noErr ? volume : 1.0
-    }
-
-    func setOutputDeviceVolume(deviceID: AudioDeviceID, volume: Float) {
-        var vol = volume
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        var status = AudioObjectSetPropertyData(
-            deviceID,
-            &address,
-            0,
-            nil,
-            UInt32(MemoryLayout<Float>.size),
-            &vol
-        )
-
-        if status == noErr {
-            // Debug output removed.
-            return
-        }
-
-        // Fallback to per-channel volume when virtual master isn't supported.
-        for channel in 1...2 {
-            var channelAddress = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyVolumeScalar,
-                mScope: kAudioDevicePropertyScopeOutput,
-                mElement: AudioObjectPropertyElement(channel)
-            )
-            var channelVol = volume
-            status = AudioObjectSetPropertyData(
+        var uid: CFString?
+        status = withUnsafeMutablePointer(to: &uid) { uidPointer in
+            AudioObjectGetPropertyData(
                 deviceID,
-                &channelAddress,
+                &propertyAddress,
                 0,
                 nil,
-                UInt32(MemoryLayout<Float>.size),
-                &channelVol
+                &dataSize,
+                uidPointer
             )
         }
 
-        if status == noErr {
-            // Debug output removed.
-        } else {
-            // Debug output removed.
-        }
-    }
-
-    func findRealOutputDevice() -> AudioDevice? {
-        let devices = getAllAudioDevices()
-
-        // Filter to output devices only
-        let outputDevices = devices.filter { $0.hasOutput }
-
-        // Exclude virtual devices (BlackHole, Multi-Output, Aggregate)
-        let realDevices = outputDevices.filter { device in
-            !device.name.contains("BlackHole") &&
-            !device.name.contains("Multi-Output") &&
-            !device.name.contains("Aggregate")
-        }
-
-        // Prefer built-in devices (MacBook speakers, headphone jack)
-        if let builtIn = realDevices.first(where: { $0.name.contains("Built-in") || $0.name.contains("MacBook") }) {
-            return builtIn
-        }
-
-        // Otherwise return first real device
-        return realDevices.first
-    }
-
-    func isVirtualOutputDevice(_ device: AudioDevice) -> Bool {
-        let name = device.name.lowercased()
-        return name.contains("blackhole") ||
-            name.contains("multi-output") ||
-            name.contains("aggregate")
+        guard status == noErr, let uid else { return nil }
+        return uid as String
     }
 
     func getAllAudioDevices() -> [AudioDevice] {
@@ -542,29 +179,21 @@ extension AudioEngine {
             return []
         }
 
-        return deviceIDs.compactMap { deviceID in
-            AudioDevice(id: deviceID)
-        }
+        return deviceIDs.compactMap { AudioDevice(id: $0) }
     }
 
     func refreshOutputDevices() {
         let devices = getAllAudioDevices().filter { $0.hasOutput }
         outputDevices = devices
 
-        if selectedOutputDeviceID == nil {
-            if let systemOutputID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice),
-               let systemOutput = AudioDevice(id: systemOutputID),
-               systemOutput.hasOutput,
-               !isVirtualOutputDevice(systemOutput) {
-                selectedOutputDeviceID = systemOutputID
-            } else {
-                selectedOutputDeviceID = findRealOutputDevice()?.id
-            }
+        if let defaultOutputID = systemDefaultDeviceID(selector: kAudioHardwarePropertyDefaultOutputDevice),
+           devices.contains(where: { $0.id == defaultOutputID }) {
+            selectedOutputDeviceID = defaultOutputID
+        } else if selectedOutputDeviceID == nil {
+            selectedOutputDeviceID = devices.first?.id
         }
     }
 }
-
-// MARK: - Audio Device Helper
 
 struct AudioDevice: Identifiable, Hashable {
     let id: AudioDeviceID
@@ -587,8 +216,6 @@ struct AudioDevice: Identifiable, Hashable {
         )
 
         var dataSize: UInt32 = 0
-
-        // First get the size
         var status = AudioObjectGetPropertyDataSize(
             id,
             &propertyAddress,
@@ -597,25 +224,21 @@ struct AudioDevice: Identifiable, Hashable {
             &dataSize
         )
 
-        guard status == noErr else {
-            return nil
+        guard status == noErr else { return nil }
+
+        var name: CFString?
+        status = withUnsafeMutablePointer(to: &name) { namePointer in
+            AudioObjectGetPropertyData(
+                id,
+                &propertyAddress,
+                0,
+                nil,
+                &dataSize,
+                namePointer
+            )
         }
 
-        // Now get the actual data
-        var name: CFString = "" as CFString
-        status = AudioObjectGetPropertyData(
-            id,
-            &propertyAddress,
-            0,
-            nil,
-            &dataSize,
-            &name
-        )
-
-        guard status == noErr else {
-            return nil
-        }
-
+        guard status == noErr, let name else { return nil }
         return name as String
     }
 
@@ -636,14 +259,5 @@ struct AudioDevice: Identifiable, Hashable {
         )
 
         return status == noErr && dataSize > 0
-    }
-}
-
-// MARK: - AUAudioUnit Extension for Device Selection
-
-extension AUAudioUnit {
-    func setDeviceID(_ deviceID: AudioDeviceID) throws {
-        let deviceIDValue = deviceID as NSNumber
-        setValue(deviceIDValue, forKey: "deviceID")
     }
 }
