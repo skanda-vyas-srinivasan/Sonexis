@@ -530,7 +530,7 @@ struct TutorialOverlay: View {
         case .buildSettingsExplain:
             return (
                 title: "Audio settings",
-                body: "Tap In sets how hard audio enters the chain. Makeup sets the final output level. Ceiling is the safety limiter: keep it on to catch peaks and reduce clipping. Theme only changes the look.",
+                body: "Lower Tap In gives effects more headroom and less drive; higher Tap In hits them harder, which can add intensity but clip sooner. Lower Makeup keeps the output safer and quieter; higher Makeup brings loudness back after effects but can push the limiter. Ceiling is the safety limiter: when output gets too loud it clamps peaks, which can distort the sound, but it is a useful safety mechanism for your speakers. Theme changes the app's color scheme for a different feel and look.",
                 showNext: true,
                 isBasicsComplete: false
             )

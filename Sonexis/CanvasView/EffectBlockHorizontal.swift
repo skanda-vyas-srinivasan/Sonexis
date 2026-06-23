@@ -195,6 +195,7 @@ struct EffectBlockHorizontal: View {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded = false
                 }
+                onCollapsed()
             }
         }
         .onChange(of: isDropAnimating) { triggered in

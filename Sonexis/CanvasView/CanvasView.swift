@@ -81,6 +81,7 @@ struct CanvasView: View {
     @State private var pendingAudioGraphApplyForce = false
     @State private var canvasFrameInRoot: CGRect = .zero
     @State private var didPrepareAdvancedTutorialCanvas = false
+    @State private var expandedControlPanelLifts: [UUID: CGFloat] = [:]
     private let connectionSnapRadius: CGFloat = 120
     private let effectEndpointVisualSize = CGSize(width: 110, height: 110)
     private let terminalEndpointVisualSize = CGSize(width: 60, height: 60)
@@ -747,9 +748,11 @@ struct CanvasView: View {
                                 updateChainParametersOnly()
                             },
                             onExpanded: {
+                                setControlPanelLift(for: effectValue, in: geometry.size)
                                 tutorial.advanceIf(.buildDoubleClick)
                             },
                             onCollapsed: {
+                                clearControlPanelLift(for: effectValue.id)
                                 tutorial.advanceIf(.buildCloseOverlay)
                             },
                             onOpenPluginEditor: {
@@ -853,8 +856,9 @@ struct CanvasView: View {
                                             )
                                             updateNodePosition(
                                                 effectValue.id,
-                                                position: clamp(
+                                                position: clampNodePosition(
                                                     newPosition,
+                                                    id: effectValue.id,
                                                     to: geometry.size,
                                                     lane: graphMode == .split ? effectValue.lane : nil
                                                 )
@@ -1034,14 +1038,8 @@ struct CanvasView: View {
                     isCollapsed: $isTrayCollapsed,
                     pluginManager: pluginManager,
                     previewStyle: accentPalette[nextAccentIndex % accentPalette.count],
-                    onSelect: { type in
-                        addEffectToChain(type)
-                    },
                     onDrag: { type in
                         draggedEffectType = type
-                    },
-                    onSelectPlugin: { plugin in
-                        addPluginToChain(plugin)
                     },
                     onDragPlugin: { plugin in
                         draggedPlugin = plugin
@@ -1051,7 +1049,6 @@ struct CanvasView: View {
                             tutorial.hasVisitedTrayTabs = true
                         }
                     },
-                    allowTapToAdd: !tutorial.isBuildStep,
                     tutorialStep: tutorial.step
                 )
                 .zIndex(CanvasLayerZIndex.effectTray)
@@ -1292,6 +1289,7 @@ struct CanvasView: View {
         reason: String
     ) {
         isRestoringSnapshot = true
+        expandedControlPanelLifts.removeAll()
         applyGraphSnapshot(
             snapshot,
             mode: mode,
@@ -1315,52 +1313,6 @@ struct CanvasView: View {
             NSCursor.crosshair.set()
         } else {
             NSCursor.arrow.set()
-        }
-    }
-
-    private func addEffectToChain(_ type: EffectType) {
-        guard !type.isRetired else { return }
-
-        if tutorial.isBuildStep {
-            return
-        }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            recordUndoSnapshot()
-            let lane: GraphLane? = graphMode == .split ? .left : nil
-            let position = defaultNodePosition(in: canvasSize, lane: lane)
-            let newEffect = BeginnerNode(
-                type: type,
-                position: position,
-                lane: lane ?? .left,
-                accentIndex: nextAccentIndex
-            )
-            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
-            effectChain.append(newEffect)
-            triggerDropAnimation(for: newEffect.id)
-            applyChainToEngine()
-            tutorial.advanceIf(.buildAddBass)
-            maybeAdvanceDualMonoTutorial()
-        }
-    }
-
-    private func addPluginToChain(_ plugin: PluginDescriptor) {
-        guard !tutorial.isBuildStep else { return }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-            recordUndoSnapshot()
-            let lane: GraphLane? = graphMode == .split ? .left : nil
-            let position = defaultNodePosition(in: canvasSize, lane: lane)
-            let reference = plugin.toReference()
-            let newEffect = BeginnerNode(
-                type: .plugin,
-                position: position,
-                lane: lane ?? .left,
-                accentIndex: nextAccentIndex,
-                plugin: reference
-            )
-            nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
-            effectChain.append(newEffect)
-            triggerDropAnimation(for: newEffect.id)
-            applyChainToEngine()
         }
     }
 
@@ -1389,6 +1341,7 @@ struct CanvasView: View {
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
         autoGainOverrides = autoGainOverrides.filter { $0.key.from != id && $0.key.to != id }
         selectedNodeIDs.remove(id)
+        expandedControlPanelLifts.removeValue(forKey: id)
         normalizeAllOutgoingGains()
         applyChainToEngine()
     }
@@ -1448,6 +1401,7 @@ struct CanvasView: View {
         manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
         autoGainOverrides = autoGainOverrides.filter { !ids.contains($0.key.from) && !ids.contains($0.key.to) }
         selectedNodeIDs.subtract(ids)
+        expandedControlPanelLifts = expandedControlPanelLifts.filter { !ids.contains($0.key) }
         normalizeAllOutgoingGains()
         applyChainToEngine()
     }
@@ -1939,12 +1893,24 @@ struct CanvasView: View {
                 y: startPos.y + delta.height
             )
             let lane = effectChain.first(where: { $0.id == id })?.lane
-            updateNodePosition(id, position: clamp(newPosition, to: size, lane: graphMode == .split ? lane : nil))
+            updateNodePosition(
+                id,
+                position: clampNodePosition(
+                    newPosition,
+                    id: id,
+                    to: size,
+                    lane: graphMode == .split ? lane : nil
+                )
+            )
         }
     }
 
     private func displayNodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
-        nodePosition(node, in: size)
+        var position = nodePosition(node, in: size)
+        if let lift = expandedControlPanelLifts[node.id] {
+            position.y -= lift
+        }
+        return position
     }
 
     private func zoomIn() {
@@ -2307,6 +2273,7 @@ struct CanvasView: View {
         manualConnections.removeAll()
         autoGainOverrides.removeAll()
         selectedNodeIDs.removeAll()
+        expandedControlPanelLifts.removeAll()
         selectedWireID = nil
         selectedAutoWire = nil
         nextAccentIndex = 0
@@ -2592,16 +2559,27 @@ struct CanvasView: View {
             nodeID == rightEndNodeID
     }
 
-    private func clamp(_ point: CGPoint, to size: CGSize, lane: GraphLane?) -> CGPoint {
+    private func clampNodePosition(_ point: CGPoint, id: UUID, to size: CGSize, lane: GraphLane?) -> CGPoint {
+        let visualLift = expandedControlPanelLifts[id] ?? 0
+        return clamp(
+            point,
+            to: size,
+            lane: lane,
+            topPadding: 80 + visualLift
+        )
+    }
+
+    private func clamp(_ point: CGPoint, to size: CGSize, lane: GraphLane?, topPadding: CGFloat? = nil) -> CGPoint {
         let padding: CGFloat = 80
+        let resolvedTopPadding = topPadding ?? padding
         if graphMode == .split, let lane {
             let bounds = laneBounds(in: size, lane: lane)
             let x = min(max(point.x, bounds.minX + padding), max(bounds.maxX - padding, bounds.minX + padding))
-            let y = min(max(point.y, padding), max(size.height - padding, padding))
+            let y = min(max(point.y, resolvedTopPadding), max(size.height - padding, resolvedTopPadding))
             return CGPoint(x: x, y: y)
         }
         let x = min(max(point.x, padding), max(size.width - padding, padding))
-        let y = min(max(point.y, padding), max(size.height - padding, padding))
+        let y = min(max(point.y, resolvedTopPadding), max(size.height - padding, resolvedTopPadding))
         return CGPoint(x: x, y: y)
     }
 
@@ -3036,6 +3014,64 @@ struct CanvasView: View {
 
     private func nodePosition(_ node: BeginnerNode, in size: CGSize) -> CGPoint {
         node.position == .zero ? defaultNodePosition(in: size, lane: graphMode == .split ? node.lane : nil) : node.position
+    }
+
+    private func setControlPanelLift(for node: BeginnerNode, in size: CGSize) {
+        let lift = controlPanelLiftNeeded(for: node, in: size)
+        withAnimation(.easeOut(duration: 0.20)) {
+            if lift > 0 {
+                expandedControlPanelLifts[node.id] = lift
+            } else {
+                expandedControlPanelLifts.removeValue(forKey: node.id)
+            }
+        }
+    }
+
+    private func clearControlPanelLift(for id: UUID) {
+        withAnimation(.easeOut(duration: 0.18)) {
+            _ = expandedControlPanelLifts.removeValue(forKey: id)
+        }
+    }
+
+    private func controlPanelLiftNeeded(for node: BeginnerNode, in size: CGSize) -> CGFloat {
+        guard size.height > 0 else { return 0 }
+
+        let rawPosition = nodePosition(node, in: size)
+        guard rawPosition.y > size.height * 0.64 else { return 0 }
+
+        let panelTop = rawPosition.y + 73 * nodeScale
+        let panelBottom = panelTop + estimatedControlPanelHeight(for: node.type)
+        let overflow = panelBottom + 16 - size.height
+        guard overflow > 0 else { return 0 }
+
+        let topLimit: CGFloat = 82
+        let maxLift = max(rawPosition.y - topLimit, 0)
+        return min(overflow, maxLift)
+    }
+
+    private func estimatedControlPanelHeight(for type: EffectType) -> CGFloat {
+        let parameterRows = max(1, Int(ceil(Double(parameterCount(for: type)) / 2.0)))
+        let gridHeight = min(CGFloat(parameterRows) * 104 + CGFloat(max(0, parameterRows - 1)) * 10, 234)
+        return 110 + gridHeight
+    }
+
+    private func parameterCount(for type: EffectType) -> Int {
+        switch type {
+        case .enhancer, .bassBoost, .rubberBandPitch, .clarity, .deMud, .stereoWidth:
+            return 1
+        case .nightDrive, .chromePunch, .midnightGlow, .afterglow, .reverb, .tremolo, .autoPan, .phaser, .tapeSaturation, .resampling:
+            return 2
+        case .simpleEQ, .appleThreeBandEQ, .delay, .chorus, .bitcrusher:
+            return 3
+        case .amp, .distortion, .flanger:
+            return 4
+        case .compressor:
+            return 6
+        case .tenBandEQ:
+            return 10
+        case .pitchShift, .plugin:
+            return 0
+        }
     }
 }
 
