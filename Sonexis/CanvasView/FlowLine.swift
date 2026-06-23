@@ -13,7 +13,7 @@ struct FlowLine: View {
     let allowAnimation: Bool
     let fromEndpointSize: CGSize
     let toEndpointSize: CGSize
-    let endpointClearance: CGFloat = 12
+    let endpointClearance: CGFloat = 0
 
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
