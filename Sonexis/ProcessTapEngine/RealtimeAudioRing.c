@@ -5,18 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 struct SonexisAudioRingBuffer {
     float *samples;
-    float *pitchDelayLine;
     uint32_t capacityFrames;
     uint32_t channels;
-    uint32_t pitchDelayLineFrames;
-    atomic_uint writeFrame;
-    atomic_uint readFrame;
+    atomic_ullong writeFrame;
+    atomic_ullong readFrame;
     atomic_ullong droppedFrames;
     atomic_ullong underflowFrames;
     atomic_ullong writtenFrames;
@@ -28,16 +22,10 @@ struct SonexisAudioRingBuffer {
     atomic_uint gainRampRequestID;
     atomic_uint currentGainPPM;
     atomic_bool readEnabled;
-    atomic_bool pitchShiftEnabled;
     float currentGain;
     float rampTargetGain;
     uint32_t rampRemainingFrames;
     uint32_t appliedGainRampRequestID;
-    uint32_t pitchWriteFrame;
-    float pitchPhase;
-    float pitchPhaseIncrement;
-    float pitchMinDelayFrames;
-    float pitchDelayRangeFrames;
 };
 
 static float clampGain(float gain) {
@@ -112,17 +100,6 @@ SonexisAudioRingBuffer *SonexisAudioRingBufferCreate(uint32_t capacityFrames, ui
         return NULL;
     }
 
-    ringBuffer->pitchDelayLineFrames = 4096;
-    ringBuffer->pitchDelayLine = calloc(
-        (size_t)ringBuffer->pitchDelayLineFrames * channels,
-        sizeof(float)
-    );
-    if (ringBuffer->pitchDelayLine == NULL) {
-        free(ringBuffer->samples);
-        free(ringBuffer);
-        return NULL;
-    }
-
     ringBuffer->capacityFrames = capacityFrames;
     ringBuffer->channels = channels;
     atomic_init(&ringBuffer->writeFrame, 0);
@@ -138,16 +115,10 @@ SonexisAudioRingBuffer *SonexisAudioRingBufferCreate(uint32_t capacityFrames, ui
     atomic_init(&ringBuffer->gainRampRequestID, 0);
     atomic_init(&ringBuffer->currentGainPPM, gainToPPM(1.0f));
     atomic_init(&ringBuffer->readEnabled, true);
-    atomic_init(&ringBuffer->pitchShiftEnabled, false);
     ringBuffer->currentGain = 1.0f;
     ringBuffer->rampTargetGain = 1.0f;
     ringBuffer->rampRemainingFrames = 0;
     ringBuffer->appliedGainRampRequestID = 0;
-    ringBuffer->pitchWriteFrame = 0;
-    ringBuffer->pitchPhase = 0.0f;
-    ringBuffer->pitchPhaseIncrement = 0.0f;
-    ringBuffer->pitchMinDelayFrames = 256.0f;
-    ringBuffer->pitchDelayRangeFrames = 1792.0f;
 
     return ringBuffer;
 }
@@ -156,9 +127,9 @@ static void copyRingFrameToAudioBufferList(
     const SonexisAudioRingBuffer *ringBuffer,
     AudioBufferList *outputData,
     uint32_t outputFrame,
-    uint32_t ringFrame
+    uint64_t ringFrame
 ) {
-    uint32_t inputBase = (ringFrame % ringBuffer->capacityFrames) * ringBuffer->channels;
+    uint32_t inputBase = (uint32_t)(ringFrame % ringBuffer->capacityFrames) * ringBuffer->channels;
     uint32_t inputChannel = 0;
 
     for (uint32_t bufferIndex = 0; bufferIndex < outputData->mNumberBuffers; ++bufferIndex) {
@@ -182,52 +153,17 @@ static void copyRingFrameToAudioBufferList(
     }
 }
 
-static void repeatAudioBufferListFrame(
-    AudioBufferList *outputData,
-    uint32_t outputFrame,
-    uint32_t sourceFrame
-) {
-    for (uint32_t bufferIndex = 0; bufferIndex < outputData->mNumberBuffers; ++bufferIndex) {
-        AudioBuffer *buffer = &outputData->mBuffers[bufferIndex];
-        if (buffer->mData == NULL || buffer->mNumberChannels == 0) {
-            continue;
-        }
-
-        float *samples = (float *)buffer->mData;
-        uint32_t bufferChannels = buffer->mNumberChannels;
-
-        for (uint32_t channel = 0; channel < bufferChannels; ++channel) {
-            samples[(outputFrame * bufferChannels) + channel] =
-                samples[(sourceFrame * bufferChannels) + channel];
-        }
-    }
-}
-
 static void copyRingFrameToInterleaved(
     const SonexisAudioRingBuffer *ringBuffer,
     float *outputSamples,
     uint32_t outputFrame,
-    uint32_t ringFrame
+    uint64_t ringFrame
 ) {
-    uint32_t inputBase = (ringFrame % ringBuffer->capacityFrames) * ringBuffer->channels;
+    uint32_t inputBase = (uint32_t)(ringFrame % ringBuffer->capacityFrames) * ringBuffer->channels;
     uint32_t outputBase = outputFrame * ringBuffer->channels;
 
     for (uint32_t channel = 0; channel < ringBuffer->channels; ++channel) {
         outputSamples[outputBase + channel] = ringBuffer->samples[inputBase + channel];
-    }
-}
-
-static void repeatInterleavedFrame(
-    const SonexisAudioRingBuffer *ringBuffer,
-    float *outputSamples,
-    uint32_t outputFrame,
-    uint32_t sourceFrame
-) {
-    uint32_t outputBase = outputFrame * ringBuffer->channels;
-    uint32_t sourceBase = sourceFrame * ringBuffer->channels;
-
-    for (uint32_t channel = 0; channel < ringBuffer->channels; ++channel) {
-        outputSamples[outputBase + channel] = outputSamples[sourceBase + channel];
     }
 }
 
@@ -236,58 +172,8 @@ void SonexisAudioRingBufferDestroy(SonexisAudioRingBuffer *ringBuffer) {
         return;
     }
 
-    free(ringBuffer->pitchDelayLine);
     free(ringBuffer->samples);
     free(ringBuffer);
-}
-
-static float readPitchDelayLine(
-    SonexisAudioRingBuffer *ringBuffer,
-    uint32_t channel,
-    float delayFrames
-) {
-    float readPosition = (float)ringBuffer->pitchWriteFrame - delayFrames;
-    while (readPosition < 0.0f) {
-        readPosition += (float)ringBuffer->pitchDelayLineFrames;
-    }
-
-    uint32_t index0 = (uint32_t)readPosition;
-    uint32_t index1 = (index0 + 1) % ringBuffer->pitchDelayLineFrames;
-    float fraction = readPosition - (float)index0;
-    float sample0 = ringBuffer->pitchDelayLine[(index0 * ringBuffer->channels) + channel];
-    float sample1 = ringBuffer->pitchDelayLine[(index1 * ringBuffer->channels) + channel];
-    return sample0 + ((sample1 - sample0) * fraction);
-}
-
-static float processPitchShiftSample(
-    SonexisAudioRingBuffer *ringBuffer,
-    float inputSample,
-    uint32_t channel,
-    float phase
-) {
-    ringBuffer->pitchDelayLine[
-        (ringBuffer->pitchWriteFrame * ringBuffer->channels) + channel
-    ] = inputSample;
-
-    float phaseB = phase + 0.5f;
-    if (phaseB >= 1.0f) {
-        phaseB -= 1.0f;
-    }
-
-    float delayA = ringBuffer->pitchMinDelayFrames +
-        ((1.0f - phase) * ringBuffer->pitchDelayRangeFrames);
-    float delayB = ringBuffer->pitchMinDelayFrames +
-        ((1.0f - phaseB) * ringBuffer->pitchDelayRangeFrames);
-    float windowA = sinf((float)M_PI * phase);
-    float windowB = sinf((float)M_PI * phaseB);
-    float sampleA = readPitchDelayLine(ringBuffer, channel, delayA);
-    float sampleB = readPitchDelayLine(ringBuffer, channel, delayB);
-    float denominator = windowA + windowB;
-
-    if (denominator <= 0.000001f) {
-        return 0.0f;
-    }
-    return ((sampleA * windowA) + (sampleB * windowB)) / denominator;
 }
 
 uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
@@ -303,10 +189,13 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
         return 0;
     }
 
-    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_relaxed);
-    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
-    uint32_t readableFrames = writeFrame - readFrame;
-    uint32_t writableFrames = ringBuffer->capacityFrames - readableFrames;
+    uint64_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_relaxed);
+    uint64_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
+    uint64_t readableFrameCount = writeFrame - readFrame;
+    if (readableFrameCount > ringBuffer->capacityFrames) {
+        readableFrameCount = ringBuffer->capacityFrames;
+    }
+    uint32_t writableFrames = ringBuffer->capacityFrames - (uint32_t)readableFrameCount;
     uint32_t framesToWrite = incomingFrames < writableFrames ? incomingFrames : writableFrames;
 
     if (framesToWrite < incomingFrames) {
@@ -318,10 +207,6 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
     }
 
     float peak = 0.0f;
-    bool pitchShiftEnabled = atomic_load_explicit(
-        &ringBuffer->pitchShiftEnabled,
-        memory_order_acquire
-    );
     uint32_t requestID = atomic_load_explicit(&ringBuffer->gainRampRequestID, memory_order_acquire);
     if (requestID != ringBuffer->appliedGainRampRequestID) {
         ringBuffer->appliedGainRampRequestID = requestID;
@@ -338,11 +223,10 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
     }
 
     for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
-        uint32_t outputFrame = (writeFrame + frame) % ringBuffer->capacityFrames;
+        uint32_t outputFrame = (uint32_t)((writeFrame + frame) % ringBuffer->capacityFrames);
         uint32_t outputBase = outputFrame * ringBuffer->channels;
         uint32_t outputChannel = 0;
         float frameGain = ringBuffer->currentGain;
-        float pitchPhase = ringBuffer->pitchPhase;
 
         if (ringBuffer->rampRemainingFrames > 0) {
             float step = (ringBuffer->rampTargetGain - ringBuffer->currentGain) /
@@ -376,41 +260,14 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
                 if (absoluteSample > peak) {
                     peak = absoluteSample;
                 }
-                float processedSample = inputSample;
-                if (pitchShiftEnabled) {
-                    processedSample = processPitchShiftSample(
-                        ringBuffer,
-                        inputSample,
-                        outputChannel,
-                        pitchPhase
-                    );
-                }
-                ringBuffer->samples[outputBase + outputChannel] = processedSample * frameGain;
+                ringBuffer->samples[outputBase + outputChannel] = inputSample * frameGain;
                 outputChannel += 1;
             }
         }
 
         while (outputChannel < ringBuffer->channels) {
-            float processedSample = 0.0f;
-            if (pitchShiftEnabled) {
-                processedSample = processPitchShiftSample(
-                    ringBuffer,
-                    0.0f,
-                    outputChannel,
-                    pitchPhase
-                );
-            }
-            ringBuffer->samples[outputBase + outputChannel] = processedSample * frameGain;
+            ringBuffer->samples[outputBase + outputChannel] = 0.0f;
             outputChannel += 1;
-        }
-
-        if (pitchShiftEnabled) {
-            ringBuffer->pitchWriteFrame =
-                (ringBuffer->pitchWriteFrame + 1) % ringBuffer->pitchDelayLineFrames;
-            ringBuffer->pitchPhase += ringBuffer->pitchPhaseIncrement;
-            while (ringBuffer->pitchPhase >= 1.0f) {
-                ringBuffer->pitchPhase -= 1.0f;
-            }
         }
     }
 
@@ -426,7 +283,11 @@ uint32_t SonexisAudioRingBufferWriteFromAudioBufferList(
         gainToPPM(ringBuffer->currentGain),
         memory_order_relaxed
     );
-    atomic_store_explicit(&ringBuffer->writeFrame, writeFrame + framesToWrite, memory_order_release);
+    atomic_store_explicit(
+        &ringBuffer->writeFrame,
+        writeFrame + (uint64_t)framesToWrite,
+        memory_order_release
+    );
     return framesToWrite;
 }
 
@@ -439,10 +300,13 @@ uint32_t SonexisAudioRingBufferWriteInterleaved(
         return 0;
     }
 
-    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_relaxed);
-    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
-    uint32_t readableFrames = writeFrame - readFrame;
-    uint32_t writableFrames = ringBuffer->capacityFrames - readableFrames;
+    uint64_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_relaxed);
+    uint64_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
+    uint64_t readableFrameCount = writeFrame - readFrame;
+    if (readableFrameCount > ringBuffer->capacityFrames) {
+        readableFrameCount = ringBuffer->capacityFrames;
+    }
+    uint32_t writableFrames = ringBuffer->capacityFrames - (uint32_t)readableFrameCount;
     uint32_t framesToWrite = frames < writableFrames ? frames : writableFrames;
 
     if (framesToWrite < frames) {
@@ -454,10 +318,6 @@ uint32_t SonexisAudioRingBufferWriteInterleaved(
     }
 
     float peak = 0.0f;
-    bool pitchShiftEnabled = atomic_load_explicit(
-        &ringBuffer->pitchShiftEnabled,
-        memory_order_acquire
-    );
     uint32_t requestID = atomic_load_explicit(&ringBuffer->gainRampRequestID, memory_order_acquire);
     if (requestID != ringBuffer->appliedGainRampRequestID) {
         ringBuffer->appliedGainRampRequestID = requestID;
@@ -474,10 +334,9 @@ uint32_t SonexisAudioRingBufferWriteInterleaved(
     }
 
     for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
-        uint32_t outputFrame = (writeFrame + frame) % ringBuffer->capacityFrames;
+        uint32_t outputFrame = (uint32_t)((writeFrame + frame) % ringBuffer->capacityFrames);
         uint32_t outputBase = outputFrame * ringBuffer->channels;
         float frameGain = ringBuffer->currentGain;
-        float pitchPhase = ringBuffer->pitchPhase;
 
         if (ringBuffer->rampRemainingFrames > 0) {
             float step = (ringBuffer->rampTargetGain - ringBuffer->currentGain) /
@@ -499,25 +358,7 @@ uint32_t SonexisAudioRingBufferWriteInterleaved(
                 peak = absoluteSample;
             }
 
-            float processedSample = inputSample;
-            if (pitchShiftEnabled) {
-                processedSample = processPitchShiftSample(
-                    ringBuffer,
-                    inputSample,
-                    channel,
-                    pitchPhase
-                );
-            }
-            ringBuffer->samples[outputBase + channel] = processedSample * frameGain;
-        }
-
-        if (pitchShiftEnabled) {
-            ringBuffer->pitchWriteFrame =
-                (ringBuffer->pitchWriteFrame + 1) % ringBuffer->pitchDelayLineFrames;
-            ringBuffer->pitchPhase += ringBuffer->pitchPhaseIncrement;
-            while (ringBuffer->pitchPhase >= 1.0f) {
-                ringBuffer->pitchPhase -= 1.0f;
-            }
+            ringBuffer->samples[outputBase + channel] = inputSample * frameGain;
         }
     }
 
@@ -533,7 +374,11 @@ uint32_t SonexisAudioRingBufferWriteInterleaved(
         gainToPPM(ringBuffer->currentGain),
         memory_order_relaxed
     );
-    atomic_store_explicit(&ringBuffer->writeFrame, writeFrame + framesToWrite, memory_order_release);
+    atomic_store_explicit(
+        &ringBuffer->writeFrame,
+        writeFrame + (uint64_t)framesToWrite,
+        memory_order_release
+    );
     return framesToWrite;
 }
 
@@ -556,9 +401,13 @@ uint32_t SonexisAudioRingBufferReadToAudioBufferList(
         return 0;
     }
 
-    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
-    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_relaxed);
-    uint32_t readableFrames = writeFrame - readFrame;
+    uint64_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
+    uint64_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_relaxed);
+    uint64_t readableFrameCount = writeFrame - readFrame;
+    if (readableFrameCount > ringBuffer->capacityFrames) {
+        readableFrameCount = ringBuffer->capacityFrames;
+    }
+    uint32_t readableFrames = (uint32_t)readableFrameCount;
     uint32_t targetFillFrames = atomic_load_explicit(
         &ringBuffer->targetFillFrames,
         memory_order_relaxed
@@ -588,19 +437,17 @@ uint32_t SonexisAudioRingBufferReadToAudioBufferList(
     for (uint32_t frame = 0; frame < framesToCopy; ++frame) {
         copyRingFrameToAudioBufferList(ringBuffer, outputData, frame, readFrame + frame);
     }
-    if (framesToCopy > 0 && framesToCopy < requestedFrames) {
-        uint32_t sourceFrame = framesToCopy - 1;
-        for (uint32_t frame = framesToCopy; frame < requestedFrames; ++frame) {
-            repeatAudioBufferListFrame(outputData, frame, sourceFrame);
-        }
-    }
 
     atomic_fetch_add_explicit(
         &ringBuffer->readFrames,
         (unsigned long long)framesToConsume,
         memory_order_relaxed
     );
-    atomic_store_explicit(&ringBuffer->readFrame, readFrame + framesToConsume, memory_order_release);
+    atomic_store_explicit(
+        &ringBuffer->readFrame,
+        readFrame + (uint64_t)framesToConsume,
+        memory_order_release
+    );
     return framesToCopy;
 }
 
@@ -618,9 +465,13 @@ uint32_t SonexisAudioRingBufferReadInterleaved(
         return 0;
     }
 
-    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
-    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_relaxed);
-    uint32_t readableFrames = writeFrame - readFrame;
+    uint64_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
+    uint64_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_relaxed);
+    uint64_t readableFrameCount = writeFrame - readFrame;
+    if (readableFrameCount > ringBuffer->capacityFrames) {
+        readableFrameCount = ringBuffer->capacityFrames;
+    }
+    uint32_t readableFrames = (uint32_t)readableFrameCount;
     uint32_t targetFillFrames = atomic_load_explicit(
         &ringBuffer->targetFillFrames,
         memory_order_relaxed
@@ -650,19 +501,17 @@ uint32_t SonexisAudioRingBufferReadInterleaved(
     for (uint32_t frame = 0; frame < framesToCopy; ++frame) {
         copyRingFrameToInterleaved(ringBuffer, outputSamples, frame, readFrame + frame);
     }
-    if (framesToCopy > 0 && framesToCopy < frames) {
-        uint32_t sourceFrame = framesToCopy - 1;
-        for (uint32_t frame = framesToCopy; frame < frames; ++frame) {
-            repeatInterleavedFrame(ringBuffer, outputSamples, frame, sourceFrame);
-        }
-    }
 
     atomic_fetch_add_explicit(
         &ringBuffer->readFrames,
         (unsigned long long)framesToConsume,
         memory_order_relaxed
     );
-    atomic_store_explicit(&ringBuffer->readFrame, readFrame + framesToConsume, memory_order_release);
+    atomic_store_explicit(
+        &ringBuffer->readFrame,
+        readFrame + (uint64_t)framesToConsume,
+        memory_order_release
+    );
     return framesToCopy;
 }
 
@@ -687,59 +536,18 @@ void SonexisAudioRingBufferSetTargetFillFrames(SonexisAudioRingBuffer *ringBuffe
     atomic_store_explicit(&ringBuffer->targetFillFrames, boundedTarget, memory_order_release);
 }
 
-void SonexisAudioRingBufferConfigurePitchShift(
-    SonexisAudioRingBuffer *ringBuffer,
-    bool enabled,
-    float semitones
-) {
-    if (ringBuffer == NULL) {
-        return;
-    }
-
-    if (!enabled || semitones <= 0.0f) {
-        ringBuffer->pitchPhase = 0.0f;
-        ringBuffer->pitchPhaseIncrement = 0.0f;
-        ringBuffer->pitchWriteFrame = 0;
-        memset(
-            ringBuffer->pitchDelayLine,
-            0,
-            (size_t)ringBuffer->pitchDelayLineFrames *
-                ringBuffer->channels *
-                sizeof(float)
-        );
-        atomic_store_explicit(&ringBuffer->pitchShiftEnabled, false, memory_order_release);
-        return;
-    }
-
-    float safeSemitones = semitones;
-    if (safeSemitones > 12.0f) {
-        safeSemitones = 12.0f;
-    }
-
-    float pitchRatio = powf(2.0f, safeSemitones / 12.0f);
-    float phaseIncrement = (pitchRatio - 1.0f) / ringBuffer->pitchDelayRangeFrames;
-
-    memset(
-        ringBuffer->pitchDelayLine,
-        0,
-        (size_t)ringBuffer->pitchDelayLineFrames *
-            ringBuffer->channels *
-            sizeof(float)
-    );
-    ringBuffer->pitchPhase = 0.0f;
-    ringBuffer->pitchPhaseIncrement = phaseIncrement;
-    ringBuffer->pitchWriteFrame = 0;
-    atomic_store_explicit(&ringBuffer->pitchShiftEnabled, true, memory_order_release);
-}
-
 uint32_t SonexisAudioRingBufferGetFillFrames(SonexisAudioRingBuffer *ringBuffer) {
     if (ringBuffer == NULL) {
         return 0;
     }
 
-    uint32_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
-    uint32_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
-    return writeFrame - readFrame;
+    uint64_t writeFrame = atomic_load_explicit(&ringBuffer->writeFrame, memory_order_acquire);
+    uint64_t readFrame = atomic_load_explicit(&ringBuffer->readFrame, memory_order_acquire);
+    uint64_t fillFrames = writeFrame - readFrame;
+    if (fillFrames > ringBuffer->capacityFrames) {
+        return ringBuffer->capacityFrames;
+    }
+    return (uint32_t)fillFrames;
 }
 
 uint64_t SonexisAudioRingBufferGetDroppedFrames(SonexisAudioRingBuffer *ringBuffer) {

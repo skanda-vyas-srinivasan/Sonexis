@@ -8,39 +8,17 @@ private enum ProcessTapGainStage {
     static let outputCeiling: Float = 0.95
 }
 
-enum ProcessTapBackendFlag {
-    static var isEnabled: Bool {
-        if ProcessInfo.processInfo.environment["SONEXIS_USE_BLACKHOLE"] == "1" {
-            return false
-        }
-
-        return true
-    }
-}
-
 extension AudioEngine {
-    var isProcessTapBackendEnabled: Bool {
-        ProcessTapBackendFlag.isEnabled
-    }
-
     var setupReadyForCurrentBackend: Bool {
-        if ProcessTapBackendFlag.isEnabled {
-            return true
-        }
-
-        return outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
+        true
     }
 
     var activeRouteLabel: String {
-        processTapEngine != nil
-            ? (processTapStopInProgress ? "Stopping Process Tap" : "Process Tap")
-            : "Routed to BlackHole"
+        processTapStopInProgress ? "Stopping Process Tap" : "Process Tap"
     }
 
     var startHelpText: String {
-        ProcessTapBackendFlag.isEnabled
-            ? "Start Processing (Process Tap)"
-            : "Start Processing (Auto-routes to BlackHole)"
+        "Start Processing"
     }
 
     func startProcessTapBackend() {
@@ -132,16 +110,6 @@ extension AudioEngine {
 }
 
 extension AudioEngine: ProcessTapAudioProcessor {
-    private var processTapInputTrimGain: Float {
-        let clampedDB = min(max(processTapInputTrimDB, -30), 0)
-        return Float(pow(10.0, clampedDB / 20.0))
-    }
-
-    private var processTapOutputMakeupGain: Float {
-        let clampedDB = min(max(processTapOutputMakeupDB, -12), 30)
-        return Float(pow(10.0, clampedDB / 20.0))
-    }
-
     func processSystemAudio(
         input: UnsafePointer<Float>,
         output: UnsafeMutablePointer<Float>,
@@ -151,6 +119,7 @@ extension AudioEngine: ProcessTapAudioProcessor {
     ) {
         guard frameCount > 0, channelCount > 0 else { return }
 
+        let runtimeSettings = currentProcessTapRuntimeSettings()
         let buffer = processTapBuffer(
             frameCount: frameCount,
             channelCount: channelCount,
@@ -163,7 +132,7 @@ extension AudioEngine: ProcessTapAudioProcessor {
         }
 
         buffer.frameLength = AVAudioFrameCount(frameCount)
-        let inputTrimGain = processTapInputTrimGain
+        let inputTrimGain = runtimeSettings.inputTrimGain
         var rawInputPeak: Float = 0
         var trimmedInputPeak: Float = 0
         for frame in 0..<frameCount {
@@ -187,12 +156,15 @@ extension AudioEngine: ProcessTapAudioProcessor {
             }
 
             let copiedSamples = min(processed.count, sampleCount)
-            let outputMakeupGain = processTapOutputMakeupGain
+            let outputMakeupGain = runtimeSettings.outputMakeupGain
             var sumSquares: Float = 0
             var peak: Float = 0
             for sampleIndex in 0..<copiedSamples {
                 let madeUp = processedBase[sampleIndex] * outputMakeupGain
-                let finalSample = protectProcessTapOutputSample(madeUp)
+                let finalSample = protectProcessTapOutputSample(
+                    madeUp,
+                    ceilingEnabled: runtimeSettings.outputCeilingEnabled
+                )
                 output[sampleIndex] = finalSample
                 let magnitude = abs(finalSample)
                 peak = max(peak, magnitude)
@@ -212,7 +184,7 @@ extension AudioEngine: ProcessTapAudioProcessor {
         droppedFrames: UInt64,
         underflowFrames: UInt64
     ) {
-        let message = "Processing fell behind: fill \(fillFrames), dropped +\(droppedFrames), underflow +\(underflowFrames)"
+        let message = "Audio gap: fill \(fillFrames), overflow +\(droppedFrames), underflow +\(underflowFrames)"
         publishProcessTapWarning(message)
     }
 
@@ -254,19 +226,23 @@ extension AudioEngine: ProcessTapAudioProcessor {
         sampleCount: Int
     ) {
         guard sampleCount > 0 else { return }
-        let inputTrimGain = processTapInputTrimGain
+        let runtimeSettings = currentProcessTapRuntimeSettings()
+        let inputTrimGain = runtimeSettings.inputTrimGain
         var sumSquares: Float = 0
         var peak: Float = 0
         var rawInputPeak: Float = 0
         var trimmedInputPeak: Float = 0
-        let outputMakeupGain = processTapOutputMakeupGain
+        let outputMakeupGain = runtimeSettings.outputMakeupGain
         for sampleIndex in 0..<sampleCount {
             let rawSample = input[sampleIndex]
             let trimmedSample = rawSample * inputTrimGain
             let staged = input[sampleIndex]
                 * inputTrimGain
                 * outputMakeupGain
-            let finalSample = protectProcessTapOutputSample(staged)
+            let finalSample = protectProcessTapOutputSample(
+                staged,
+                ceilingEnabled: runtimeSettings.outputCeilingEnabled
+            )
             output[sampleIndex] = finalSample
             let magnitude = abs(finalSample)
             peak = max(peak, magnitude)
@@ -278,9 +254,9 @@ extension AudioEngine: ProcessTapAudioProcessor {
         publishOutputMeter(sumSquares: sumSquares, peak: peak, sampleCount: sampleCount)
     }
 
-    private func protectProcessTapOutputSample(_ sample: Float) -> Float {
+    private func protectProcessTapOutputSample(_ sample: Float, ceilingEnabled: Bool) -> Float {
         guard sample.isFinite else { return 0 }
-        guard processTapOutputCeilingEnabled else { return sample }
+        guard ceilingEnabled else { return sample }
 
         let threshold = ProcessTapGainStage.softLimitThreshold
         let ceiling = ProcessTapGainStage.outputCeiling

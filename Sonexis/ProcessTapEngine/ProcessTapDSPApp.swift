@@ -180,7 +180,6 @@ final class ProcessTapDSPApp {
             channels: channelCount
         )
         dspProcessor.configureInitialGain(on: playbackRingBuffer)
-        dspProcessor.configurePitchShift(on: playbackRingBuffer)
         playbackRingBuffer.setTargetFillFrames(startupPrerollTargetFrames)
         playbackRingBuffer.setReadEnabled(false)
         ringBuffer = playbackRingBuffer
@@ -192,7 +191,6 @@ final class ProcessTapDSPApp {
                 channels: channelCount
             )
             rawCaptureRingBuffer.setGainImmediate(dspProcessor.unityGain)
-            rawCaptureRingBuffer.configurePitchShift(enabled: false, semitones: 0.0)
             rawCaptureRingBuffer.setReadEnabled(true)
             captureRingBuffer = rawCaptureRingBuffer
             tapInputRingBuffer = rawCaptureRingBuffer
@@ -214,7 +212,6 @@ final class ProcessTapDSPApp {
             print("Created raw capture ring buffer for Sonexis DSP worker.")
         }
         print("Initial gain: \(dspProcessor.unityGain); hardcoded target gain: \(dspProcessor.processingGain)")
-        print("Pitch shift: enabled=\(dspProcessor.pitchShiftEnabled), semitones=\(dspProcessor.pitchShiftSemitones)")
         print("DSP processor: \(processingDescription)")
         print("Startup preroll target: \(startupPrerollTargetFrames) frames")
 

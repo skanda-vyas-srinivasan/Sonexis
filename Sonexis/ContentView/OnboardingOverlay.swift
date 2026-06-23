@@ -9,10 +9,6 @@ struct OnboardingOverlay: View {
     @State private var animateIn = false
 
     var body: some View {
-        let processTapEnabled = audioEngine.isProcessTapBackendEnabled
-        let blackHoleInstalled = audioEngine.outputDevices.contains { $0.name.localizedCaseInsensitiveContains("BlackHole") }
-        let setupReady = processTapEnabled || blackHoleInstalled
-
         ZStack {
             Color.black.opacity(backdropVisible ? 0.6 : 0.0)
                 .ignoresSafeArea()
@@ -21,11 +17,7 @@ struct OnboardingOverlay: View {
                 HStack {
                     Spacer()
                     Button {
-                        if processTapEnabled {
-                            onDone()
-                        } else {
-                            showSkipConfirm = true
-                        }
+                        onDone()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .semibold))
@@ -37,62 +29,33 @@ struct OnboardingOverlay: View {
                     .buttonStyle(.plain)
                 }
 
-                Text(processTapEnabled ? "Process Tap Ready" : (blackHoleInstalled ? "Almost Ready!" : "BlackHole Required"))
+                Text("Process Tap Ready")
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
 
                 VStack(spacing: 12) {
-                    Text(processTapEnabled
-                        ? "This build captures system audio with macOS Process Taps. No BlackHole setup is required."
-                        : (blackHoleInstalled
-                            ? "BlackHole is installed! You're ready to go."
-                            : "Sonexis needs BlackHole to route your system audio. Install it to get started."))
+                    Text("Sonexis captures system audio with macOS Process Taps and plays the processed signal through your current output device.")
                         .font(AppTypography.body)
                         .foregroundColor(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
 
-                    if processTapEnabled {
-                        Text("When you press the power button, Sonexis captures system audio through a Process Tap and plays processed audio through the current macOS default output.")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.warning)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 8)
-                            .background(AppColors.deepBlack.opacity(0.5))
-                            .cornerRadius(8)
-                    } else if blackHoleInstalled {
-                        Text("⚠️ When you press the power button, Sonexis will automatically switch your system input/output to BlackHole. It will switch back when you turn it off.")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.warning)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 8)
-                            .background(AppColors.deepBlack.opacity(0.5))
-                            .cornerRadius(8)
-                    }
+                    Text("No virtual audio device or manual output switching is required.")
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.warning)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                        .background(AppColors.deepBlack.opacity(0.5))
+                        .cornerRadius(8)
                 }
                 .padding(.horizontal, 20)
 
-                if !setupReady {
-                    Button {
-                        downloadAndOpenBlackHole()
-                    } label: {
-                        HStack {
-                            Image(systemName: "arrow.down.circle.fill")
-                            Text("Install BlackHole")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppColors.neonCyan)
-                    .padding(.top, 8)
-                }
-
-                Button(setupReady ? "Continue" : "Skip Setup") {
+                Button("Continue") {
                     onDone()
                 }
                 .buttonStyle(.bordered)
-                .tint(setupReady ? AppColors.neonCyan : AppColors.textSecondary)
+                .tint(AppColors.neonCyan)
             }
             .padding(22)
             .background(
@@ -134,16 +97,6 @@ struct OnboardingOverlay: View {
         }
     }
 
-    private func downloadAndOpenBlackHole() {
-        // Look for bundled BlackHole installer in app resources
-        guard let installerURL = Bundle.main.url(forResource: "BlackHole2ch-0.6.1 (1)", withExtension: "pkg") else {
-            return
-        }
-
-        // Open the installer directly from the app bundle
-        NSWorkspace.shared.open(installerURL)
-    }
-
 }
 
 private struct SkipSetupConfirm: View {
@@ -157,7 +110,7 @@ private struct SkipSetupConfirm: View {
                 .foregroundColor(AppColors.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text("Sonexis won't be functional without setting Input and Output to BlackHole. You won't hear sound until you set it up.")
+            Text("You can continue, but Sonexis needs audio capture permission before processing system audio.")
                 .font(AppTypography.body)
                 .foregroundColor(AppColors.textSecondary)
 

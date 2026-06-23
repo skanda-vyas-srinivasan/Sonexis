@@ -13,7 +13,6 @@
 		0F518659D0634FD1ACF70A3D /* FlowConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE61017F0B24A5280D822F3 /* FlowConnection.swift */; };
 		11AD96768DB240ECB9E96087 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B480440BFFC4FF7AF9DC3B4 /* ContentView.swift */; };
 		129CB3F47F11795BF43B10B6 /* Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7687CE20D496432330108900 /* Presets.swift */; };
-		16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */ = {isa = PBXBuildFile; fileRef = 16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */; };
 		23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5649F2384BB408F1F1CDEF26 /* RubberBandWrapper.mm */; };
 		2429E1711C28361A030AAB38 /* Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */; };
 		27B229E90DA3439397B7C58A /* EffectBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CE198051973410B8D565067 /* EffectBlock.swift */; };
@@ -76,7 +75,6 @@
 		08C15E7511CA4796A695E13F /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
 		F0C1A1B2C3D4E5F607182933 /* PluginEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginEditorView.swift; sourceTree = "<group>"; };
 		143D40209EFD4ABBB3D8EAB4 /* TutorialTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialTypes.swift; sourceTree = "<group>"; };
-		16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BlackHole2ch-0.6.1 (1).pkg"; sourceTree = "<group>"; };
 		2E53C4F928DF4D049688EC2C /* AppTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTopBar.swift; sourceTree = "<group>"; };
 		47B0007C956447E0AF4C19F1 /* TutorialController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialController.swift; sourceTree = "<group>"; };
 		4B366B5B633B4A6591FD3162 /* EngineStoppedAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineStoppedAlert.swift; sourceTree = "<group>"; };
@@ -164,7 +162,6 @@
 			isa = PBXGroup;
 			children = (
 				A783C7BC4BD2E924BA1E782C /* rubberband/single */,
-				16F077062F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg */,
 			);
 			path = External;
 			sourceTree = "<group>";
@@ -380,7 +377,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B0A1C2D3E4F5061728394052 /* Assets.xcassets in Resources */,
-				16F077072F146A6F0088C4AF /* BlackHole2ch-0.6.1 (1).pkg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,7 +4,6 @@ struct TutorialOverlay: View {
     let step: TutorialStep
     let targets: [TutorialTarget: CGRect]
     let isSetupReady: Bool
-    let usesProcessTapBackend: Bool
     let trayTabsVisited: Bool
     let onNext: () -> Void
     let onSkip: () -> Void
@@ -421,25 +420,11 @@ struct TutorialOverlay: View {
                 showNext: true
             )
         case .buildPower:
-            if !isSetupReady {
-                return (
-                    title: "Install BlackHole",
-                    body: "You need BlackHole 2ch installed to continue. Press the power button - we'll automatically route your audio through BlackHole!",
-                    showNext: false
-                )
-            } else if usesProcessTapBackend {
-                return (
-                    title: "Turn It On",
-                    body: "Click the power button to start processing audio. Sonexis will capture system audio with a Process Tap and play the processed signal through your current macOS output.",
-                    showNext: false
-                )
-            } else {
-                return (
-                    title: "Turn It On",
-                    body: "Click the power button to start processing audio. We'll automatically route your system audio through BlackHole. Feel free to play some music!",
-                    showNext: false
-                )
-            }
+            return (
+                title: "Turn It On",
+                body: "Click the power button to start processing audio. Sonexis captures system audio with a Process Tap and plays the processed signal through your current macOS output.",
+                showNext: false
+            )
         case .buildRecord:
             return (
                 title: "Record",

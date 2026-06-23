@@ -9,7 +9,23 @@ struct EffectParametersViewCompact: View {
     let onChange: () -> Void
 
     var body: some View {
-        LazyVGrid(columns: knobColumns, spacing: 8) {
+        Group {
+            if shouldScroll {
+                ScrollView {
+                    parameterGrid
+                        .padding(.trailing, 6)
+                }
+                .frame(height: cappedGridHeight)
+                .scrollIndicators(.visible)
+            } else {
+                parameterGrid
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var parameterGrid: some View {
+        LazyVGrid(columns: knobColumns, alignment: .center, spacing: 10) {
             switch effectType {
             case .enhancer:
                 CompactSlider(label: "Intensity", value: $parameters.enhancerAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
@@ -140,7 +156,46 @@ struct EffectParametersViewCompact: View {
     }
 
     private var knobColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 76), spacing: 8)]
+        [
+            GridItem(.flexible(minimum: 88), spacing: 10, alignment: .top),
+            GridItem(.flexible(minimum: 88), spacing: 10, alignment: .top)
+        ]
+    }
+
+    private var shouldScroll: Bool {
+        naturalGridHeight > maxGridHeight
+    }
+
+    private var cappedGridHeight: CGFloat {
+        min(naturalGridHeight, maxGridHeight)
+    }
+
+    private var naturalGridHeight: CGFloat {
+        let rows = max(1, (parameterCount + 1) / 2)
+        return CGFloat(rows) * 104 + CGFloat(max(0, rows - 1)) * 10
+    }
+
+    private var maxGridHeight: CGFloat {
+        234
+    }
+
+    private var parameterCount: Int {
+        switch effectType {
+        case .enhancer, .bassBoost, .rubberBandPitch, .clarity, .deMud, .stereoWidth:
+            return 1
+        case .nightDrive, .chromePunch, .midnightGlow, .afterglow, .reverb, .tremolo, .autoPan, .phaser, .tapeSaturation, .resampling:
+            return 2
+        case .simpleEQ, .appleThreeBandEQ, .delay, .chorus, .bitcrusher:
+            return 3
+        case .amp, .distortion, .flanger:
+            return 4
+        case .compressor:
+            return 6
+        case .tenBandEQ:
+            return 10
+        case .pitchShift, .plugin:
+            return 0
+        }
     }
 
     private func bandBinding(_ index: Int) -> Binding<Double> {
@@ -172,7 +227,7 @@ struct CompactSlider: View {
     @State private var draftValue: String
     @FocusState private var valueFieldFocused: Bool
 
-    private let knobSize: CGFloat = 54
+    private let knobSize: CGFloat = 56
 
     init(
         label: String,
@@ -204,13 +259,13 @@ struct CompactSlider: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 7) {
             Text(label)
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                .foregroundColor(AppColors.textSecondary.opacity(0.9))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(AppColors.textSecondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity)
+                .minimumScaleFactor(0.68)
+                .frame(maxWidth: .infinity, minHeight: 15, alignment: .center)
 
             ZStack {
                 Circle()
@@ -231,6 +286,14 @@ struct CompactSlider: View {
                             .stroke(AppColors.controlStrokeSoft.opacity(0.82), lineWidth: 1)
                     )
                     .shadow(color: tint.opacity(0.2), radius: 7)
+
+                ForEach(0..<7, id: \.self) { index in
+                    Capsule()
+                        .fill(index == 3 ? tint.opacity(0.46) : AppColors.textMuted.opacity(0.28))
+                        .frame(width: 1.3, height: index == 3 ? 5.5 : 4)
+                        .offset(y: -knobSize * 0.42)
+                        .rotationEffect(.degrees(-120 + Double(index) * 40))
+                }
 
                 Circle()
                     .trim(from: 0.10, to: 0.10 + 0.80 * normalizedValue)
@@ -267,6 +330,7 @@ struct CompactSlider: View {
             )
             .help("Drag to adjust \(label)")
             .accessibilityLabel(label)
+            .accessibilityValue(format.displayText(for: value))
 
             HStack(spacing: 1) {
                 TextField("", text: $draftValue)
@@ -288,7 +352,7 @@ struct CompactSlider: View {
                         guard !valueFieldFocused else { return }
                         draftValue = format.editText(for: newValue)
                     }
-                    .frame(width: valueFieldWidth, height: 18)
+                    .frame(width: valueFieldWidth, height: 20)
                     .overlay(alignment: .bottom) {
                         Rectangle()
                             .fill(valueFieldFocused ? tint.opacity(0.75) : Color.clear)
@@ -304,10 +368,12 @@ struct CompactSlider: View {
                         .minimumScaleFactor(0.68)
                 }
             }
+            .frame(height: 20)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 3)
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .top)
     }
 
     private var safeRange: ClosedRange<Double> {
@@ -391,6 +457,13 @@ extension CompactSlider.ValueFormat {
         case .msValue:
             return String(format: "%.0f", value)
         }
+    }
+
+    func displayText(for value: Double) -> String {
+        if let unitText {
+            return "\(editText(for: value)) \(unitText)"
+        }
+        return editText(for: value)
     }
 
     func value(fromDisplayed displayedValue: Double) -> Double? {
