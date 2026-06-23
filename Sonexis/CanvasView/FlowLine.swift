@@ -165,11 +165,13 @@ struct CustomContextMenu {
     struct Item {
         let title: String
         let role: ButtonRole?
+        let isEnabled: Bool
         let action: () -> Void
 
-        init(title: String, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        init(title: String, role: ButtonRole? = nil, isEnabled: Bool = true, action: @escaping () -> Void) {
             self.title = title
             self.role = role
+            self.isEnabled = isEnabled
             self.action = action
         }
     }
@@ -288,31 +290,48 @@ private struct ContextMenuRow: View {
     }
 
     var body: some View {
-        Button(role: item.role) {
-            item.action()
-            onSelect()
-        } label: {
-            HStack {
-                Text(item.title)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(isDestructive ? AppColors.neonPink.opacity(0.92) : AppColors.textPrimary.opacity(0.92))
+        if item.isEnabled {
+            Button(role: item.role) {
+                item.action()
+                onSelect()
+            } label: {
+                rowLabel
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isHovered = hovering
+                }
+            }
+        } else {
+            rowLabel
+                .opacity(0.58)
+                .onTapGesture { }
+        }
+    }
 
-                Spacer(minLength: 16)
-            }
-            .padding(.horizontal, 10)
-            .frame(width: 184, height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.62) : Color.clear)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    private var rowLabel: some View {
+        HStack {
+            Text(item.title)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(rowTextColor)
+
+            Spacer(minLength: 16)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                isHovered = hovering
-            }
+        .padding(.horizontal, 10)
+        .frame(width: 184, height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(item.isEnabled && isHovered ? AppColors.controlPurpleRaised.opacity(0.62) : Color.clear)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var rowTextColor: Color {
+        if !item.isEnabled {
+            return AppColors.textSecondary.opacity(0.92)
         }
+        return isDestructive ? AppColors.neonPink.opacity(0.92) : AppColors.textPrimary.opacity(0.92)
     }
 }
 

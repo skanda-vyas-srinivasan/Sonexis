@@ -102,6 +102,21 @@ enum EffectType: String, Codable, CaseIterable, Hashable {
         }
     }
 
+    var signatureCue: String? {
+        switch self {
+        case .nightDrive:
+            return "Custom: Dark, wide bass"
+        case .chromePunch:
+            return "Custom: Punch, tight low end"
+        case .midnightGlow:
+            return "Custom: Warm, smooth loudness"
+        case .afterglow:
+            return "Custom: Air, shimmer, space"
+        default:
+            return nil
+        }
+    }
+
     var icon: String {
         switch self {
         case .bassBoost:

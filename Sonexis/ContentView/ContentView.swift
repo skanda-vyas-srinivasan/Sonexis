@@ -172,7 +172,8 @@ struct ContentView: View {
                                 presetNameInput = ""
                                 showingSaveDialog = true
                             },
-                            hasCurrentPreset: currentPresetID != nil,
+                            currentPresetName: currentPreset?.name,
+                            hasCurrentPreset: currentPreset != nil,
                             allowSave: !tutorial.isActive || tutorial.step == .buildSave,
                             allowLoad: !tutorial.isActive || tutorial.step == .buildLoad,
                             saveStatusText: $saveStatusText,
@@ -412,6 +413,11 @@ struct ContentView: View {
         }
     }
 
+    private var currentPreset: SavedPreset? {
+        guard let currentPresetID else { return nil }
+        return presetManager.presets.first { $0.id == currentPresetID }
+    }
+
     private func savePresetAs() {
         guard !presetNameInput.isEmpty else { return }
 
@@ -492,7 +498,7 @@ struct ContentView: View {
             return
         }
 
-        if overwrite, let presetID = currentPresetID {
+        if overwrite, let presetID = currentPreset?.id {
             presetManager.updatePreset(id: presetID, graph: graph)
             showSaveStatus("Saved at \(formattedTime())")
             tutorial.advanceIf(.buildSave)

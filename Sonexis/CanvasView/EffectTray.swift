@@ -472,18 +472,30 @@ struct EffectPaletteButton: View {
             HStack(spacing: 9) {
                 iconBox
 
-                Text(effectType.rawValue)
-                    .font(.system(size: isFeatured ? 12 : 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppColors.textPrimary.opacity(0.94))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(effectType.rawValue)
+                        .font(.system(size: isFeatured ? 12 : 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppColors.textPrimary.opacity(0.94))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+
+                    if isFeatured, let cue = effectType.signatureCue {
+                        Text(cue)
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundColor(AppColors.textMuted.opacity(0.92))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .layoutPriority(1)
 
                 Spacer(minLength: 28)
             }
             .padding(.leading, 8)
             .padding(.trailing, 34)
             .padding(.vertical, isFeatured ? 8 : 7)
-            .frame(maxWidth: .infinity, minHeight: isFeatured ? 50 : 46, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: isFeatured ? 62 : 46, alignment: .leading)
             .background(rowFill)
             .overlay(rowStroke)
             .clipShape(Rectangle())

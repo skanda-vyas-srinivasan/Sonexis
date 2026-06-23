@@ -14,6 +14,13 @@ struct TutorialCardView: View {
     let primaryActionTitle: String?
     let onPrimaryAction: (() -> Void)?
 
+    private var messageParagraphs: [String] {
+        message
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     init(
         title: String,
         message: String,
@@ -63,11 +70,15 @@ struct TutorialCardView: View {
                 }
             }
 
-            Text(message)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(AppColors.textSecondary)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(messageParagraphs, id: \.self) { paragraph in
+                    Text(paragraph)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(AppColors.textSecondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             if showSetupButtons {
                 HStack(spacing: 12) {

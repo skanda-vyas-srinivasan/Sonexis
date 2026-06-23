@@ -1986,6 +1986,7 @@ struct CanvasView: View {
         if tutorial.isBuildStep && tutorial.step != .buildRightClick && tutorial.step != .buildCloseContextMenu {
             return
         }
+        let isTutorialMenuShowcase = tutorial.step == .buildRightClick || tutorial.step == .buildActionMenu
         // Check nodes
         let nodeRadius: CGFloat = 60 * nodeScale
         if let hitNode = effectChain.first(where: { node in
@@ -2001,6 +2002,7 @@ struct CanvasView: View {
                 CustomContextMenu.Item(
                     title: "Delete",
                     role: .destructive,
+                    isEnabled: !isTutorialMenuShowcase,
                     action: { removeEffect(id: hitNode.id) }
                 )
             ]
@@ -2009,6 +2011,7 @@ struct CanvasView: View {
                     CustomContextMenu.Item(
                         title: "Delete all selected blocks",
                         role: .destructive,
+                        isEnabled: !isTutorialMenuShowcase,
                         action: { removeEffects(ids: batchIDs) }
                     )
                 )
@@ -2017,6 +2020,7 @@ struct CanvasView: View {
                 CustomContextMenu.Item(
                     title: "Duplicate",
                     role: nil,
+                    isEnabled: !isTutorialMenuShowcase,
                     action: { duplicateEffect(id: hitNode.id) }
                 )
             )
@@ -2025,6 +2029,7 @@ struct CanvasView: View {
                     CustomContextMenu.Item(
                         title: "Duplicate all selected blocks",
                         role: nil,
+                        isEnabled: !isTutorialMenuShowcase,
                         action: { duplicateEffects(ids: batchIDs) }
                     )
                 )
@@ -2033,6 +2038,7 @@ struct CanvasView: View {
                 CustomContextMenu.Item(
                     title: "Reset Params",
                     role: nil,
+                    isEnabled: !isTutorialMenuShowcase,
                     action: { resetEffectParameters(id: hitNode.id) }
                 )
             )
@@ -2041,6 +2047,7 @@ struct CanvasView: View {
                     CustomContextMenu.Item(
                         title: "Clear Wires",
                         role: nil,
+                        isEnabled: !isTutorialMenuShowcase,
                         action: { removeWires(for: hitNode.id) }
                     ),
                     at: canUseBatchSelection ? 2 : 1
@@ -2050,6 +2057,11 @@ struct CanvasView: View {
             let menu = CustomContextMenu(anchor: displayNodePosition(hitNode, in: size), position: point, tint: tint, items: items)
             customContextMenu = menuAdjusted(menu)
             tutorial.advanceIf(.buildRightClick)
+            return
+        }
+
+        if tutorial.step == .buildRightClick {
+            customContextMenu = nil
             return
         }
 
@@ -2239,6 +2251,7 @@ struct CanvasView: View {
         }
 
         if event.keyCode == 51 || event.keyCode == 117 {
+            guard !tutorial.isBuildStep else { return }
             guard !selectedNodeIDs.isEmpty else { return }
             removeEffects(ids: selectedNodeIDs)
         }

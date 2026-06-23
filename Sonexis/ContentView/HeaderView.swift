@@ -7,6 +7,7 @@ struct HeaderView: View {
     let onSave: () -> Void
     let onLoad: () -> Void
     let onSaveAs: () -> Void
+    let currentPresetName: String?
     let hasCurrentPreset: Bool
     let allowSave: Bool
     let allowLoad: Bool
@@ -223,12 +224,10 @@ struct HeaderView: View {
                         )
                     }
 
-                    if let saveStatusText {
-                        Text(saveStatusText)
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textSecondary)
-                            .transition(.opacity)
-                    }
+                    PresetContextLabel(
+                        presetName: currentPresetName,
+                        saveStatusText: saveStatusText
+                    )
                 }
             }
             .padding()
@@ -251,6 +250,37 @@ struct HeaderView: View {
         panel.allowedFileTypes = ["wav"]
         panel.canCreateDirectories = true
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+private struct PresetContextLabel: View {
+    let presetName: String?
+    let saveStatusText: String?
+
+    private var labelText: String {
+        let presetText: String
+        if let presetName, !presetName.isEmpty {
+            presetText = "Preset: \(presetName)"
+        } else {
+            presetText = "No preset loaded"
+        }
+
+        if let saveStatusText, !saveStatusText.isEmpty {
+            return "\(presetText) - \(saveStatusText)"
+        }
+
+        return presetText
+    }
+
+    var body: some View {
+        Text(labelText)
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundColor(presetName == nil ? AppColors.textMuted : AppColors.textSecondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: 174, alignment: .leading)
+            .transition(.opacity)
+            .help(labelText)
     }
 }
 
