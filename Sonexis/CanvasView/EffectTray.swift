@@ -478,6 +478,11 @@ struct EffectPaletteButton: View {
     let onToggleFavorite: () -> Void
     let onDragStart: () -> Void
     @State private var isHovered = false
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
+
+    private var isBlackTheme: Bool {
+        AppTheme.theme(for: selectedThemeID) == .black
+    }
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -532,10 +537,10 @@ struct EffectPaletteButton: View {
     private var iconBox: some View {
         ZStack {
             Rectangle()
-                .fill(isHovered ? tint.opacity(0.15) : Color.clear)
+                .fill(isHovered ? tint.opacity(0.15) : AppColors.controlPurpleRaised.opacity(isBlackTheme ? 0.22 : 0.12))
                 .overlay(
                     Rectangle()
-                        .stroke(isHovered ? tint.opacity(0.48) : Color.clear, lineWidth: 1)
+                        .stroke(isHovered ? tint.opacity(0.48) : AppColors.controlStrokeSoft.opacity(isBlackTheme ? 0.32 : 0.22), lineWidth: 1)
                 )
 
             Image(systemName: effectType.icon)
@@ -548,12 +553,12 @@ struct EffectPaletteButton: View {
 
     private var rowFill: some View {
         Rectangle()
-            .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.30) : Color.clear)
+            .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.30) : AppColors.controlPurpleRaised.opacity(isBlackTheme ? 0.18 : 0.11))
     }
 
     private var rowStroke: some View {
         Rectangle()
-            .stroke(isHovered ? tint.opacity(0.38) : Color.clear, lineWidth: 1)
+            .stroke(isHovered ? tint.opacity(0.38) : AppColors.controlStrokeSoft.opacity(isBlackTheme ? 0.26 : 0.16), lineWidth: 1)
     }
 
     @ViewBuilder
@@ -596,16 +601,19 @@ struct PluginPaletteButton: View {
         let palette = AppTheme.theme(for: selectedThemeID).palette
         return AppTheme.theme(for: selectedThemeID) == .magenta ? palette.neonCyan : palette.neonPink
     }
+    private var isBlackTheme: Bool {
+        AppTheme.theme(for: selectedThemeID) == .black
+    }
 
     var body: some View {
         ZStack(alignment: .trailing) {
             HStack(spacing: 9) {
                 ZStack {
                     Rectangle()
-                        .fill(isHovered ? highlightTint.opacity(0.14) : Color.clear)
+                        .fill(isHovered ? highlightTint.opacity(0.14) : AppColors.controlPurpleRaised.opacity(isBlackTheme ? 0.22 : 0.12))
                         .overlay(
                             Rectangle()
-                                .stroke(isHovered ? highlightTint.opacity(0.46) : Color.clear, lineWidth: 1)
+                                .stroke(isHovered ? highlightTint.opacity(0.46) : AppColors.controlStrokeSoft.opacity(isBlackTheme ? 0.32 : 0.22), lineWidth: 1)
                         )
 
                     Image(systemName: "puzzlepiece.extension")
@@ -633,11 +641,11 @@ struct PluginPaletteButton: View {
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
             .background(
                 Rectangle()
-                    .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.30) : Color.clear)
+                    .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.30) : AppColors.controlPurpleRaised.opacity(isBlackTheme ? 0.18 : 0.11))
             )
             .overlay(
                 Rectangle()
-                    .stroke(isHovered ? highlightTint.opacity(0.38) : Color.clear, lineWidth: 1)
+                    .stroke(isHovered ? highlightTint.opacity(0.38) : AppColors.controlStrokeSoft.opacity(isBlackTheme ? 0.26 : 0.16), lineWidth: 1)
             )
             .clipShape(Rectangle())
             .contentShape(Rectangle())

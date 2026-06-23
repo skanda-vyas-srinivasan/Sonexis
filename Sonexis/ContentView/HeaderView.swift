@@ -372,6 +372,7 @@ struct AudioSettingsFloatingStrip: View {
     @Binding var makeupDB: Double
     @Binding var ceilingEnabled: Bool
     @Binding var selectedThemeID: String
+    let isReadOnly: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -384,6 +385,7 @@ struct AudioSettingsFloatingStrip: View {
                 tint: AppColors.neonCyan
             )
             .frame(width: 122)
+            .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
@@ -396,17 +398,20 @@ struct AudioSettingsFloatingStrip: View {
                 tint: AppColors.neonPink
             )
             .frame(width: 122)
+            .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
             CeilingToggleRow(isOn: $ceilingEnabled)
                 .fixedSize(horizontal: true, vertical: false)
+                .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
             ThemeCompactPicker(selectedThemeID: $selectedThemeID)
                 .frame(width: 156, alignment: .leading)
                 .layoutPriority(1)
+                .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
@@ -424,6 +429,7 @@ struct AudioSettingsFloatingStrip: View {
             }
             .buttonStyle(.plain)
             .help("Reset Tap In, Makeup, and Ceiling")
+            .disabled(isReadOnly)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
