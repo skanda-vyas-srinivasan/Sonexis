@@ -181,14 +181,14 @@ struct EffectBlockHorizontal: View {
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .scaleEffect(overlayScale, anchor: .top)
                 .offset(y: 138)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .frame(width: 226, height: 130, alignment: .top)
         .zIndex(isExpanded ? 10 : 0)
         .onChange(of: tutorialStep) { step in
             // Keep the panel stable during the open/close tutorial steps.
-            if step == .buildDoubleClick || step == .buildCloseOverlay {
+            if step == .buildDoubleClick || step == .buildEffectControls || step == .buildCloseOverlay {
                 return
             }
             if isExpanded {

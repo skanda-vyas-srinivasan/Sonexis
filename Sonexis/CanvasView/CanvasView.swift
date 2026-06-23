@@ -80,6 +80,7 @@ struct CanvasView: View {
     @State private var pendingAudioGraphApplyReason = "graph edit"
     @State private var pendingAudioGraphApplyForce = false
     @State private var canvasFrameInRoot: CGRect = .zero
+    @State private var didPrepareAdvancedTutorialCanvas = false
     private let connectionSnapRadius: CGFloat = 120
     private let effectEndpointVisualSize = CGSize(width: 110, height: 110)
     private let terminalEndpointVisualSize = CGSize(width: 60, height: 60)
@@ -169,6 +170,18 @@ struct CanvasView: View {
         ]
     }
 
+    private var isCanvasMenuLimitedForTutorial: Bool {
+        tutorial.step == .buildResetWiringForParallel || tutorial.step == .buildClearCanvasForDualMono
+    }
+
+    private var canUseClearCanvasAction: Bool {
+        !isCanvasMenuLimitedForTutorial || tutorial.step == .buildClearCanvasForDualMono
+    }
+
+    private var canUseResetWiringAction: Bool {
+        !isCanvasMenuLimitedForTutorial || tutorial.step == .buildResetWiringForParallel
+    }
+
     enum WiringMode {
         case automatic  // Position-based with manual override
         case manual     // Pure manual wiring only
@@ -248,7 +261,7 @@ struct CanvasView: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
-            .disabled(tutorial.isBuildStep && ![.buildWiringManual, .buildReturnStereoAuto, .buildDualMonoConnect].contains(tutorial.step))
+            .disabled(tutorial.isBuildStep && ![.buildWiringManual, .buildReturnStereoAuto].contains(tutorial.step))
             .help(wiringMode == .automatic ?
                   "Automatic: Effects flow left-to-right by position." :
                   "Manual: Pure manual wiring. Option+drag to connect.")
@@ -383,13 +396,17 @@ struct CanvasView: View {
             Spacer()
 
             Menu {
-                Button("Clear Canvas") {
-                    clearCanvas()
+                if canUseClearCanvasAction {
+                    Button("Clear Canvas") {
+                        clearCanvas()
+                    }
                 }
-                Button("Reset Wiring") {
-                    resetWiring()
+                if canUseResetWiringAction {
+                    Button("Reset Wiring") {
+                        resetWiring()
+                    }
+                    .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
                 }
-                .disabled(manualConnections.isEmpty && autoGainOverrides.isEmpty)
             } label: {
                 CanvasToolbarMenuLabel(
                     title: "Canvas",
@@ -949,24 +966,30 @@ struct CanvasView: View {
                         laneForPoint(point, in: geometry.size)
                     },
                     onAdd: { newNode in
+                        let stepAtDrop = tutorial.step
                         if tutorial.isBuildStep && ![
                             TutorialStep.buildAddBass,
                             .buildAutoAddClarity,
                             .buildParallelAddReverb,
                             .buildDualMonoAdd
-                        ].contains(tutorial.step) {
+                        ].contains(stepAtDrop) {
                             return
                         }
-                        if tutorial.step == .buildAddBass && newNode.type != .bassBoost {
+                        if stepAtDrop == .buildAddBass && newNode.type != .bassBoost {
                             return
                         }
-                        if tutorial.step == .buildAutoAddClarity && newNode.type != .clarity {
+                        if stepAtDrop == .buildAutoAddClarity && newNode.type != .clarity {
                             return
                         }
-                        if tutorial.step == .buildParallelAddReverb && newNode.type != .reverb {
+                        if stepAtDrop == .buildAutoAddClarity,
+                           let bassNode = effectChain.first(where: { $0.type == .bassBoost }) {
+                            let bassPosition = displayNodePosition(bassNode, in: geometry.size)
+                            guard newNode.position.x < bassPosition.x else { return }
+                        }
+                        if stepAtDrop == .buildParallelAddReverb && newNode.type != .reverb {
                             return
                         }
-                        if tutorial.step == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(newNode.type) {
+                        if stepAtDrop == .buildDualMonoAdd && ![EffectType.bassBoost, .clarity].contains(newNode.type) {
                             return
                         }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -977,10 +1000,14 @@ struct CanvasView: View {
                             effectChain.append(node)
                             triggerDropAnimation(for: node.id)
                             applyChainToEngine()
-                            tutorial.advanceIf(.buildAddBass)
-                            tutorial.advanceIf(.buildAutoAddClarity)
-                            tutorial.advanceIf(.buildParallelAddReverb)
-                            maybeAdvanceDualMonoTutorial()
+                            switch stepAtDrop {
+                            case .buildAddBass, .buildAutoAddClarity, .buildParallelAddReverb:
+                                tutorial.advance()
+                            case .buildDualMonoAdd:
+                                maybeAdvanceDualMonoTutorial()
+                            default:
+                                break
+                            }
                         }
                     }
                 ))
@@ -1066,8 +1093,17 @@ struct CanvasView: View {
         )
         .onAppear {
             updateSignalFlowVisibility()
+            prepareAdvancedTutorialCanvasIfNeeded()
         }
         .onChange(of: tutorial.step) { step in
+            if step == .advancedIntro {
+                prepareAdvancedTutorialCanvasIfNeeded()
+            } else if step == .inactive || step == .welcome {
+                didPrepareAdvancedTutorialCanvas = false
+            }
+            if step != .buildRightClick && step != .buildActionMenu {
+                customContextMenu = nil
+            }
             if step == .buildWiringManual && wiringMode == .manual {
                 tutorial.advance()
             }
@@ -1174,6 +1210,54 @@ struct CanvasView: View {
     private func updateCanvasSizeIfNeeded(_ newSize: CGSize) {
         guard canvasSize != newSize else { return }
         canvasSize = newSize
+        prepareAdvancedTutorialCanvasIfNeeded()
+    }
+
+    private func prepareAdvancedTutorialCanvasIfNeeded() {
+        guard tutorial.step == .advancedIntro, !didPrepareAdvancedTutorialCanvas else { return }
+        guard canvasSize.width > 1, canvasSize.height > 1 else { return }
+
+        let size = canvasSize
+        let centerY = max(size.height * 0.5, 120)
+        let bassPosition = clamp(
+            CGPoint(x: max(size.width * 0.42, 220), y: centerY),
+            to: size,
+            lane: nil
+        )
+        let clarityPosition = clamp(
+            CGPoint(x: max(size.width * 0.58, 360), y: centerY),
+            to: size,
+            lane: nil
+        )
+
+        didPrepareAdvancedTutorialCanvas = true
+        isRestoringSnapshot = true
+        graphMode = .single
+        wiringMode = .automatic
+        autoConnectEnd = false
+        manualConnections.removeAll()
+        autoGainOverrides.removeAll()
+        selectedNodeIDs.removeAll()
+        selectedWireID = nil
+        selectedAutoWire = nil
+        customContextMenu = nil
+        activeConnectionFromID = nil
+        activeConnectionPoint = .zero
+        lassoStart = nil
+        lassoCurrent = nil
+        undoStack.removeAll()
+        redoStack.removeAll()
+
+        effectChain = [
+            BeginnerNode(type: .bassBoost, position: bassPosition, lane: .left, accentIndex: 0),
+            BeginnerNode(type: .clarity, position: clarityPosition, lane: .left, accentIndex: 1)
+        ]
+        nextAccentIndex = accentPalette.isEmpty ? 0 : 2 % accentPalette.count
+        applyChainToEngine(reason: "advanced tutorial setup", forceAudioApply: true)
+
+        DispatchQueue.main.async {
+            isRestoringSnapshot = false
+        }
     }
 
     private func updateFocusState(isKeyWindow: Bool) {
@@ -1215,6 +1299,10 @@ struct CanvasView: View {
         )
         DispatchQueue.main.async {
             isRestoringSnapshot = false
+            if tutorial.step == .advancedIntro {
+                didPrepareAdvancedTutorialCanvas = false
+                prepareAdvancedTutorialCanvasIfNeeded()
+            }
         }
     }
 
@@ -2212,6 +2300,8 @@ struct CanvasView: View {
     }
 
     private func clearCanvas() {
+        guard canUseClearCanvasAction else { return }
+
         recordUndoSnapshot()
         effectChain.removeAll()
         manualConnections.removeAll()
@@ -2225,6 +2315,8 @@ struct CanvasView: View {
     }
 
     private func resetWiring() {
+        guard canUseResetWiringAction else { return }
+
         recordUndoSnapshot()
         manualConnections.removeAll()
         autoGainOverrides.removeAll()

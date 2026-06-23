@@ -114,7 +114,6 @@ struct ContentView: View {
     @State private var currentPresetID: UUID?
     @State private var saveStatusText: String?
     @State private var saveStatusClearTask: DispatchWorkItem?
-    @State private var showGlitch = false
     @State private var showSetupOverlay = false
     @State private var hasShownSetupThisSession = false
     @State private var lastGraphSnapshot: GraphSnapshot?
@@ -123,8 +122,6 @@ struct ContentView: View {
     @State private var tutorialTargets: [TutorialTarget: CGRect] = [:]
     @State private var tutorialRestoreSnapshot: GraphSnapshot?
     @State private var tutorialRestorePresetID: UUID?
-    @State private var showEngineStoppedAlert = false
-    @State private var hasEngineBeenOnDuringTutorial = false
     @State private var homeTransitionRipple: HomeTransitionRipple?
     @State private var showingAudioSettings = false
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
@@ -140,8 +137,15 @@ struct ContentView: View {
                         onBuildFromScratch: { location in
                             beginHomeTransition(at: location)
                         },
-                        onTutorial: { tutorial.startFromHelp() },
-                        allowBuild: tutorial.allowBuildAction
+                        onStartBasicsTutorial: {
+                            startBasicsTutorial()
+                        },
+                        onStartAdvancedTutorial: {
+                            startAdvancedTutorialFromHome()
+                        },
+                        allowBuild: tutorial.allowBuildAction,
+                        basicsCompleted: tutorial.basicsCompleted,
+                        advancedCompleted: tutorial.advancedCompleted
                     )
                 } else {
                     AppTopBar(
@@ -210,12 +214,6 @@ struct ContentView: View {
                 }
             }
 
-            if showGlitch {
-                GlitchOverlay {
-                    showGlitch = false
-                }
-            }
-
             if let homeTransitionRipple {
                 HomeTransitionRippleView(ripple: homeTransitionRipple)
                     .allowsHitTesting(false)
@@ -227,6 +225,7 @@ struct ContentView: View {
                     makeupDB: $audioEngine.processTapOutputMakeupDB,
                     ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled,
                     selectedThemeID: $selectedThemeID,
+                    isReadOnly: tutorial.step == .buildSettingsExplain,
                     onPanelFrameChange: { frame in
                         audioSettingsOutsideClick.panelFrame = frame
                     }
@@ -242,8 +241,12 @@ struct ContentView: View {
                     isSetupReady: audioEngine.setupReadyForCurrentBackend,
                     trayTabsVisited: tutorial.hasVisitedTrayTabs,
                     onNext: { tutorial.advance() },
-                    onSkip: { tutorial.endTutorial() },
-                    onOpenSetup: { showSetupOverlay = true }
+                    onSkip: { tutorial.skipTutorial() },
+                    onOpenSetup: { showSetupOverlay = true },
+                    onEndTutorial: { tutorial.finishTutorial() },
+                    onContinueAdvanced: {
+                        tutorial.continueToAdvanced()
+                    }
                 )
             }
 
@@ -255,14 +258,6 @@ struct ContentView: View {
                 }
             }
 
-            // Engine stopped alert - must be above everything
-            if showEngineStoppedAlert {
-                EngineStoppedAlert(onDismiss: {
-                    showEngineStoppedAlert = false
-                    hasEngineBeenOnDuringTutorial = false
-                    tutorial.endTutorial()
-                })
-            }
         }
         .environment(\.colorScheme, AppTheme.theme(for: selectedThemeID).colorScheme)
         .onAppear {
@@ -276,9 +271,6 @@ struct ContentView: View {
         .onChange(of: activeScreen) { newValue in
             if newValue != .beginner {
                 showingAudioSettings = false
-            }
-            if !(lastActiveScreen == .home && newValue == .beginner) {
-                showGlitch = true
             }
             handleScreenChange(to: newValue)
         }
@@ -298,63 +290,61 @@ struct ContentView: View {
             audioSettingsOutsideClick.stop()
         }
         .onChange(of: tutorial.step) { newStep in
-            if newStep == .welcome {
+            if newStep == .welcome || newStep == .advancedIntro {
                 // Save current state for restoration when tutorial ends
                 if tutorialRestoreSnapshot == nil {
                     tutorialRestoreSnapshot = audioEngine.currentGraphSnapshot
                     tutorialRestorePresetID = currentPresetID
                 }
 
-                // Reset engine tracking for new tutorial
-                hasEngineBeenOnDuringTutorial = false
-                showEngineStoppedAlert = false
                 showingAudioSettings = false
-                if audioEngine.isRunning {
+                if newStep == .welcome && audioEngine.isRunning {
                     audioEngine.stop()
                 }
 
-                // Start the tutorial from a clean, predictable state:
-                // - Empty canvas (no nodes/connections)
-                // - Stereo mode (not dual-mono)
-                // - Automatic wiring (not manual)
-                // - Auto-connect End OFF
-                let resetSnapshot = GraphSnapshot(
-                    graphMode: .single,
-                    wiringMode: .automatic,
-                    autoConnectEnd: false,
-                    nodes: [],
-                    connections: [],
-                    autoGainOverrides: [],
-                    startNodeID: UUID(),
-                    endNodeID: UUID(),
-                    leftStartNodeID: UUID(),
-                    leftEndNodeID: UUID(),
-                    rightStartNodeID: UUID(),
-                    rightEndNodeID: UUID(),
-                    hasNodeParameters: true
-                )
+                if newStep == .welcome {
+                    // Start Basics from a clean, predictable canvas.
+                    let resetSnapshot = GraphSnapshot(
+                        graphMode: .single,
+                        wiringMode: .automatic,
+                        autoConnectEnd: false,
+                        nodes: [],
+                        connections: [],
+                        autoGainOverrides: [],
+                        startNodeID: UUID(),
+                        endNodeID: UUID(),
+                        leftStartNodeID: UUID(),
+                        leftEndNodeID: UUID(),
+                        rightStartNodeID: UUID(),
+                        rightEndNodeID: UUID(),
+                        hasNodeParameters: true
+                    )
 
-                // Clear any previous graph state
-                lastGraphSnapshot = nil
-                currentPresetID = nil
-                skipRestoreOnEnter = true
-                audioEngine.requestGraphLoad(
-                    resetSnapshot,
-                    mode: .audioAndVisual,
-                    reason: "tutorial reset"
-                )
+                    lastGraphSnapshot = nil
+                    currentPresetID = nil
+                    skipRestoreOnEnter = true
+                    audioEngine.requestGraphLoad(
+                        resetSnapshot,
+                        mode: .audioAndVisual,
+                        reason: "tutorial reset"
+                    )
+                } else if newStep == .advancedIntro {
+                    ensureTutorialEngineRunningIfPossible()
+                }
             } else if newStep == .inactive, let snapshot = tutorialRestoreSnapshot {
-                // Restore the user's graph when the tutorial ends.
-                audioEngine.requestGraphLoad(
-                    snapshot,
-                    mode: .audioAndVisual,
-                    reason: "tutorial restore"
-                )
-                lastGraphSnapshot = snapshot
-                currentPresetID = tutorialRestorePresetID
+                if tutorial.shouldRestoreOnEnd {
+                    audioEngine.requestGraphLoad(
+                        snapshot,
+                        mode: .audioAndVisual,
+                        reason: "tutorial restore"
+                    )
+                    lastGraphSnapshot = snapshot
+                    currentPresetID = tutorialRestorePresetID
+                } else {
+                    lastGraphSnapshot = audioEngine.currentGraphSnapshot
+                }
                 tutorialRestoreSnapshot = nil
                 tutorialRestorePresetID = nil
-                hasEngineBeenOnDuringTutorial = false
                 showingAudioSettings = false
             } else if newStep != .buildSettings && newStep != .buildSettingsExplain && showingAudioSettings {
                 withAnimation(.easeOut(duration: 0.16)) {
@@ -365,17 +355,9 @@ struct ContentView: View {
         .onChange(of: showSetupOverlay) { isVisible in
             if !isVisible {
                 tutorial.startIfNeeded(isSetupVisible: false)
-            }
-        }
-        .onChange(of: audioEngine.isRunning) { isRunning in
-            // Track if engine has been on during tutorial
-            if tutorial.isActive && isRunning && tutorial.step != .buildPower {
-                hasEngineBeenOnDuringTutorial = true
-            }
-
-            // If engine stops unexpectedly after being on during tutorial
-            if tutorial.isActive && !isRunning && hasEngineBeenOnDuringTutorial {
-                showEngineStoppedAlert = true
+                if tutorial.step == .advancedIntro {
+                    ensureTutorialEngineRunningIfPossible()
+                }
             }
         }
         .animation(.easeOut(duration: 0.7), value: showSetupOverlay)
@@ -407,9 +389,8 @@ struct ContentView: View {
                     currentPresetID = preset.id
                     if tutorial.step == .buildLoad {
                         tutorial.advance()
-                    } else {
-                        showingLoadDialog = false
                     }
+                    showingLoadDialog = false
                 },
                 onCancel: {
                     showingLoadDialog = false
@@ -443,6 +424,27 @@ struct ContentView: View {
         showSaveStatus("Saved at \(formattedTime())")
         tutorial.advanceIf(.buildSave)
         // Save succeeded.
+    }
+
+    private func startBasicsTutorial() {
+        tutorial.startBasics()
+    }
+
+    private func startAdvancedTutorialFromHome() {
+        tutorial.startAdvanced()
+        skipRestoreOnEnter = true
+        activeScreen = .beginner
+    }
+
+    private func ensureTutorialEngineRunningIfPossible() {
+        guard tutorial.isActive else { return }
+        guard audioEngine.setupReadyForCurrentBackend else {
+            showSetupOverlay = true
+            return
+        }
+        if !audioEngine.isRunning {
+            audioEngine.start()
+        }
     }
 
     private func handleScreenChange(to newScreen: AppScreen) {
@@ -529,6 +531,7 @@ private struct AudioSettingsRootOverlay: View {
     @Binding var makeupDB: Double
     @Binding var ceilingEnabled: Bool
     @Binding var selectedThemeID: String
+    let isReadOnly: Bool
     let onPanelFrameChange: (CGRect) -> Void
 
     private let topPadding: CGFloat = 122
@@ -540,7 +543,8 @@ private struct AudioSettingsRootOverlay: View {
                     trimDB: $trimDB,
                     makeupDB: $makeupDB,
                     ceilingEnabled: $ceilingEnabled,
-                    selectedThemeID: $selectedThemeID
+                    selectedThemeID: $selectedThemeID,
+                    isReadOnly: isReadOnly
                 )
                 .frame(width: min(640, max(620, proxy.size.width - 32)))
                 .background(

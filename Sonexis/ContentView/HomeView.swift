@@ -2,14 +2,18 @@ import SwiftUI
 
 struct HomeView: View {
     let onBuildFromScratch: (CGPoint) -> Void
-    let onTutorial: () -> Void
+    let onStartBasicsTutorial: () -> Void
+    let onStartAdvancedTutorial: () -> Void
     let allowBuild: Bool
+    let basicsCompleted: Bool
+    let advancedCompleted: Bool
     @State private var isVisible = false
     @AppStorage("homeHasAppeared") private var homeHasAppeared = false
     @State private var floatPrompt = false
     @State private var isHovering = false
     @State private var contentPulse = false
     @State private var isStarting = false
+    @State private var isTutorialMenuOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -87,7 +91,18 @@ struct HomeView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            Button(action: onTutorial) {
+            tutorialMenu
+                .padding(16)
+        }
+    }
+
+    private var tutorialMenu: some View {
+        VStack(alignment: .trailing, spacing: 7) {
+            Button {
+                withAnimation(.easeOut(duration: 0.14)) {
+                    isTutorialMenuOpen.toggle()
+                }
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "questionmark.circle")
                         .font(.system(size: 14, weight: .semibold))
@@ -103,10 +118,57 @@ struct HomeView: View {
                         .stroke(AppColors.midPurple.opacity(0.7), lineWidth: 1)
                 )
                 .cornerRadius(10)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(16)
+
+            if isTutorialMenuOpen {
+                VStack(alignment: .leading, spacing: 3) {
+                    tutorialMenuButton(
+                        title: "Basics",
+                        isComplete: basicsCompleted,
+                        action: onStartBasicsTutorial
+                    )
+                    tutorialMenuButton(
+                        title: "Advanced tutorial",
+                        isComplete: advancedCompleted,
+                        action: onStartAdvancedTutorial
+                    )
+                }
+                .padding(6)
+                .background(AppColors.deepBlack.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .shadow(color: Color.black.opacity(0.28), radius: 10, y: 5)
+            }
         }
+    }
+
+    private func tutorialMenuButton(title: String, isComplete: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            isTutorialMenuOpen = false
+            action()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(isComplete ? AppColors.neonCyan : AppColors.textMuted)
+                    .frame(width: 14)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .frame(width: 158, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(AppColors.controlPurple.opacity(0.18))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func startFromClick(at location: CGPoint) {

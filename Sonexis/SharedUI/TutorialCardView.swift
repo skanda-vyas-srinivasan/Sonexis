@@ -8,6 +8,11 @@ struct TutorialCardView: View {
     let onSkip: () -> Void
     let showSetupButtons: Bool
     let onOpenSetup: (() -> Void)?
+    let showSkip: Bool
+    let secondaryActionTitle: String?
+    let onSecondaryAction: (() -> Void)?
+    let primaryActionTitle: String?
+    let onPrimaryAction: (() -> Void)?
 
     init(
         title: String,
@@ -16,7 +21,12 @@ struct TutorialCardView: View {
         onNext: @escaping () -> Void,
         onSkip: @escaping () -> Void,
         showSetupButtons: Bool = false,
-        onOpenSetup: (() -> Void)? = nil
+        onOpenSetup: (() -> Void)? = nil,
+        showSkip: Bool = true,
+        secondaryActionTitle: String? = nil,
+        onSecondaryAction: (() -> Void)? = nil,
+        primaryActionTitle: String? = nil,
+        onPrimaryAction: (() -> Void)? = nil
     ) {
         self.title = title
         self.message = message
@@ -25,6 +35,11 @@ struct TutorialCardView: View {
         self.onSkip = onSkip
         self.showSetupButtons = showSetupButtons
         self.onOpenSetup = onOpenSetup
+        self.showSkip = showSkip
+        self.secondaryActionTitle = secondaryActionTitle
+        self.onSecondaryAction = onSecondaryAction
+        self.primaryActionTitle = primaryActionTitle
+        self.onPrimaryAction = onPrimaryAction
     }
 
     var body: some View {
@@ -36,14 +51,16 @@ struct TutorialCardView: View {
 
                 Spacer()
 
-                Button("Skip") {
-                    onSkip()
+                if showSkip {
+                    Button("Skip") {
+                        onSkip()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.textMuted)
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(AppColors.textMuted)
-                .font(.system(size: 11, weight: .medium))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
             }
 
             Text(message)
@@ -69,6 +86,36 @@ struct TutorialCardView: View {
 
                     Button("Open Setup") {
                         onOpenSetup?()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.textPrimary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(AppColors.neonCyan.opacity(0.72))
+                    )
+                }
+            } else if let primaryActionTitle, let onPrimaryAction {
+                HStack(spacing: 9) {
+                    if let secondaryActionTitle, let onSecondaryAction {
+                        Button(secondaryActionTitle) {
+                            onSecondaryAction()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(AppColors.textSecondary)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(AppColors.controlStrokeSoft.opacity(0.70), lineWidth: 1)
+                        )
+                    }
+
+                    Button(primaryActionTitle) {
+                        onPrimaryAction()
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(AppColors.textPrimary)
