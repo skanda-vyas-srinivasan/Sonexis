@@ -20,12 +20,9 @@ struct EffectTray: View {
     @Binding var isCollapsed: Bool
     @ObservedObject var pluginManager: PluginManager
     let previewStyle: AccentStyle
-    let onSelect: (EffectType) -> Void
     let onDrag: (EffectType) -> Void
-    let onSelectPlugin: (PluginDescriptor) -> Void
     let onDragPlugin: (PluginDescriptor) -> Void
     let onTabChange: (TrayTab) -> Void
-    let allowTapToAdd: Bool
     let tutorialStep: TutorialStep
     @State private var searchText = ""
     @State private var activeTab: TrayTab = .builtIn
@@ -119,9 +116,7 @@ struct EffectTray: View {
                                             category: category,
                                             previewStyle: previewStyle,
                                             favoriteIDs: favoriteIDs,
-                                            allowTapToAdd: allowTapToAdd,
                                             effectFavoriteID: effectFavoriteID,
-                                            onSelect: onSelect,
                                             onDrag: onDrag,
                                             onToggleFavorite: toggleFavorite
                                         )
@@ -149,8 +144,6 @@ struct EffectTray: View {
                                             plugin: plugin,
                                             previewStyle: previewStyle,
                                             isFavorite: favoriteIDs.contains(pluginFavoriteID(plugin)),
-                                            allowTapToAdd: allowTapToAdd,
-                                            onSelect: { onSelectPlugin(plugin) },
                                             onToggleFavorite: { toggleFavorite(pluginFavoriteID(plugin)) },
                                             onDragStart: { onDragPlugin(plugin) }
                                         )
@@ -180,8 +173,6 @@ struct EffectTray: View {
                                                     isFeatured: category.style == .featured,
                                                     previewStyle: previewStyle,
                                                     isFavorite: true,
-                                                    allowTapToAdd: allowTapToAdd,
-                                                    onSelect: { onSelect(effectType) },
                                                     onToggleFavorite: { toggleFavorite(effectFavoriteID(effectType)) },
                                                     onDragStart: { onDrag(effectType) }
                                                 )
@@ -197,8 +188,6 @@ struct EffectTray: View {
                                                     plugin: plugin,
                                                     previewStyle: previewStyle,
                                                     isFavorite: true,
-                                                    allowTapToAdd: allowTapToAdd,
-                                                    onSelect: { onSelectPlugin(plugin) },
                                                     onToggleFavorite: { toggleFavorite(pluginFavoriteID(plugin)) },
                                                     onDragStart: { onDragPlugin(plugin) }
                                                 )
@@ -424,9 +413,7 @@ private struct EffectCategorySection: View {
     let category: EffectPaletteCategory
     let previewStyle: AccentStyle
     let favoriteIDs: Set<String>
-    let allowTapToAdd: Bool
     let effectFavoriteID: (EffectType) -> String
-    let onSelect: (EffectType) -> Void
     let onDrag: (EffectType) -> Void
     let onToggleFavorite: (String) -> Void
 
@@ -445,8 +432,6 @@ private struct EffectCategorySection: View {
                         isFeatured: category.style == .featured,
                         previewStyle: previewStyle,
                         isFavorite: favoriteIDs.contains(effectFavoriteID(effectType)),
-                        allowTapToAdd: allowTapToAdd,
-                        onSelect: { onSelect(effectType) },
                         onToggleFavorite: { onToggleFavorite(effectFavoriteID(effectType)) },
                         onDragStart: { onDrag(effectType) }
                     )
@@ -473,8 +458,6 @@ struct EffectPaletteButton: View {
     let isFeatured: Bool
     let previewStyle: AccentStyle
     let isFavorite: Bool
-    let allowTapToAdd: Bool
-    let onSelect: () -> Void
     let onToggleFavorite: () -> Void
     let onDragStart: () -> Void
     @State private var isHovered = false
@@ -505,11 +488,6 @@ struct EffectPaletteButton: View {
             .overlay(rowStroke)
             .clipShape(Rectangle())
             .contentShape(Rectangle())
-            .opacity(allowTapToAdd ? 1.0 : 0.86)
-            .onTapGesture {
-                guard allowTapToAdd else { return }
-                onSelect()
-            }
 
             FavoriteIconButton(
                 isFavorite: isFavorite,
@@ -591,8 +569,6 @@ struct PluginPaletteButton: View {
     let plugin: PluginDescriptor
     let previewStyle: AccentStyle
     let isFavorite: Bool
-    let allowTapToAdd: Bool
-    let onSelect: () -> Void
     let onToggleFavorite: () -> Void
     let onDragStart: () -> Void
     @State private var isHovered = false
@@ -649,11 +625,6 @@ struct PluginPaletteButton: View {
             )
             .clipShape(Rectangle())
             .contentShape(Rectangle())
-            .opacity(allowTapToAdd ? 1.0 : 0.86)
-            .onTapGesture {
-                guard allowTapToAdd else { return }
-                onSelect()
-            }
 
             FavoriteIconButton(
                 isFavorite: isFavorite,
