@@ -4,8 +4,14 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs to capture system audio to apply real-time effects</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Sonexis needs to capture system audio to apply real-time effects without routing through a virtual audio device.</string>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
 	<key>CFBundleDisplayName</key>
 	<string>Sonexis</string>
     <key>CFBundleIdentifier</key>
@@ -14,7 +20,11 @@
     <string>1</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.music</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>14.4</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright (c) 2026 Skanda Vyas Srinivasan. All rights reserved.</string>
 </dict>
 </plist>

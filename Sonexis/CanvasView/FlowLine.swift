@@ -11,50 +11,52 @@ struct FlowLine: View {
     let beatPulse: CGFloat
     let fps: Double
     let allowAnimation: Bool
-    @State private var bounce: CGFloat = 0
-    @State private var cachedPath: Path?
+    let fromEndpointSize: CGSize
+    let toEndpointSize: CGSize
+    let endpointClearance: CGFloat = 0
 
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
         let thickness: CGFloat = 3.5
-        let path = cachedPath ?? makePath()
+        let segment = visibleSegment()
+        let path = makePath(from: segment.from, to: segment.to)
         Group {
             if isActive {
                 ZStack {
                     path
-                        .stroke(AppColors.wireActive.opacity(0.9), lineWidth: thickness + 2)
-                        .blur(radius: 6)
+                        .stroke(AppColors.wireActive.opacity(0.62), lineWidth: thickness + 2)
+                        .blur(radius: 5)
                     path
-                        .stroke(Color(hex: "#FF5FBF").opacity(0.45), lineWidth: thickness + 6)
-                        .blur(radius: 14)
+                        .stroke(Color(hex: "#FF5FBF").opacity(0.24), lineWidth: thickness + 5)
+                        .blur(radius: 12)
                     path
                         .stroke(AppColors.wireActive.opacity(baseOpacity), lineWidth: thickness)
-                        .shadow(color: AppColors.wireActive.opacity(0.8), radius: 16)
-                        .shadow(color: AppColors.wireActive.opacity(0.45), radius: 28)
+                        .shadow(color: AppColors.wireActive.opacity(0.48), radius: 12)
+                        .shadow(color: AppColors.wireActive.opacity(0.24), radius: 22)
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
                     if allowAnimation && fps > 0 {
                         TimelineView(.periodic(from: .now, by: 1.0 / max(fps, 1.0))) { context in
                             let time = context.date.timeIntervalSinceReferenceDate
-                            let dx = to.x - from.x
-                            let dy = to.y - from.y
+                            let dx = segment.to.x - segment.from.x
+                            let dy = segment.to.y - segment.from.y
                             let length = max(sqrt(dx * dx + dy * dy), 1)
                             let pixelsPerSecond: CGFloat = 90
                             let phaseSpeed = pixelsPerSecond / length
                             let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
 
                             MovingArrowheads(
-                                from: from,
-                                to: to,
+                                from: segment.from,
+                                to: segment.to,
                                 color: AppColors.neonCyan.opacity(0.85),
                                 phase: phase
                             )
                         }
                     } else {
                         MovingArrowheads(
-                            from: from,
-                            to: to,
+                            from: segment.from,
+                            to: segment.to,
                             color: AppColors.neonCyan.opacity(0.35),
                             phase: 0
                         )
@@ -64,37 +66,74 @@ struct FlowLine: View {
                 let inactiveOpacity = baseOpacity * 0.55
                 ZStack {
                     path
-                        .stroke(AppColors.wireActive.opacity(0.4), lineWidth: thickness + 2)
-                        .blur(radius: 5)
+                        .stroke(AppColors.wireInactive.opacity(0.28), lineWidth: thickness + 2)
+                        .blur(radius: 4)
                     path
-                        .stroke(Color(hex: "#FF5FBF").opacity(0.2), lineWidth: thickness + 5)
-                        .blur(radius: 12)
-                    path
-                        .stroke(AppColors.wireActive.opacity(inactiveOpacity), lineWidth: thickness)
-                        .shadow(color: AppColors.wireActive.opacity(0.35), radius: 12)
+                        .stroke(AppColors.wireInactive.opacity(inactiveOpacity), lineWidth: thickness)
+                        .shadow(color: AppColors.controlStroke.opacity(0.18), radius: 8)
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
                     MovingArrowheads(
-                        from: from,
-                        to: to,
-                        color: AppColors.neonCyan.opacity(0.35),
+                        from: segment.from,
+                        to: segment.to,
+                        color: AppColors.wireInactive.opacity(0.44),
                         phase: 0
                     )
                 }
             }
         }
-        .onAppear {
-            cachedPath = makePath()
-        }
-        .onChange(of: from) { _ in
-            cachedPath = makePath()
-        }
-        .onChange(of: to) { _ in
-            cachedPath = makePath()
-        }
     }
 
-    private func makePath() -> Path {
+    private func visibleSegment() -> (from: CGPoint, to: CGPoint) {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 1 else { return (from, to) }
+
+        let direction = CGVector(dx: dx / length, dy: dy / length)
+        let fromTrim = endpointTrim(for: fromEndpointSize, direction: direction)
+        let toTrim = endpointTrim(for: toEndpointSize, direction: direction)
+        let totalTrim = fromTrim + toTrim
+        let trimScale = totalTrim > length - 1 && totalTrim > 0 ? (length - 1) / totalTrim : 1
+
+        let scaledFromTrim = fromTrim * trimScale
+        let scaledToTrim = toTrim * trimScale
+
+        return (
+            CGPoint(
+                x: from.x + direction.dx * scaledFromTrim,
+                y: from.y + direction.dy * scaledFromTrim
+            ),
+            CGPoint(
+                x: to.x - direction.dx * scaledToTrim,
+                y: to.y - direction.dy * scaledToTrim
+            )
+        )
+    }
+
+    private func endpointTrim(for size: CGSize, direction: CGVector) -> CGFloat {
+        guard size.width > 0 || size.height > 0 else { return 0 }
+
+        let halfWidth = max(size.width, 0) * 0.5
+        let halfHeight = max(size.height, 0) * 0.5
+        let x = abs(direction.dx)
+        let y = abs(direction.dy)
+        var trim = CGFloat.greatestFiniteMagnitude
+
+        if halfWidth > 0, x > 0.0001 {
+            trim = min(trim, halfWidth / x)
+        }
+        if halfHeight > 0, y > 0.0001 {
+            trim = min(trim, halfHeight / y)
+        }
+        if trim == CGFloat.greatestFiniteMagnitude {
+            trim = max(halfWidth, halfHeight)
+        }
+
+        return trim + endpointClearance
+    }
+
+    private func makePath(from: CGPoint, to: CGPoint) -> Path {
         Path { path in
             path.move(to: from)
             path.addLine(to: to)
@@ -127,6 +166,12 @@ struct CustomContextMenu {
         let title: String
         let role: ButtonRole?
         let action: () -> Void
+
+        init(title: String, role: ButtonRole? = nil, action: @escaping () -> Void) {
+            self.title = title
+            self.role = role
+            self.action = action
+        }
     }
 
     let anchor: CGPoint
@@ -135,9 +180,9 @@ struct CustomContextMenu {
     let items: [Item]
 
     var size: CGSize {
-        let rowHeight: CGFloat = 24
-        let height = CGFloat(items.count) * rowHeight + 16
-        return CGSize(width: 180, height: height)
+        let rowHeight: CGFloat = 32
+        let height = CGFloat(items.count) * rowHeight + 12
+        return CGSize(width: 196, height: height)
     }
 }
 
@@ -159,9 +204,11 @@ struct WindowFocusReader: NSViewRepresentable {
         var onFocusChange: ((Bool) -> Void)?
         private var keyObserver: Any?
         private var resignObserver: Any?
+        private var lastFocusState: Bool?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            removeObservers()
             updateFocus()
             if let window = window {
                 keyObserver = NotificationCenter.default.addObserver(
@@ -169,29 +216,43 @@ struct WindowFocusReader: NSViewRepresentable {
                     object: window,
                     queue: .main
                 ) { [weak self] _ in
-                    self?.onFocusChange?(true)
+                    self?.deliverFocusChange(true)
                 }
                 resignObserver = NotificationCenter.default.addObserver(
                     forName: NSWindow.didResignKeyNotification,
                     object: window,
                     queue: .main
                 ) { [weak self] _ in
-                    self?.onFocusChange?(false)
+                    self?.deliverFocusChange(false)
                 }
             }
         }
 
         func updateFocus() {
-            onFocusChange?(window?.isKeyWindow ?? true)
+            deliverFocusChange(window?.isKeyWindow ?? true)
+        }
+
+        private func deliverFocusChange(_ isKeyWindow: Bool) {
+            guard lastFocusState != isKeyWindow else { return }
+            lastFocusState = isKeyWindow
+            DispatchQueue.main.async { [weak self] in
+                self?.onFocusChange?(isKeyWindow)
+            }
         }
 
         deinit {
+            removeObservers()
+        }
+
+        private func removeObservers() {
             if let keyObserver {
                 NotificationCenter.default.removeObserver(keyObserver)
             }
             if let resignObserver {
                 NotificationCenter.default.removeObserver(resignObserver)
             }
+            keyObserver = nil
+            resignObserver = nil
         }
     }
 }
@@ -201,41 +262,57 @@ struct CustomContextMenuView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        let itemFont = Font.system(size: 12, weight: .medium, design: .rounded)
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(menu.items.enumerated()), id: \.offset) { index, item in
-                Button(role: item.role) {
-                    item.action()
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(menu.items.enumerated()), id: \.offset) { _, item in
+                ContextMenuRow(item: item, tint: menu.tint) {
                     onDismiss()
-                } label: {
-                    HStack {
-                        Text(item.title)
-                            .font(itemFont)
-                            .foregroundColor(menu.tint)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if index < menu.items.count - 1 {
-                    Divider()
-                        .background(menu.tint.opacity(0.2))
                 }
             }
         }
-        .padding(8)
-        .background(AppColors.deepBlack.opacity(0.88))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(menu.tint.opacity(0.7), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
+        .padding(5)
+        .sonexisFloatingPanel(tint: menu.tint, cornerRadius: 8, glowOpacity: 0)
         .fixedSize()
         .position(menu.position)
+    }
+}
+
+private struct ContextMenuRow: View {
+    let item: CustomContextMenu.Item
+    let tint: Color
+    let onSelect: () -> Void
+    @State private var isHovered = false
+
+    private var isDestructive: Bool {
+        if case .destructive? = item.role { return true }
+        return false
+    }
+
+    var body: some View {
+        Button(role: item.role) {
+            item.action()
+            onSelect()
+        } label: {
+            HStack {
+                Text(item.title)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(isDestructive ? AppColors.neonPink.opacity(0.92) : AppColors.textPrimary.opacity(0.92))
+
+                Spacer(minLength: 16)
+            }
+            .padding(.horizontal, 10)
+            .frame(width: 184, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.62) : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
@@ -245,11 +322,11 @@ struct GainPopoverView: View {
     let onDone: () -> Void
 
     var body: some View {
-        let itemFont = Font.system(size: 12, weight: .medium, design: .rounded)
-        VStack(spacing: 6) {
+        let itemFont = Font.system(size: 12, weight: .semibold, design: .rounded)
+        VStack(spacing: 8) {
             Text("Gain")
                 .font(itemFont)
-                .foregroundColor(tint)
+                .foregroundColor(AppColors.textPrimary)
                 .frame(maxWidth: .infinity)
             Slider(value: value, in: 0...1)
                 .tint(tint)
@@ -258,25 +335,27 @@ struct GainPopoverView: View {
             Text(String(format: "%.0f%%", value.wrappedValue * 100))
                 .font(.caption2)
                 .monospacedDigit()
-                .foregroundColor(tint.opacity(0.7))
+                .foregroundColor(tint.opacity(0.86))
                 .frame(maxWidth: .infinity)
             Button("Done") {
                 onDone()
             }
             .buttonStyle(.plain)
             .font(itemFont)
-            .foregroundColor(tint)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+            .foregroundColor(AppColors.textPrimary)
+            .frame(width: 160, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppColors.controlPurple.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppColors.controlStrokeSoft.opacity(0.5), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .padding(8)
-        .background(AppColors.deepBlack.opacity(0.88))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(0.7), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 3)
+        .padding(10)
+        .sonexisFloatingPanel(tint: tint, cornerRadius: 8, glowOpacity: 0)
         .fixedSize()
     }
 }
@@ -343,56 +422,7 @@ struct NeonTile: View {
     let disabledFill: Color
 
     var body: some View {
-        let coreFill: LinearGradient = isEnabled
-            ? LinearGradient(
-                colors: [
-                    style.fillDark.opacity(0.35),
-                    style.fillDark.opacity(0.75),
-                    style.fillDark.opacity(0.98)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            : LinearGradient(
-                colors: [disabledFill, disabledFill.opacity(0.85)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-        let edgeGlow = RadialGradient(
-            colors: [
-                style.fill.opacity(0.22),
-                style.fill.opacity(0.08),
-                Color.clear
-            ],
-            center: .center,
-            startRadius: 70,
-            endRadius: 150
-        )
-
-        let accentSheen = LinearGradient(
-            colors: [
-                Color.clear,
-                style.highlight.opacity(0.75),
-                Color.clear
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-
-        let accentStroke = LinearGradient(
-            colors: [
-                style.highlight.opacity(0.12),
-                style.highlight.opacity(0.9),
-                style.highlight.opacity(0.2)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        let accentStrokeStyle = isEnabled
-            ? AnyShapeStyle(accentStroke)
-            : AnyShapeStyle(Color.clear)
-
+        let coreFill = isEnabled ? style.fillDark.opacity(0.88) : disabledFill
         let shape = RoundedRectangle(cornerRadius: 22)
 
         return ZStack {
@@ -400,7 +430,7 @@ struct NeonTile: View {
 
             if isEnabled {
                 shape
-                    .fill(edgeGlow)
+                    .fill(style.fill.opacity(0.08))
                     .blendMode(.screen)
             }
 
@@ -420,26 +450,13 @@ struct NeonTile: View {
                 )
 
             shape
-                .stroke(accentStrokeStyle, lineWidth: 1.5)
+                .stroke(isEnabled ? style.highlight.opacity(0.58) : .clear, lineWidth: 1.5)
                 .blendMode(.screen)
 
             shape
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.08), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .fill(Color.white.opacity(isEnabled ? 0.05 : 0))
                 .blendMode(.screen)
                 .padding(6)
-
-            shape
-                .fill(accentSheen)
-                .rotationEffect(.degrees(-12))
-                .blendMode(.screen)
-                .opacity(isEnabled ? 0.9 : 0)
-                .padding(10)
         }
     }
 }
@@ -511,5 +528,3 @@ struct MovingArrowheads: View {
         }
     }
 }
-
-

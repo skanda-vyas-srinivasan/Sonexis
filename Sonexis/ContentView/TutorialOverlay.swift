@@ -8,6 +8,8 @@ struct TutorialOverlay: View {
     let onNext: () -> Void
     let onSkip: () -> Void
     let onOpenSetup: () -> Void
+    let onEndTutorial: () -> Void
+    let onContinueAdvanced: () -> Void
 
     @State private var measuredCardSize: CGSize = .zero
     @State private var showSkipConfirmation = false
@@ -33,11 +35,17 @@ struct TutorialOverlay: View {
                     .allowsHitTesting(false)
 
                 ForEach(Array(highlightRects.enumerated()), id: \.offset) { _, rect in
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(AppColors.neonCyan.opacity(0.9), lineWidth: 2)
-                        .shadow(color: AppColors.neonCyan.opacity(0.6), radius: 14)
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppColors.neonCyan.opacity(0.64), lineWidth: 1.25)
+                        .shadow(color: AppColors.neonCyan.opacity(0.18), radius: 5)
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
+                        .allowsHitTesting(false)
+                }
+
+                if let hintPosition = reverbScrollHintPosition(in: size, proxy: proxy) {
+                    ReverbScrollHint()
+                        .position(hintPosition)
                         .allowsHitTesting(false)
                 }
 
@@ -84,7 +92,9 @@ struct TutorialOverlay: View {
         case .presetsExplore:
             return []
         case .homeBuild:
-            return [convertToLocal(rect: targets[.buildButton], proxy: proxy)].compactMap { $0 }
+            return []
+        case .buildIntro:
+            return [convertToLocal(rect: targets[.buildCanvas], proxy: proxy)].compactMap { $0 }
         case .presetsBack:
             return [convertToLocal(rect: targets[.backButton], proxy: proxy)]
                 .compactMap { rect in
@@ -100,12 +110,22 @@ struct TutorialOverlay: View {
                 .compactMap { rect in
                     rect.map { paddedHighlight($0, insets: EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 6)) }
                 }
+        case .buildHeaderIntro:
+            return [
+                convertToLocal(rect: targets[.buildPower], proxy: proxy),
+                convertToLocal(rect: targets[.buildRecord], proxy: proxy),
+                convertToLocal(rect: targets[.buildOutput], proxy: proxy)
+            ].compactMap { $0 }
         case .buildAutoReorder:
             return [
                 convertToLocal(rect: targets[.buildBassNode], proxy: proxy),
                 convertToLocal(rect: targets[.buildClarityNode], proxy: proxy)
             ].compactMap { $0 }
         case .buildWiringManual:
+            return [convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)].compactMap { $0 }
+        case .buildAutoExplain:
+            return [convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)].compactMap { $0 }
+        case .buildManualExplain:
             return [convertToLocal(rect: targets[.buildWiringMode], proxy: proxy)].compactMap { $0 }
         case .buildAutoConnectEnd:
             return [convertToLocal(rect: targets[.buildAutoConnectEnd], proxy: proxy)].compactMap { $0 }
@@ -129,6 +149,10 @@ struct TutorialOverlay: View {
                 }
         case .buildOutput:
             return [convertToLocal(rect: targets[.buildOutput], proxy: proxy)].compactMap { $0 }
+        case .buildSettings:
+            return [convertToLocal(rect: targets[.buildSettings], proxy: proxy)].compactMap { $0 }
+        case .buildSettingsExplain:
+            return []
         case .buildAddBass:
             return [
                 convertToLocal(rect: targets[.buildBassBoost], proxy: proxy),
@@ -161,6 +185,8 @@ struct TutorialOverlay: View {
                 convertToLocal(rect: targets[.buildClarityNode], proxy: proxy),
                 convertToLocal(rect: targets[.buildReverbNode], proxy: proxy)
             ].compactMap { $0 }
+        case .buildParallelExplain:
+            return [convertToLocal(rect: targets[.buildCanvas], proxy: proxy)].compactMap { $0 }
         case .buildDualMonoAdd:
             return [
                 convertToLocal(rect: targets[.buildGraphMode], proxy: proxy),
@@ -175,6 +201,25 @@ struct TutorialOverlay: View {
         default:
             return []
         }
+    }
+
+    private func reverbScrollHintPosition(in size: CGSize, proxy: GeometryProxy) -> CGPoint? {
+        guard step == .buildParallelAddReverb,
+              targets[.buildReverb] == nil else {
+            return nil
+        }
+
+        if let canvas = convertToLocal(rect: targets[.buildCanvas], proxy: proxy) {
+            return CGPoint(
+                x: max(76, canvas.minX * 0.5),
+                y: min(size.height - 110, max(canvas.minY + 190, 270))
+            )
+        }
+
+        return CGPoint(
+            x: min(max(size.width * 0.18, 76), 150),
+            y: min(size.height - 110, max(size.height * 0.45, 270))
+        )
     }
 
     private func convertToLocal(rect: CGRect?, proxy: GeometryProxy) -> CGRect? {
@@ -201,9 +246,9 @@ struct TutorialOverlay: View {
         if shouldDimBackground {
             if !highlights.isEmpty {
                 ZStack {
-                    Color.black.opacity(0.55)
+                    Color.black.opacity(0.32)
                     ForEach(Array(highlights.enumerated()), id: \.offset) { _, rect in
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 10)
                             .frame(width: rect.width, height: rect.height)
                             .position(x: rect.midX, y: rect.midY)
                             .blendMode(.destinationOut)
@@ -211,7 +256,7 @@ struct TutorialOverlay: View {
                 }
                 .compositingGroup()
             } else {
-                Color.black.opacity(0.55)
+                Color.black.opacity(0.32)
             }
         } else {
             Color.clear
@@ -235,6 +280,10 @@ struct TutorialOverlay: View {
             return false
         case .buildCloseLoad:
             return false
+        case .buildActionMenu:
+            return false
+        case .buildCloseContextMenu:
+            return false
         case .buildParallelConnect:
             return false
         case .buildParallelAddReverb:
@@ -257,14 +306,21 @@ struct TutorialOverlay: View {
     @ViewBuilder
     private func calloutView(in size: CGSize, highlight: CGRect?) -> some View {
         if let content = tutorialContent() {
+            let cardMaxWidth: CGFloat = {
+                if step == .buildSettingsExplain {
+                    return 460
+                }
+                return highlight == nil ? 380 : 340
+            }()
             let cardBase = tutorialCard(
                 title: content.title,
                 body: content.body,
-                showNext: content.showNext
+                showNext: content.showNext,
+                isBasicsComplete: content.isBasicsComplete
             )
 
             let card = cardBase
-                .frame(maxWidth: highlight == nil ? 480 : 420)
+                .frame(maxWidth: cardMaxWidth)
                 .background(
                     GeometryReader { cardProxy in
                         Color.clear.preference(
@@ -274,20 +330,23 @@ struct TutorialOverlay: View {
                     }
                 )
                 .onPreferenceChange(TutorialCardSizePreferenceKey.self) { newSize in
-                    measuredCardSize = newSize
+                    DispatchQueue.main.async {
+                        guard measuredCardSize != newSize else { return }
+                        measuredCardSize = newSize
+                    }
                 }
 
             if let rect = highlight {
                 let position = bestCalloutPosition(
                     screen: size,
                     target: rect,
-                    cardSize: measuredCardSize == .zero ? CGSize(width: 420, height: 160) : measuredCardSize
+                    cardSize: measuredCardSize == .zero ? CGSize(width: 340, height: 126) : measuredCardSize
                 )
                 card.position(position)
             } else {
-                let fallbackSize = measuredCardSize == .zero ? CGSize(width: 480, height: 160) : measuredCardSize
+                let fallbackSize = measuredCardSize == .zero ? CGSize(width: cardMaxWidth, height: 126) : measuredCardSize
                 let position = clamp(
-                    CGPoint(x: size.width / 2, y: size.height * 0.22),
+                    fallbackCalloutCenter(in: size),
                     screen: size,
                     cardSize: fallbackSize
                 )
@@ -296,6 +355,13 @@ struct TutorialOverlay: View {
         } else {
             EmptyView()
         }
+    }
+
+    private func fallbackCalloutCenter(in size: CGSize) -> CGPoint {
+        if step == .buildSettingsExplain {
+            return CGPoint(x: size.width / 2, y: max(290, size.height * 0.36))
+        }
+        return CGPoint(x: size.width / 2, y: size.height * 0.22)
     }
 
     private func bestCalloutPosition(screen: CGSize, target: CGRect, cardSize: CGSize) -> CGPoint {
@@ -366,244 +432,331 @@ struct TutorialOverlay: View {
         rect.maxY <= screen.height - padding
     }
 
-    private func tutorialContent() -> (title: String, body: String, showNext: Bool)? {
+    private func tutorialContent() -> (title: String, body: String, showNext: Bool, isBasicsComplete: Bool)? {
         switch step {
         case .welcome:
             return (
                 title: "Welcome",
-                body: "Hey, welcome to Sonexis. Since it's your first time here, let me walk you through the key screens.",
-                showNext: true
+                body: "Hey, welcome to Sonexis. Since it's your first time here, let me walk you through the basics.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .homePresets:
             return (
                 title: "Presets",
-                body: "This page houses your saved chains. Tap Presets to browse them before heading back.",
-                showNext: false
+                body: "Presets is where saved chains live. Open it to see where your sounds go after you save them.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .presetsExplore:
             return (
                 title: "Browse presets",
-                body: "Once you start saving chains, they’ll show up here. Take a quick look around, then press Next to continue.",
-                showNext: true
+                body: "Saved chains show up here. Loading one brings back its effects, wiring, and settings.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .presetsBack:
             return (
                 title: "Back to Home",
-                body: "Tap Home to return once you’ve reviewed a preset.",
-                showNext: false
+                body: "Head back Home. We'll build a fresh chain next.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .homeBuild:
             return (
-                title: "Build",
-                body: "Build opens a fresh canvas for crafting blocks. Tap it when you’re ready.",
-                showNext: false
+                title: "Start",
+                body: "Click anywhere to start.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildIntro:
             return (
                 title: "Canvas",
-                body: "This is where signal flow happens. Drag effects from the tray into this space.",
-                showNext: true
+                body: "This is where you build your effect chain. Add effects here, and Sonexis will run your Mac audio through them in order.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildTrayTabs:
             return (
-                title: "Effect tray",
-                body: "These tabs display the effects you can add to your sound. They mainly come in two categories:\n\nThe Built-in tab contains the effects that ship with Sonexis. They are ready to use right away and cover the core tools you will reach for most often.\n\nThe Plugins tab contains Audio Units you have installed on your Mac. Sonexis scans your system and lists them here so you can add them to your chain.",
-                showNext: true
+                title: "Effects",
+                body: "This is the effects tray. \"Built-in\" contains effects included with Sonexis. \"Plugins\" contains Audio Units installed on your Mac.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildHeaderIntro:
             return (
-                title: "Header Controls",
-                body: "Up top you'll find controls for power, processing, recording, and output device. Let's walk through them.",
-                showNext: true
+                title: "Header controls",
+                body: "The header runs the session: power, recording, output level, settings, save, and load.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildPower:
             if !isSetupReady {
                 return (
-                    title: "Install BlackHole",
-                    body: "You need BlackHole 2ch installed to continue. Press the power button - we'll automatically route your audio through BlackHole!",
-                    showNext: false
+                    title: "Power",
+                    body: "Sonexis needs audio capture setup before it can run. Open setup, finish it, then start power.",
+                    showNext: false,
+                    isBasicsComplete: false
                 )
             } else {
                 return (
-                    title: "Turn It On",
-                    body: "Click the power button to start processing audio. We'll automatically route your system audio through BlackHole. Feel free to play some music!",
-                    showNext: false
+                    title: "Power",
+                    body: "Press the power button to turn on the audio engine. Keep it running so you can hear each effect as you add it.",
+                    showNext: false,
+                    isBasicsComplete: false
                 )
             }
         case .buildRecord:
             return (
                 title: "Record",
-                body: "Click Record to capture the processed audio to a WAV file. You choose where to save it.",
-                showNext: true
+                body: "Record saves the processed sound to a WAV file. We'll skip recording now, but this is where it lives.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildOutput:
             return (
-                title: "Output Device",
-                body: "Choose where you want to hear the processed audio. Select your headphones or speakers from the Output dropdown.",
-                showNext: true
+                title: "Output meter",
+                body: "This meter shows the processed signal leaving Sonexis, so you can tell if the chain is too quiet or too hot.",
+                showNext: true,
+                isBasicsComplete: false
+            )
+        case .buildSettings:
+            return (
+                title: "Settings",
+                body: "Open Settings to see the controls that affect the whole audio chain.",
+                showNext: false,
+                isBasicsComplete: false
+            )
+        case .buildSettingsExplain:
+            return (
+                title: "Audio settings",
+                body: "Lower Tap In gives effects more headroom and less drive; higher Tap In hits them harder, which can add intensity but clip sooner. Lower Makeup keeps the output safer and quieter; higher Makeup brings loudness back after effects but can push the limiter. Ceiling is the safety limiter: when output gets too loud it clamps peaks, which can distort the sound, but it is a useful safety mechanism for your speakers. Theme changes the app's color scheme for a different feel and look.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildAddBass:
             return (
                 title: "Add Bass Boost",
-                body: "Bass Boost fattens the lows. Drag Bass Boost from the Effects tray onto the canvas.",
-                showNext: false
+                body: "Drag Bass Boost onto the canvas.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildAutoExplain:
             return (
                 title: "Automatic wiring",
-                body: "Over here, Automatic wiring connects your effects for you. Add blocks and we’ll keep the signal flowing left to right.",
-                showNext: true
+                body: "Sonexis keeps the chain connected automatically. In this mode, sound moves through the blocks from left to right, so the order on the canvas controls the order of the sound.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildAutoAddClarity:
             return (
-                title: "Add a second block",
-                body: "Drag Clarity onto the canvas. It should auto-connect into the chain.",
-                showNext: false
+                title: "Add Clarity",
+                body: "Drag Clarity onto the canvas, to the left of Bass Boost.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildAutoReorder:
             return (
-                title: "Reorder by moving",
-                body: "Drag Clarity to the left of Bass Boost. The auto-chain should reorder instantly.",
-                showNext: false
+                title: "Reorder Clarity",
+                body: "Now drag Clarity to the right of Bass Boost.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildManualExplain:
             return (
                 title: "Manual wiring",
-                body: "Manual wiring gives you full control. You can connect in series, build parallel paths, and merge them back together.",
-                showNext: true
+                body: "Automatic is the quick path. Manual wiring is for exact routes: series chains, splits, and merges.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildDoubleClick:
             return (
-                title: "Open controls",
-                body: "Double-click the Bass Boost node to open its controls.",
-                showNext: false
+                title: "Controls",
+                body: "Double-click Bass Boost to open its controls.",
+                showNext: false,
+                isBasicsComplete: false
+            )
+        case .buildEffectControls:
+            return (
+                title: "Effect Controls",
+                body: "Each effect has its own controls. Adjust them here to change how that effect shapes the sound.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildCloseOverlay:
             return (
                 title: "Close controls",
-                body: "Nice. Now close the panel (double-click the node again) so we can continue.",
-                showNext: false
+                body: "Double-click Bass Boost again to close its controls.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildRightClick:
             return (
-                title: "Right-click menu",
-                body: "Right-click the Bass Boost node to open the action menu.",
-                showNext: false
+                title: "Block Actions",
+                body: "Right-click Bass Boost to open its action menu.",
+                showNext: false,
+                isBasicsComplete: false
+            )
+        case .buildActionMenu:
+            return (
+                title: "Action Menu",
+                body: "This menu lets you duplicate, delete, or remove connections from a block.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildCloseContextMenu:
             return (
                 title: "Close the menu",
-                body: "Click anywhere outside the menu to close it.",
-                showNext: false
+                body: "Click empty canvas space to close the menu.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildWiringManual:
             return (
-                title: "Switch to Manual",
-                body: "Switch Wiring to Manual so you can draw connections yourself.",
-                showNext: false
+                title: "Manual Wiring",
+                body: "Switch Wiring to Manual. In Manual mode, you draw the connections yourself.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildConnect:
             return (
-                title: "Connect nodes",
-                body: "Hold Option, then drag from Start to Bass Boost. Then drag from Bass Boost to End.",
-                showNext: false
+                title: "Connect First Chain",
+                body: "Hold Option and drag from Start to Bass Boost. Then drag from Bass Boost to End.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildAutoConnectEnd:
             return (
                 title: "Auto-connect End",
-                body: "In manual mode, you wire to End yourself. But you can toggle Auto-connect End ON to automatically wire the last node to End.",
-                showNext: true
+                body: "Auto-connect End can finish the last connection for you. Leave it off for now so you can see the wires yourself.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildResetWiringForParallel:
             return (
                 title: "Reset wiring",
-                body: "Before we build a new wiring pattern, reset the current wires. Open Canvas, then click Reset Wiring.",
-                showNext: false
+                body: "Open Canvas and choose Reset Wiring so we can build a parallel route.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildParallelExplain:
             return (
-                title: "Parallel paths",
-                body: "Now let’s do a parallel route. We’ll split into two effects, then merge into Reverb.",
-                showNext: true
+                title: "Parallel Routing",
+                body: "Parallel routing lets the sound split into more than one path, then merge back together.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildParallelAddReverb:
             return (
                 title: "Add Reverb",
-                body: "Drag Reverb onto the canvas. We’ll use it as the merge point.",
-                showNext: false
+                body: "Reverb is lower in \"Built-in.\" Scroll the tray and drag Reverb onto the canvas.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildParallelConnect:
             return (
-                title: "Wire the parallel merge",
-                body: "Option-drag: Start → Bass Boost, Start → Clarity, then Bass Boost → Reverb, Clarity → Reverb, and Reverb → End.",
-                showNext: false
+                title: "Wire Split",
+                body: "Hold Option and connect Start to Bass Boost, then Start to Clarity. Then connect Bass Boost to Reverb, Clarity to Reverb, and Reverb to End.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildClearCanvasForDualMono:
             return (
                 title: "Clear the canvas",
-                body: "Clear the canvas so the next step starts clean. Open Canvas, then click Clear Canvas.",
-                showNext: false
+                body: "Open Canvas and choose Clear Canvas so we can look at left and right lanes.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildGraphMode:
             return (
-                title: "Graph Mode",
-                body: "Dual Mono (L/R) separates the channels. Switch to it to keep left and right processing paths independent.",
-                showNext: false
+                title: "Dual Mono",
+                body: "Switch Graph Mode to Dual Mono. This gives the left and right channels separate lanes.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildDualMonoAdd:
             return (
-                title: "Dual Mono demo",
-                body: "With Dual Mono on, drag Bass Boost into the left lane, then drag Clarity into the right lane.",
-                showNext: false
+                title: "Add Lane Effects",
+                body: "Drag Bass Boost into the left lane and Clarity into the right lane.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildDualMonoConnect:
             return (
-                title: "Wire both lanes",
-                body: "Hold Option and connect Start L → Bass Boost → End L. Then connect Start R → Clarity → End R.",
-                showNext: false
+                title: "Wire Lanes",
+                body: "Hold Option and wire each lane from its Start, through its effect, to its End.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildReturnStereoAuto:
             return (
-                title: "Back to defaults",
-                body: "Set Graph Mode back to Stereo, and Wiring back to Automatic.",
-                showNext: false
+                title: "Back To Normal",
+                body: "Switch Graph Mode back to Stereo and Wiring back to Automatic.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildSave:
             return (
-                title: "Save your chain",
-                body: "Save locks this chain into a preset you can reload later.",
-                showNext: false
+                title: "Save",
+                body: "Save this chain as a preset so you can come back to it later.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildSaveConfirm:
             return (
                 title: "Saved",
-                body: "Nice. Your chain is saved. Next we’ll load a preset.",
-                showNext: true
+                body: "Saved. Now let's load it back.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildLoad:
             return (
-                title: "Load presets",
-                body: "Open Load, pick a preset, and press Apply.",
-                showNext: false
+                title: "Load",
+                body: "Open Load.",
+                showNext: false,
+                isBasicsComplete: false
             )
         case .buildCloseLoad:
             return (
                 title: "Close Load",
-                body: "Close the Load window to finish the tutorial.",
-                showNext: false
+                body: "Close Load when you're done choosing a preset.",
+                showNext: false,
+                isBasicsComplete: false
+            )
+        case .basicsComplete:
+            return (
+                title: "Basics Complete",
+                body: "You now know how to build, edit, run, save, and load a normal Sonexis chain. You can end here or continue to the advanced tutorial. You can always reopen Tutorials from Home later.",
+                showNext: false,
+                isBasicsComplete: true
+            )
+        case .advancedIntro:
+            return (
+                title: "Advanced Tutorial",
+                body: "Now let's look at routing. This is where you control how blocks connect, split, and merge.",
+                showNext: true,
+                isBasicsComplete: false
+            )
+        case .advancedComplete:
+            return (
+                title: "Advanced Complete",
+                body: "You now know how to use manual wiring, parallel routes, and Dual Mono. You can reopen Tutorials from Home anytime.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .buildFinish:
             return (
                 title: "All set",
-                body: "That’s the loop. Build, tweak, save, load. You’re ready to bend audio.",
-                showNext: true
+                body: "That's the basic loop: open Home, build on the canvas, run audio, adjust, save, and load.",
+                showNext: true,
+                isBasicsComplete: false
             )
         case .inactive:
             return nil
         }
     }
 
-    private func tutorialCard(title: String, body: String, showNext: Bool) -> some View {
+    private func tutorialCard(title: String, body: String, showNext: Bool, isBasicsComplete: Bool) -> some View {
         let showSetupButtons = step == .buildPower && !isSetupReady
         return TutorialCardView(
             title: title,
@@ -612,7 +765,34 @@ struct TutorialOverlay: View {
             onNext: onNext,
             onSkip: { showSkipConfirmation = true },
             showSetupButtons: showSetupButtons,
-            onOpenSetup: onOpenSetup
+            onOpenSetup: onOpenSetup,
+            showSkip: !isBasicsComplete,
+            secondaryActionTitle: isBasicsComplete ? "End tutorial" : nil,
+            onSecondaryAction: isBasicsComplete ? onEndTutorial : nil,
+            primaryActionTitle: isBasicsComplete ? "Continue to advanced tutorial" : nil,
+            onPrimaryAction: isBasicsComplete ? onContinueAdvanced : nil
+        )
+    }
+}
+
+private struct ReverbScrollHint: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "arrow.down")
+                .font(.system(size: 13, weight: .bold))
+            Text("Scroll for Reverb")
+                .font(AppTypography.caption.weight(.semibold))
+        }
+        .foregroundColor(AppColors.neonCyan)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(AppColors.deepBlack.opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppColors.neonCyan.opacity(0.24), lineWidth: 1)
         )
     }
 }

@@ -175,7 +175,11 @@ struct PresetView: View {
                             PresetCard(
                                 preset: preset,
                                 onApply: {
-                                    audioEngine.requestGraphLoad(preset.graph)
+                                    audioEngine.requestGraphLoad(
+                                        preset.graph,
+                                        mode: .audioAndVisual,
+                                        reason: "preset browser"
+                                    )
                                     onPresetApplied(preset)
                                 },
                                 onExport: {

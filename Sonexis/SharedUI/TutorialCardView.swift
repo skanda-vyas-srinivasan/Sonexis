@@ -8,8 +8,11 @@ struct TutorialCardView: View {
     let onSkip: () -> Void
     let showSetupButtons: Bool
     let onOpenSetup: (() -> Void)?
-
-    @State private var glowPulse = false
+    let showSkip: Bool
+    let secondaryActionTitle: String?
+    let onSecondaryAction: (() -> Void)?
+    let primaryActionTitle: String?
+    let onPrimaryAction: (() -> Void)?
 
     init(
         title: String,
@@ -18,7 +21,12 @@ struct TutorialCardView: View {
         onNext: @escaping () -> Void,
         onSkip: @escaping () -> Void,
         showSetupButtons: Bool = false,
-        onOpenSetup: (() -> Void)? = nil
+        onOpenSetup: (() -> Void)? = nil,
+        showSkip: Bool = true,
+        secondaryActionTitle: String? = nil,
+        onSecondaryAction: (() -> Void)? = nil,
+        primaryActionTitle: String? = nil,
+        onPrimaryAction: (() -> Void)? = nil
     ) {
         self.title = title
         self.message = message
@@ -27,34 +35,38 @@ struct TutorialCardView: View {
         self.onSkip = onSkip
         self.showSetupButtons = showSetupButtons
         self.onOpenSetup = onOpenSetup
+        self.showSkip = showSkip
+        self.secondaryActionTitle = secondaryActionTitle
+        self.onSecondaryAction = onSecondaryAction
+        self.primaryActionTitle = primaryActionTitle
+        self.onPrimaryAction = onPrimaryAction
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 11) {
             HStack {
                 Text(title)
-                    .font(AppTypography.heading)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textPrimary)
-                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 6)
 
                 Spacer()
 
-                Button("Skip") {
-                    onSkip()
+                if showSkip {
+                    Button("Skip") {
+                        onSkip()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.textMuted)
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(AppColors.textMuted)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(AppColors.darkPurple.opacity(0.5))
-                )
             }
 
             Text(message)
-                .font(AppTypography.body)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundColor(AppColors.textSecondary)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             if showSetupButtons {
@@ -64,11 +76,12 @@ struct TutorialCardView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(AppColors.neonPink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(
-                        Capsule()
-                            .stroke(AppColors.neonPink, lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(AppColors.neonPink.opacity(0.62), lineWidth: 1)
                     )
 
                     Button("Open Setup") {
@@ -76,95 +89,76 @@ struct TutorialCardView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(AppColors.textPrimary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [AppColors.neonCyan, AppColors.neonPink],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(AppColors.neonCyan.opacity(0.72))
                     )
-                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 12)
+                }
+            } else if let primaryActionTitle, let onPrimaryAction {
+                HStack(spacing: 9) {
+                    if let secondaryActionTitle, let onSecondaryAction {
+                        Button(secondaryActionTitle) {
+                            onSecondaryAction()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(AppColors.textSecondary)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(AppColors.controlStrokeSoft.opacity(0.70), lineWidth: 1)
+                        )
+                    }
+
+                    Button(primaryActionTitle) {
+                        onPrimaryAction()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.textPrimary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(AppColors.neonCyan.opacity(0.72))
+                    )
                 }
             } else if showNext {
                 Button(action: onNext) {
                     HStack(spacing: 6) {
                         Text("Next")
-                            .font(AppTypography.body)
+                            .font(.system(size: 12, weight: .semibold))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(AppColors.textPrimary)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 7)
                     .background(
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [AppColors.neonCyan, AppColors.neonPink],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(AppColors.neonCyan.opacity(0.72))
                     )
-                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 12)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(24)
+        .padding(14)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppColors.deepBlack,
-                                AppColors.darkPurple,
-                                AppColors.gridLines
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                AppColors.neonCyan.opacity(0.8),
-                                AppColors.neonPink.opacity(0.9),
-                                AppColors.synthOrange.opacity(0.7)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1.5
-                    )
-                    .blur(radius: 2)
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                    .padding(2)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppColors.deepBlack.opacity(0.96))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppColors.controlStrokeSoft.opacity(0.78), lineWidth: 1)
             }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(AppColors.neonCyan.opacity(glowPulse ? 0.9 : 0.45), lineWidth: 4)
-                .blur(radius: glowPulse ? 18 : 6)
-                .opacity(glowPulse ? 1 : 0.6)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppColors.neonCyan.opacity(0.18), lineWidth: 1)
         )
-        .shadow(color: AppColors.neonPink.opacity(0.4), radius: 25, y: 10)
-        .scaleEffect(glowPulse ? 1.02 : 0.98)
-        .onAppear {
-            withAnimation(
-                Animation.easeInOut(duration: 1.8)
-                    .repeatForever(autoreverses: true)
-            ) {
-                glowPulse.toggle()
-            }
-        }
+        .shadow(color: Color.black.opacity(0.34), radius: 10, y: 5)
     }
 }
