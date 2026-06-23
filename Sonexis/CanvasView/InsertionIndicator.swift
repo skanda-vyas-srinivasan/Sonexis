@@ -5,16 +5,9 @@ import SwiftUI
 struct InsertionIndicator: View {
     var body: some View {
         Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [.blue.opacity(0.3), .blue, .blue.opacity(0.3)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            .fill(Color.blue.opacity(0.72))
             .frame(width: 4, height: 120)
             .cornerRadius(2)
             .shadow(color: .blue.opacity(0.5), radius: 6)
     }
 }
-
