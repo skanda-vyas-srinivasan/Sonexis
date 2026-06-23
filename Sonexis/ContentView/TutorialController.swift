@@ -4,8 +4,13 @@ final class TutorialController: ObservableObject {
     @Published var step: TutorialStep = .inactive
     @Published var hasVisitedTrayTabs = false
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @AppStorage("hasCompletedBasicsTutorial") private var hasCompletedBasicsTutorial = false
+    @AppStorage("hasCompletedAdvancedTutorial") private var hasCompletedAdvancedTutorial = false
+    private(set) var shouldRestoreOnEnd = false
 
     var isActive: Bool { step != .inactive }
+    var basicsCompleted: Bool { hasCompletedBasicsTutorial }
+    var advancedCompleted: Bool { hasCompletedAdvancedTutorial }
 
     var allowBuildAction: Bool {
         switch step {
@@ -17,12 +22,7 @@ final class TutorialController: ObservableObject {
     }
 
     var allowPresetsAction: Bool {
-        switch step {
-        case .inactive, .homePresets:
-            return true
-        default:
-            return false
-        }
+        step == .inactive
     }
 
     var allowBackAction: Bool {
@@ -42,23 +42,33 @@ final class TutorialController: ObservableObject {
              .buildPower,
              .buildRecord,
              .buildOutput,
+             .buildSettings,
+             .buildSettingsExplain,
              .buildAddBass,
              .buildAutoExplain,
              .buildAutoAddClarity,
              .buildAutoReorder,
-             .buildManualExplain,
              .buildDoubleClick,
+             .buildEffectControls,
              .buildCloseOverlay,
              .buildRightClick,
+             .buildActionMenu,
              .buildCloseContextMenu,
+             .basicsComplete,
+             .advancedIntro,
+             .advancedComplete,
+             .buildManualExplain,
              .buildWiringManual,
              .buildConnect,
              .buildAutoConnectEnd,
+             .buildResetWiringForParallel,
              .buildParallelExplain,
              .buildParallelAddReverb,
              .buildParallelConnect,
+             .buildClearCanvasForDualMono,
              .buildGraphMode,
              .buildDualMonoAdd,
+             .buildDualMonoConnect,
              .buildReturnStereoAuto,
              .buildSave,
              .buildSaveConfirm,
@@ -72,21 +82,34 @@ final class TutorialController: ObservableObject {
     }
 
     func startIfNeeded(isSetupVisible: Bool) {
-        guard !hasSeenTutorial, !isSetupVisible else { return }
-        step = .welcome
-        hasVisitedTrayTabs = false
+        guard !hasSeenTutorial, !isSetupVisible, !isActive else { return }
+        startBasics()
         hasSeenTutorial = true
     }
 
-    func startFromHelp() {
+    func startBasics() {
+        shouldRestoreOnEnd = true
         step = .welcome
+        hasVisitedTrayTabs = false
+    }
+
+    func startAdvanced() {
+        shouldRestoreOnEnd = true
+        step = .advancedIntro
+        hasVisitedTrayTabs = false
+    }
+
+    func continueToAdvanced() {
+        hasCompletedBasicsTutorial = true
+        shouldRestoreOnEnd = false
+        step = .advancedIntro
         hasVisitedTrayTabs = false
     }
 
     func advance() {
         switch step {
         case .welcome:
-            step = .homePresets
+            step = .homeBuild
         case .homePresets:
             step = .presetsExplore
         case .presetsExplore:
@@ -99,39 +122,51 @@ final class TutorialController: ObservableObject {
             step = .buildTrayTabs
             hasVisitedTrayTabs = false
         case .buildTrayTabs:
-            step = .buildHeaderIntro
-        case .buildHeaderIntro:
             step = .buildPower
         case .buildPower:
-            step = .buildRecord
-        case .buildRecord:
-            step = .buildOutput
-        case .buildOutput:
             step = .buildAddBass
         case .buildAddBass:
-            step = .buildAutoExplain
-        case .buildAutoExplain:
             step = .buildAutoAddClarity
         case .buildAutoAddClarity:
             step = .buildAutoReorder
         case .buildAutoReorder:
-            step = .buildManualExplain
-        case .buildManualExplain:
-            step = .buildWiringManual
+            step = .buildAutoExplain
+        case .buildAutoExplain:
+            step = .buildDoubleClick
         case .buildDoubleClick:
+            step = .buildEffectControls
+        case .buildEffectControls:
             step = .buildCloseOverlay
         case .buildCloseOverlay:
             step = .buildRightClick
         case .buildRightClick:
-            step = .buildCloseContextMenu
+            step = .buildActionMenu
+        case .buildActionMenu:
+            step = .buildSettings
         case .buildCloseContextMenu:
-            step = .buildResetWiringForParallel
+            step = .buildSettings
+        case .buildSettings:
+            step = .buildSettingsExplain
+        case .buildSettingsExplain:
+            step = .buildSave
+        case .buildSave:
+            step = .buildSaveConfirm
+        case .buildSaveConfirm:
+            step = .buildLoad
+        case .buildLoad:
+            step = .basicsComplete
+        case .basicsComplete:
+            finishTutorial()
+        case .advancedIntro:
+            step = .buildWiringManual
+        case .buildManualExplain:
+            step = .buildWiringManual
         case .buildWiringManual:
             step = .buildConnect
         case .buildConnect:
             step = .buildAutoConnectEnd
         case .buildAutoConnectEnd:
-            step = .buildDoubleClick
+            step = .buildResetWiringForParallel
         case .buildResetWiringForParallel:
             step = .buildParallelExplain
         case .buildParallelExplain:
@@ -149,26 +184,26 @@ final class TutorialController: ObservableObject {
         case .buildDualMonoConnect:
             step = .buildReturnStereoAuto
         case .buildReturnStereoAuto:
-            step = .buildSave
-        case .buildSave:
-            step = .buildSaveConfirm
-        case .buildSaveConfirm:
-            step = .buildLoad
-        case .buildLoad:
-            step = .buildCloseLoad
+            step = .advancedComplete
+        case .advancedComplete:
+            finishTutorial(completedAdvanced: true)
+        case .buildHeaderIntro:
+            step = .buildPower
+        case .buildRecord:
+            step = .buildOutput
+        case .buildOutput:
+            step = .buildSettings
         case .buildCloseLoad:
             step = .buildFinish
         case .buildFinish:
-            step = .inactive
+            finishTutorial()
         case .inactive:
             break
         }
     }
 
     func handlePresetsClick() {
-        if step == .homePresets {
-            step = .presetsExplore
-        }
+        if step == .homePresets { step = .presetsExplore }
     }
 
     func handleBuildClick() {
@@ -190,6 +225,23 @@ final class TutorialController: ObservableObject {
     }
 
     func endTutorial() {
+        shouldRestoreOnEnd = false
+        step = .inactive
+    }
+
+    func skipTutorial() {
+        shouldRestoreOnEnd = true
+        step = .inactive
+    }
+
+    func finishTutorial(completedAdvanced: Bool = false) {
+        if step == .basicsComplete || completedAdvanced {
+            hasCompletedBasicsTutorial = true
+        }
+        if completedAdvanced {
+            hasCompletedAdvancedTutorial = true
+        }
+        shouldRestoreOnEnd = false
         step = .inactive
     }
 }

@@ -12,12 +12,6 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .bassBoost, isEnabled: true, parameters: params))
         }
 
-        // Enhancer
-        if enhancerEnabled {
-            let params = EffectChainSnapshot.EffectParameters(enhancerAmount: enhancerAmount)
-            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .enhancer, isEnabled: true, parameters: params))
-        }
-
         // Nightcore
         if nightcoreEnabled {
             let params = EffectChainSnapshot.EffectParameters(nightcoreIntensity: nightcoreIntensity)
@@ -50,7 +44,15 @@ extension AudioEngine {
 
         // Compressor
         if compressorEnabled {
-            let params = EffectChainSnapshot.EffectParameters(compressorStrength: compressorStrength)
+            let params = EffectChainSnapshot.EffectParameters(
+                compressorStrength: compressorStrength,
+                compressorThresholdDB: compressorThresholdDB,
+                compressorRatio: compressorRatio,
+                compressorAttackMS: compressorAttackMS,
+                compressorReleaseMS: compressorReleaseMS,
+                compressorMakeupDB: compressorMakeupDB,
+                compressorMix: compressorMix
+            )
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .compressor, isEnabled: true, parameters: params))
         }
 
@@ -71,6 +73,17 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .delay, isEnabled: true, parameters: params))
         }
 
+        // Amp
+        if ampEnabled {
+            let params = EffectChainSnapshot.EffectParameters(
+                ampInputGain: ampInputGain,
+                ampDrive: ampDrive,
+                ampOutputGain: ampOutputGain,
+                ampMix: ampMix
+            )
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .amp, isEnabled: true, parameters: params))
+        }
+
         // Distortion
         if distortionEnabled {
             let params = EffectChainSnapshot.EffectParameters(
@@ -87,6 +100,15 @@ extension AudioEngine {
                 tremoloDepth: tremoloDepth
             )
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .tremolo, isEnabled: true, parameters: params))
+        }
+
+        // Auto Pan
+        if autoPanEnabled {
+            let params = EffectChainSnapshot.EffectParameters(
+                autoPanRate: autoPanRate,
+                autoPanDepth: autoPanDepth
+            )
+            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .autoPan, isEnabled: true, parameters: params))
         }
 
         // Chorus
@@ -144,19 +166,13 @@ extension AudioEngine {
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .stereoWidth, isEnabled: true, parameters: params))
         }
 
-        // Resampling
-        if resampleEnabled {
-            let params = EffectChainSnapshot.EffectParameters(resampleRate: resampleRate, resampleCrossfade: resampleCrossfade)
-            activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .resampling, isEnabled: true, parameters: params))
-        }
-
         // Rubber Band Pitch
         if rubberBandPitchEnabled {
             let params = EffectChainSnapshot.EffectParameters(rubberBandPitchSemitones: rubberBandPitchSemitones)
             activeEffects.append(EffectChainSnapshot.EffectSnapshot(type: .rubberBandPitch, isEnabled: true, parameters: params))
         }
 
-        return EffectChainSnapshot(activeEffects: activeEffects)
+        return EffectChainSnapshot(activeEffects: activeEffects.filter { !$0.type.isRetired })
     }
 
     func applyEffectChain(_ chain: EffectChainSnapshot) {
@@ -172,8 +188,10 @@ extension AudioEngine {
         reverbEnabled = false
         stereoWidthEnabled = false
         delayEnabled = false
+        ampEnabled = false
         distortionEnabled = false
         tremoloEnabled = false
+        autoPanEnabled = false
         chorusEnabled = false
         phaserEnabled = false
         flangerEnabled = false
@@ -184,7 +202,7 @@ extension AudioEngine {
         resetTenBandValues()
 
         // Then apply each effect from the chain
-        for effect in chain.activeEffects {
+        for effect in chain.activeEffects where !effect.type.isRetired {
             let params = effect.parameters
 
             switch effect.type {
@@ -195,10 +213,7 @@ extension AudioEngine {
                 }
 
             case .enhancer:
-                enhancerEnabled = effect.isEnabled
-                if let amount = params.enhancerAmount {
-                    enhancerAmount = amount
-                }
+                enhancerEnabled = false
 
             case .pitchShift: // Nightcore
                 nightcoreEnabled = effect.isEnabled
@@ -224,6 +239,11 @@ extension AudioEngine {
                 if let mids = params.eqMids { eqMids = mids }
                 if let treble = params.eqTreble { eqTreble = treble }
 
+            case .appleThreeBandEQ:
+                if let bass = params.eqBass { eqBass = bass }
+                if let mids = params.eqMids { eqMids = mids }
+                if let treble = params.eqTreble { eqTreble = treble }
+
             case .tenBandEQ:
                 tenBandEQEnabled = effect.isEnabled
                 if let gains = params.tenBandGains, gains.count == tenBandFrequencies.count {
@@ -244,6 +264,24 @@ extension AudioEngine {
                 if let strength = params.compressorStrength {
                     compressorStrength = strength
                 }
+                if let threshold = params.compressorThresholdDB {
+                    compressorThresholdDB = threshold
+                }
+                if let ratio = params.compressorRatio {
+                    compressorRatio = ratio
+                }
+                if let attack = params.compressorAttackMS {
+                    compressorAttackMS = attack
+                }
+                if let release = params.compressorReleaseMS {
+                    compressorReleaseMS = release
+                }
+                if let makeup = params.compressorMakeupDB {
+                    compressorMakeupDB = makeup
+                }
+                if let mix = params.compressorMix {
+                    compressorMix = mix
+                }
 
             case .reverb:
                 reverbEnabled = effect.isEnabled
@@ -262,6 +300,13 @@ extension AudioEngine {
                 if let feedback = params.delayFeedback { delayFeedback = feedback }
                 if let mix = params.delayMix { delayMix = mix }
 
+            case .amp:
+                ampEnabled = effect.isEnabled
+                if let input = params.ampInputGain { ampInputGain = input }
+                if let drive = params.ampDrive { ampDrive = drive }
+                if let gain = params.ampOutputGain { ampOutputGain = gain }
+                if let mix = params.ampMix { ampMix = mix }
+
             case .distortion:
                 distortionEnabled = effect.isEnabled
                 if let drive = params.distortionDrive { distortionDrive = drive }
@@ -271,6 +316,11 @@ extension AudioEngine {
                 tremoloEnabled = effect.isEnabled
                 if let rate = params.tremoloRate { tremoloRate = rate }
                 if let depth = params.tremoloDepth { tremoloDepth = depth }
+
+            case .autoPan:
+                autoPanEnabled = effect.isEnabled
+                if let rate = params.autoPanRate { autoPanRate = rate }
+                if let depth = params.autoPanDepth { autoPanDepth = depth }
 
             case .chorus:
                 chorusEnabled = effect.isEnabled
@@ -302,15 +352,15 @@ extension AudioEngine {
                 if let mix = params.tapeSaturationMix { tapeSaturationMix = mix }
 
             case .resampling:
-                resampleEnabled = effect.isEnabled
-                if let rate = params.resampleRate { resampleRate = rate }
-                if let crossfade = params.resampleCrossfade { resampleCrossfade = crossfade }
+                resampleEnabled = false
 
             case .rubberBandPitch:
                 rubberBandPitchEnabled = effect.isEnabled
                 if let semitones = params.rubberBandPitchSemitones {
                     rubberBandPitchSemitones = semitones
                 }
+            case .nightDrive, .chromePunch, .midnightGlow, .afterglow:
+                break
             case .plugin:
                 break
             }
@@ -320,19 +370,20 @@ extension AudioEngine {
     }
 
     func updateEffectChain(_ chain: [BeginnerNode]) {
+        let activeChain = chain.filter { !$0.type.isRetired }
         withEffectStateLock {
-            effectChainOrder = chain
+            effectChainOrder = activeChain
             useManualGraph = false
             useSplitGraph = false
-            syncNodeState(chain)
+            syncNodeState(activeChain)
         }
-        pluginHost.sync(nodes: chain)
+        pluginHost.sync(nodes: activeChain)
         scheduleSnapshotUpdate()
 
-        let activeTypes = Set(chain.filter { $0.isEnabled }.map { $0.type })
+        let activeTypes = Set(activeChain.filter { $0.isEnabled }.map { $0.type })
 
         bassBoostEnabled = activeTypes.contains(.bassBoost)
-        enhancerEnabled = activeTypes.contains(.enhancer)
+        enhancerEnabled = false
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -342,14 +393,16 @@ extension AudioEngine {
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)
         delayEnabled = activeTypes.contains(.delay)
+        ampEnabled = activeTypes.contains(.amp)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+        autoPanEnabled = activeTypes.contains(.autoPan)
         chorusEnabled = activeTypes.contains(.chorus)
         phaserEnabled = activeTypes.contains(.phaser)
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
-        resampleEnabled = activeTypes.contains(.resampling)
+        resampleEnabled = false
         rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
 
         if !activeTypes.contains(.tenBandEQ) {
@@ -372,22 +425,27 @@ extension AudioEngine {
         endID: UUID,
         autoConnectEnd: Bool = true
     ) {
+        let activeNodes = nodes.filter { !$0.type.isRetired }
+        let activeNodeIds = Set(activeNodes.map { $0.id }).union([startID, endID])
+        let activeConnections = connections.filter {
+            activeNodeIds.contains($0.fromNodeId) && activeNodeIds.contains($0.toNodeId)
+        }
         withEffectStateLock {
-            manualGraphNodes = nodes
-            manualGraphConnections = connections
+            manualGraphNodes = activeNodes
+            manualGraphConnections = activeConnections
             manualGraphStartID = startID
             manualGraphEndID = endID
             manualGraphAutoConnectEnd = autoConnectEnd
             useManualGraph = true
             useSplitGraph = false
-            syncNodeState(nodes)
+            syncNodeState(activeNodes)
         }
-        pluginHost.sync(nodes: nodes)
+        pluginHost.sync(nodes: activeNodes)
         scheduleSnapshotUpdate()
 
-        let activeTypes = Set(nodes.filter { $0.isEnabled }.map { $0.type })
+        let activeTypes = Set(activeNodes.filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
-        enhancerEnabled = activeTypes.contains(.enhancer)
+        enhancerEnabled = false
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -397,14 +455,16 @@ extension AudioEngine {
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)
         delayEnabled = activeTypes.contains(.delay)
+        ampEnabled = activeTypes.contains(.amp)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+        autoPanEnabled = activeTypes.contains(.autoPan)
         chorusEnabled = activeTypes.contains(.chorus)
         phaserEnabled = activeTypes.contains(.phaser)
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
-        resampleEnabled = activeTypes.contains(.resampling)
+        resampleEnabled = false
         rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
     }
 
@@ -419,26 +479,36 @@ extension AudioEngine {
         rightEndID: UUID,
         autoConnectEnd: Bool = true
     ) {
+        let activeLeftNodes = leftNodes.filter { !$0.type.isRetired }
+        let activeRightNodes = rightNodes.filter { !$0.type.isRetired }
+        let activeLeftIds = Set(activeLeftNodes.map { $0.id }).union([leftStartID, leftEndID])
+        let activeRightIds = Set(activeRightNodes.map { $0.id }).union([rightStartID, rightEndID])
+        let activeLeftConnections = leftConnections.filter {
+            activeLeftIds.contains($0.fromNodeId) && activeLeftIds.contains($0.toNodeId)
+        }
+        let activeRightConnections = rightConnections.filter {
+            activeRightIds.contains($0.fromNodeId) && activeRightIds.contains($0.toNodeId)
+        }
         withEffectStateLock {
-            splitLeftNodes = leftNodes
-            splitLeftConnections = leftConnections
+            splitLeftNodes = activeLeftNodes
+            splitLeftConnections = activeLeftConnections
             splitLeftStartID = leftStartID
             splitLeftEndID = leftEndID
-            splitRightNodes = rightNodes
-            splitRightConnections = rightConnections
+            splitRightNodes = activeRightNodes
+            splitRightConnections = activeRightConnections
             splitRightStartID = rightStartID
             splitRightEndID = rightEndID
             splitAutoConnectEnd = autoConnectEnd
             useSplitGraph = true
             useManualGraph = false
-            syncNodeState(leftNodes + rightNodes)
+            syncNodeState(activeLeftNodes + activeRightNodes)
         }
-        pluginHost.sync(nodes: leftNodes + rightNodes)
+        pluginHost.sync(nodes: activeLeftNodes + activeRightNodes)
         scheduleSnapshotUpdate()
 
-        let activeTypes = Set((leftNodes + rightNodes).filter { $0.isEnabled }.map { $0.type })
+        let activeTypes = Set((activeLeftNodes + activeRightNodes).filter { $0.isEnabled }.map { $0.type })
         bassBoostEnabled = activeTypes.contains(.bassBoost)
-        enhancerEnabled = activeTypes.contains(.enhancer)
+        enhancerEnabled = false
         nightcoreEnabled = activeTypes.contains(.pitchShift)
         clarityEnabled = activeTypes.contains(.clarity)
         deMudEnabled = activeTypes.contains(.deMud)
@@ -448,14 +518,16 @@ extension AudioEngine {
         reverbEnabled = activeTypes.contains(.reverb)
         stereoWidthEnabled = activeTypes.contains(.stereoWidth)
         delayEnabled = activeTypes.contains(.delay)
+        ampEnabled = activeTypes.contains(.amp)
         distortionEnabled = activeTypes.contains(.distortion)
         tremoloEnabled = activeTypes.contains(.tremolo)
+        autoPanEnabled = activeTypes.contains(.autoPan)
         chorusEnabled = activeTypes.contains(.chorus)
         phaserEnabled = activeTypes.contains(.phaser)
         flangerEnabled = activeTypes.contains(.flanger)
         bitcrusherEnabled = activeTypes.contains(.bitcrusher)
         tapeSaturationEnabled = activeTypes.contains(.tapeSaturation)
-        resampleEnabled = activeTypes.contains(.resampling)
+        resampleEnabled = false
         rubberBandPitchEnabled = activeTypes.contains(.rubberBandPitch)
     }
 
@@ -463,48 +535,144 @@ extension AudioEngine {
         currentGraphSnapshot = snapshot
     }
 
-    func requestGraphLoad(_ snapshot: GraphSnapshot?) {
-        pendingGraphSnapshot = snapshot
+    func requestGraphLoad(
+        _ snapshot: GraphSnapshot?,
+        mode: GraphLoadMode = .audioAndVisual,
+        reason: String = "unspecified"
+    ) {
+        guard let snapshot else {
+            pendingGraphLoadRequest = nil
+            return
+        }
+        print("Graph load requested: mode=\(mode), reason=\(reason), nodes=\(snapshot.nodes.count)")
+        pendingGraphLoadRequest = GraphLoadRequest(
+            snapshot: snapshot,
+            mode: mode,
+            reason: reason
+        )
+    }
+
+    func updateEffectNodeRuntimeState(_ nodes: [BeginnerNode]) {
+        let activeNodes = nodes.filter { !$0.type.isRetired }
+        withEffectStateLock {
+            syncNodeState(activeNodes)
+        }
+        scheduleSnapshotUpdate()
     }
 
     private func syncNodeState(_ nodes: [BeginnerNode]) {
         let ids = Set(nodes.map { $0.id })
+        let activeRubberBandPitchIDs = Set(
+            nodes
+                .filter {
+                    $0.type == .rubberBandPitch
+                        && $0.isEnabled
+                        && abs($0.parameters.rubberBandPitchSemitones) > 0.01
+                }
+                .map { $0.id }
+        )
+        let shouldResetRubberBandPitch = rubberBandNodes.keys.contains { !activeRubberBandPitchIDs.contains($0) }
+            || nodes.contains {
+                $0.type == .rubberBandPitch
+                    && (!$0.isEnabled || abs($0.parameters.rubberBandPitchSemitones) <= 0.01)
+            }
+
+        if shouldResetRubberBandPitch {
+            enqueueReset(.rubberBand)
+        }
+
         nodeParameters = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.parameters) })
         nodeEnabled = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.isEnabled) })
-        bassBoostStatesByNode = bassBoostStatesByNode.filter { ids.contains($0.key) }
-        enhancerSmoothedGainByNode = enhancerSmoothedGainByNode.filter { ids.contains($0.key) }
-        enhancerLowVDSPDelayByNode = enhancerLowVDSPDelayByNode.filter { ids.contains($0.key) }
-        enhancerMidVDSPDelayByNode = enhancerMidVDSPDelayByNode.filter { ids.contains($0.key) }
-        enhancerHighVDSPDelayByNode = enhancerHighVDSPDelayByNode.filter { ids.contains($0.key) }
-        clarityStatesByNode = clarityStatesByNode.filter { ids.contains($0.key) }
-        nightcoreStatesByNode = nightcoreStatesByNode.filter { ids.contains($0.key) }
-        deMudStatesByNode = deMudStatesByNode.filter { ids.contains($0.key) }
-        eqBassStatesByNode = eqBassStatesByNode.filter { ids.contains($0.key) }
-        eqMidsStatesByNode = eqMidsStatesByNode.filter { ids.contains($0.key) }
-        eqTrebleStatesByNode = eqTrebleStatesByNode.filter { ids.contains($0.key) }
-        tenBandStatesByNode = tenBandStatesByNode.filter { ids.contains($0.key) }
-        reverbBuffersByNode = reverbBuffersByNode.filter { ids.contains($0.key) }
-        reverbWriteIndexByNode = reverbWriteIndexByNode.filter { ids.contains($0.key) }
-        delayBuffersByNode = delayBuffersByNode.filter { ids.contains($0.key) }
-        delayWriteIndexByNode = delayWriteIndexByNode.filter { ids.contains($0.key) }
-        tremoloPhaseByNode = tremoloPhaseByNode.filter { ids.contains($0.key) }
-        chorusBuffersByNode = chorusBuffersByNode.filter { ids.contains($0.key) }
-        chorusWriteIndexByNode = chorusWriteIndexByNode.filter { ids.contains($0.key) }
-        chorusPhaseByNode = chorusPhaseByNode.filter { ids.contains($0.key) }
-        flangerBuffersByNode = flangerBuffersByNode.filter { ids.contains($0.key) }
-        flangerWriteIndexByNode = flangerWriteIndexByNode.filter { ids.contains($0.key) }
-        flangerPhaseByNode = flangerPhaseByNode.filter { ids.contains($0.key) }
-        phaserStatesByNode = phaserStatesByNode.filter { ids.contains($0.key) }
-        phaserPhaseByNode = phaserPhaseByNode.filter { ids.contains($0.key) }
-        bitcrusherHoldCountersByNode = bitcrusherHoldCountersByNode.filter { ids.contains($0.key) }
-        bitcrusherHoldValuesByNode = bitcrusherHoldValuesByNode.filter { ids.contains($0.key) }
-        resampleBuffersByNode = resampleBuffersByNode.filter { ids.contains($0.key) }
-        resampleWriteIndexByNode = resampleWriteIndexByNode.filter { ids.contains($0.key) }
-        resampleReadPhaseByNode = resampleReadPhaseByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeRemainingByNode = resampleCrossfadeRemainingByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeTotalByNode = resampleCrossfadeTotalByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeStartPhaseByNode = resampleCrossfadeStartPhaseByNode.filter { ids.contains($0.key) }
-        resampleCrossfadeTargetPhaseByNode = resampleCrossfadeTargetPhaseByNode.filter { ids.contains($0.key) }
-        rubberBandNodes = rubberBandNodes.filter { ids.contains($0.key) }
+
+        func keepActiveNodes<Value>(_ dictionary: inout [UUID: Value]) {
+            dictionary = dictionary.filter { ids.contains($0.key) }
+        }
+
+        keepActiveNodes(&bassBoostStatesByNode)
+        keepActiveNodes(&bassBoostSmoothedGainByNode)
+        keepActiveNodes(&bassBoostVDSPDelayByNode)
+        keepActiveNodes(&enhancerSmoothedGainByNode)
+        keepActiveNodes(&enhancerLowVDSPDelayByNode)
+        keepActiveNodes(&enhancerMidVDSPDelayByNode)
+        keepActiveNodes(&enhancerHighVDSPDelayByNode)
+        keepActiveNodes(&clarityStatesByNode)
+        keepActiveNodes(&claritySmoothedGainByNode)
+        keepActiveNodes(&clarityVDSPDelayByNode)
+        keepActiveNodes(&nightcoreStatesByNode)
+        keepActiveNodes(&nightcoreSmoothedGainByNode)
+        keepActiveNodes(&deMudStatesByNode)
+        keepActiveNodes(&deMudSmoothedGainByNode)
+        keepActiveNodes(&deMudVDSPDelayByNode)
+        keepActiveNodes(&eqBassStatesByNode)
+        keepActiveNodes(&eqMidsStatesByNode)
+        keepActiveNodes(&eqTrebleStatesByNode)
+        keepActiveNodes(&eqBassVDSPDelayByNode)
+        keepActiveNodes(&eqMidsVDSPDelayByNode)
+        keepActiveNodes(&eqTrebleVDSPDelayByNode)
+        keepActiveNodes(&simpleEQSmoothedGainByNode)
+        keepActiveNodes(&appleThreeBandEQProcessorsByNode)
+        keepActiveNodes(&appleThreeBandEQDryScratchByNode)
+        keepActiveNodes(&appleThreeBandEQSmoothedGainByNode)
+        keepActiveNodes(&tenBandStatesByNode)
+        keepActiveNodes(&tenBandEQSmoothedGainByNode)
+        keepActiveNodes(&tenBandVDSPDelaysByNode)
+        keepActiveNodes(&compressorEnvelopeByNode)
+        keepActiveNodes(&compressorSmoothedGainByNode)
+        keepActiveNodes(&reverbStatesByNode)
+        keepActiveNodes(&reverbSmoothedGainByNode)
+        keepActiveNodes(&delayBuffersByNode)
+        keepActiveNodes(&delayWriteIndexByNode)
+        keepActiveNodes(&delaySmoothedGainByNode)
+        keepActiveNodes(&delayParameterStateByNode)
+        keepActiveNodes(&tremoloPhaseByNode)
+        keepActiveNodes(&tremoloSmoothedGainByNode)
+        keepActiveNodes(&autoPanPhaseByNode)
+        keepActiveNodes(&autoPanSmoothedGainByNode)
+        keepActiveNodes(&autoPanParameterStateByNode)
+        keepActiveNodes(&chorusBuffersByNode)
+        keepActiveNodes(&chorusWriteIndexByNode)
+        keepActiveNodes(&chorusPhaseByNode)
+        keepActiveNodes(&chorusSmoothedGainByNode)
+        keepActiveNodes(&chorusParameterStateByNode)
+        keepActiveNodes(&flangerBuffersByNode)
+        keepActiveNodes(&flangerWriteIndexByNode)
+        keepActiveNodes(&flangerPhaseByNode)
+        keepActiveNodes(&flangerSmoothedGainByNode)
+        keepActiveNodes(&flangerParameterStateByNode)
+        keepActiveNodes(&phaserStatesByNode)
+        keepActiveNodes(&phaserPhaseByNode)
+        keepActiveNodes(&phaserFeedbackSamplesByNode)
+        keepActiveNodes(&phaserSmoothedGainByNode)
+        keepActiveNodes(&phaserParameterStateByNode)
+        keepActiveNodes(&bitcrusherHoldCountersByNode)
+        keepActiveNodes(&bitcrusherHoldValuesByNode)
+        keepActiveNodes(&bitcrusherSmoothedGainByNode)
+        keepActiveNodes(&resampleBuffersByNode)
+        keepActiveNodes(&resampleWriteIndexByNode)
+        keepActiveNodes(&resampleReadPhaseByNode)
+        keepActiveNodes(&resampleCrossfadeRemainingByNode)
+        keepActiveNodes(&resampleCrossfadeTotalByNode)
+        keepActiveNodes(&resampleCrossfadeStartPhaseByNode)
+        keepActiveNodes(&resampleCrossfadeTargetPhaseByNode)
+        keepActiveNodes(&resampleSmoothedGainByNode)
+        keepActiveNodes(&ampSmoothedGainByNode)
+        keepActiveNodes(&distortionSmoothedGainByNode)
+        keepActiveNodes(&tapeSaturationSmoothedGainByNode)
+        keepActiveNodes(&signatureEffectStatesByNode)
+        keepActiveNodes(&stereoWidthSmoothedGainByNode)
+        keepActiveNodes(&rubberBandNodes)
+        keepActiveNodes(&rubberBandScratchByNode)
+        keepActiveNodes(&rubberBandSmoothedGainByNode)
+        keepActiveNodes(&pluginDryScratchByNode)
+        keepActiveNodes(&pluginWetScratchByNode)
+        keepActiveNodes(&pluginCrossfadeRemainingByNode)
+        keepActiveNodes(&pluginCrossfadeTotalByNode)
+        keepActiveNodes(&pluginCrossfadeOutRemainingByNode)
+        keepActiveNodes(&pluginCrossfadeOutTotalByNode)
+        keepActiveNodes(&pluginWasEnabledByNode)
+        keepActiveNodes(&pluginWasReadyByNode)
+        keepActiveNodes(&pluginStableOutputCountByNode)
+        keepActiveNodes(&pluginHasStableOutputByNode)
+        keepActiveNodes(&pluginReadyDelaySamplesByNode)
     }
 }
