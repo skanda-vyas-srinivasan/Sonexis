@@ -1,6 +1,12 @@
 import Foundation
 
 protocol ProcessTapAudioProcessor: AnyObject {
+    func processTapFormatDidChange(
+        maxFrameCount: Int,
+        channelCount: Int,
+        sampleRate: Double
+    )
+
     func processSystemAudio(
         input: UnsafePointer<Float>,
         output: UnsafeMutablePointer<Float>,
@@ -51,6 +57,11 @@ final class ProcessTapProcessingWorker {
         self.inputScratch = [Float](repeating: 0, count: Int(maxFramesPerChunk * channels))
         self.outputScratch = [Float](repeating: 0, count: Int(maxFramesPerChunk * channels))
         queue.setSpecific(key: queueSpecificKey, value: true)
+        processor?.processTapFormatDidChange(
+            maxFrameCount: Int(maxFramesPerChunk),
+            channelCount: Int(channels),
+            sampleRate: sampleRate
+        )
     }
 
     func start() {

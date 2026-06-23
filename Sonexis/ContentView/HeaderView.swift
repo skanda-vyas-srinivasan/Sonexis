@@ -7,188 +7,183 @@ struct HeaderView: View {
     let onSave: () -> Void
     let onLoad: () -> Void
     let onSaveAs: () -> Void
+    let hasCurrentPreset: Bool
     let allowSave: Bool
     let allowLoad: Bool
     @Binding var saveStatusText: String?
-    @State private var showingAudioSettings = false
+    @Binding var showingAudioSettings: Bool
 
     var body: some View {
-        HStack(spacing: 16) {
-            // Power button with status
-            VStack(spacing: 4) {
-                Button(action: {
-                    if audioEngine.isRunning {
-                        audioEngine.stop()
-                    } else {
-                        audioEngine.start()
-                        tutorial.advanceIf(.buildPower)
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                // Power button with status
+                VStack(spacing: 4) {
+                    Button(action: {
+                        if audioEngine.isRunning {
+                            audioEngine.stop()
+                        } else {
+                            audioEngine.start()
+                            tutorial.advanceIf(.buildPower)
+                        }
+                    }) {
+                        Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
+                            .font(.system(size: 24))
+                            .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
+                            .shadow(color: audioEngine.isRunning ? AppColors.success.opacity(0.18) : .clear, radius: 8)
                     }
+                    .buttonStyle(.plain)
+                    .help(audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: TutorialTargetPreferenceKey.self,
+                                value: [.buildPower: proxy.frame(in: .global)]
+                            )
+                        }
+                    )
+
+                    if audioEngine.isRunning {
+                        Text(audioEngine.activeRouteLabel)
+                            .font(.system(size: 9))
+                            .foregroundColor(AppColors.success.opacity(0.8))
+                            .transition(.opacity)
+                    }
+                }
+
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.controlStrokeSoft.opacity(0.65))
+
+                // FX bypass
+                Button(action: {
+                    audioEngine.processingEnabled.toggle()
                 }) {
-                    Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
-                        .font(.system(size: 24))
-                        .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
-                        .shadow(color: audioEngine.isRunning ? AppColors.success.opacity(0.18) : .clear, radius: 8)
+                    Image(systemName: audioEngine.processingEnabled ? "slider.horizontal.3" : "slider.horizontal.3")
+                        .font(.system(size: 18))
+                        .foregroundColor(audioEngine.processingEnabled ? AppColors.neonCyan : AppColors.textMuted)
+                        .frame(width: 34, height: 28)
                 }
                 .buttonStyle(.plain)
-                .help(audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)
+                .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
+
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.controlStrokeSoft.opacity(0.65))
+
+                let recordDisabled = (!audioEngine.isRunning && !audioEngine.isRecording) || tutorial.isActive
+                Button(action: {
+                    if audioEngine.isRecording {
+                        audioEngine.stopRecording()
+                    } else if let url = promptForRecordingURL() {
+                        audioEngine.startRecording(url: url)
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(audioEngine.isRecording ? AppColors.error : AppColors.textMuted)
+                            .frame(width: 8, height: 8)
+                        Text(audioEngine.isRecording ? "Recording" : "Record")
+                            .font(AppTypography.caption)
+                            .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
+                    }
+                    .frame(width: 108, height: 28)
+                }
+                .buttonStyle(.plain)
+                .disabled(recordDisabled)
+                .opacity(recordDisabled ? 0.4 : 1.0)
+                .help(audioEngine.isRecording ? "Stop Recording" : "Start Recording")
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
                             key: TutorialTargetPreferenceKey.self,
-                            value: [.buildPower: proxy.frame(in: .global)]
+                            value: [.buildRecord: proxy.frame(in: .global)]
                         )
                     }
                 )
 
-                if audioEngine.isRunning {
-                    Text(audioEngine.activeRouteLabel)
-                        .font(.system(size: 9))
-                        .foregroundColor(AppColors.success.opacity(0.8))
-                        .transition(.opacity)
-                }
-            }
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.controlStrokeSoft.opacity(0.65))
 
-            Divider()
-                .frame(height: 30)
-                .background(AppColors.controlStrokeSoft.opacity(0.65))
+                OutputMeterSection(
+                    level: audioEngine.outputMeterLevel,
+                    peakDBFS: audioEngine.outputMeterPeakDBFS,
+                    isActive: audioEngine.isRunning
+                )
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialTargetPreferenceKey.self,
+                            value: [.buildOutput: proxy.frame(in: .global)]
+                        )
+                    }
+                )
 
-            // FX bypass
-            Button(action: {
-                audioEngine.processingEnabled.toggle()
-            }) {
-                Image(systemName: audioEngine.processingEnabled ? "slider.horizontal.3" : "slider.horizontal.3")
-                    .font(.system(size: 18))
-                    .foregroundColor(audioEngine.processingEnabled ? AppColors.neonCyan : AppColors.textMuted)
+                Divider()
+                    .frame(height: 30)
+                    .background(AppColors.controlStrokeSoft.opacity(0.65))
+
+                AudioSettingsButton(isPresented: $showingAudioSettings)
                     .frame(width: 34, height: 28)
-            }
-            .buttonStyle(.plain)
-            .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
 
-            Divider()
-                .frame(height: 30)
-                .background(AppColors.controlStrokeSoft.opacity(0.65))
+                Spacer()
 
-            let recordDisabled = !audioEngine.isRunning || tutorial.isActive
-            Button(action: {
-                if audioEngine.isRecording {
-                    audioEngine.stopRecording()
-                } else if let url = promptForRecordingURL() {
-                    audioEngine.startRecording(url: url)
+                if let warning = audioEngine.processTapWarningText {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform.badge.exclamationmark")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(warning)
+                            .font(AppTypography.caption)
+                            .lineLimit(2)
+                    }
+                    .foregroundColor(AppColors.warning)
+                    .frame(maxWidth: 260, alignment: .leading)
+                    .help("The Process Tap output ring underflowed. This means Sonexis did not produce processed audio fast enough for playback.")
                 }
-            }) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(audioEngine.isRecording ? AppColors.error : AppColors.textMuted)
-                        .frame(width: 8, height: 8)
-                    Text(audioEngine.isRecording ? "Recording" : "Record")
-                        .font(AppTypography.caption)
-                        .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
-                }
-                .frame(width: 108, height: 28)
-            }
-            .buttonStyle(.plain)
-            .disabled(recordDisabled)
-            .opacity(recordDisabled ? 0.4 : 1.0)
-            .help(audioEngine.isRecording ? "Stop Recording" : "Start Recording")
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TutorialTargetPreferenceKey.self,
-                        value: [.buildRecord: proxy.frame(in: .global)]
-                    )
-                }
-            )
 
-            Divider()
-                .frame(height: 30)
-                .background(AppColors.controlStrokeSoft.opacity(0.65))
+                // Error message if any
+                if let error = audioEngine.errorMessage {
+                    HStack(spacing: 8) {
+                        Text(error)
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.error)
+                            .lineLimit(2)
+                            .frame(maxWidth: 200)
 
-            OutputMeterSection(
-                level: audioEngine.outputMeterLevel,
-                peakDBFS: audioEngine.outputMeterPeakDBFS,
-                isActive: audioEngine.isRunning
-            )
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TutorialTargetPreferenceKey.self,
-                        value: [.buildOutput: proxy.frame(in: .global)]
-                    )
-                }
-            )
-
-            Divider()
-                .frame(height: 30)
-                .background(AppColors.controlStrokeSoft.opacity(0.65))
-
-            AudioSettingsButton(
-                isPresented: $showingAudioSettings,
-                trimDB: $audioEngine.processTapInputTrimDB,
-                makeupDB: $audioEngine.processTapOutputMakeupDB,
-                ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled
-            )
-
-            Spacer()
-
-            if let warning = audioEngine.processTapWarningText {
-                HStack(spacing: 6) {
-                    Image(systemName: "waveform.badge.exclamationmark")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(warning)
-                        .font(AppTypography.caption)
-                        .lineLimit(2)
-                }
-                .foregroundColor(AppColors.warning)
-                .frame(maxWidth: 260, alignment: .leading)
-                .help("The Process Tap output ring underflowed. This means Sonexis did not produce processed audio fast enough for playback.")
-            }
-
-            // Error message if any
-            if let error = audioEngine.errorMessage {
-                HStack(spacing: 8) {
-                    Text(error)
-                        .font(AppTypography.caption)
-                        .foregroundColor(AppColors.error)
-                        .lineLimit(2)
-                        .frame(maxWidth: 200)
-
-                    // Show "Open Settings" button for device-related errors
-                    if error.localizedCaseInsensitiveContains("Input") ||
-                       error.localizedCaseInsensitiveContains("Output") {
-                        Button("Open Sound Settings") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
-                                NSWorkspace.shared.open(url)
+                        // Show "Open Settings" button for device-related errors
+                        if error.localizedCaseInsensitiveContains("Input") ||
+                           error.localizedCaseInsensitiveContains("Output") {
+                            Button("Open Sound Settings") {
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
+                                    NSWorkspace.shared.open(url)
+                                }
                             }
-                        }
-                        .buttonStyle(.bordered)
-                        .font(AppTypography.caption)
-                        .tint(AppColors.neonPink)
-                    } else if error.localizedCaseInsensitiveContains("Microphone") {
-                        Button("Open Microphone Settings") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-                                NSWorkspace.shared.open(url)
+                            .buttonStyle(.bordered)
+                            .font(AppTypography.caption)
+                            .tint(AppColors.neonPink)
+                        } else if error.localizedCaseInsensitiveContains("Microphone") {
+                            Button("Open Microphone Settings") {
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                                    NSWorkspace.shared.open(url)
+                                }
                             }
+                            .buttonStyle(.bordered)
+                            .font(AppTypography.caption)
+                            .tint(AppColors.neonPink)
                         }
-                        .buttonStyle(.bordered)
-                        .font(AppTypography.caption)
-                        .tint(AppColors.neonPink)
                     }
                 }
-            }
 
-            // Save/Load buttons
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    HStack(spacing: 0) {
-                        Button("Save") {
-                            onSave()
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .disabled(!allowSave)
-                        .opacity(allowSave ? 1.0 : 0.4)
-                        .foregroundColor(AppColors.textPrimary)
+                // Save/Load buttons
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        PresetSaveSplitButton(
+                            tint: AppColors.neonPink,
+                            isEnabled: allowSave,
+                            hasCurrentPreset: hasCurrentPreset,
+                            onSave: onSave,
+                            onSaveAs: onSaveAs
+                        )
                         .background(
                             GeometryReader { proxy in
                                 Color.clear.preference(
@@ -198,84 +193,41 @@ struct HeaderView: View {
                             }
                         )
 
-                        Divider()
-                            .frame(height: 16)
-                            .background(AppColors.controlStroke.opacity(0.62))
-
-                        Menu {
-                            Button("Save As…") {
-                                onSaveAs()
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(
-                                    Color.clear
-                                        .contentShape(Rectangle())
-                                        .frame(width: 44, height: 28)
+                        PresetToolbarButton(
+                            title: "Load",
+                            tint: AppColors.neonCyan,
+                            isEnabled: allowLoad,
+                            action: onLoad
+                        )
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: TutorialTargetPreferenceKey.self,
+                                    value: [.buildLoad: proxy.frame(in: .global)]
                                 )
-                        }
-                        .menuIndicator(.hidden)
-                        .buttonStyle(.plain)
-                        .disabled(!allowSave)
-                        .opacity(allowSave ? 1.0 : 0.4)
-                        .foregroundColor(AppColors.textPrimary)
+                            }
+                        )
                     }
-                    .background(AppColors.controlPurple.opacity(0.70))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(AppColors.controlStroke.opacity(0.76), lineWidth: 1)
-                )
-                    .cornerRadius(8)
 
-                    Button("Load Preset") {
-                        onLoad()
+                    if let saveStatusText {
+                        Text(saveStatusText)
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textSecondary)
+                            .transition(.opacity)
                     }
-                    .buttonStyle(.plain)
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(AppColors.controlPurple.opacity(0.70))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(AppColors.controlStroke.opacity(0.76), lineWidth: 1)
-                    )
-                    .cornerRadius(8)
-                    .disabled(!allowLoad)
-                    .opacity(allowLoad ? 1.0 : 0.4)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: TutorialTargetPreferenceKey.self,
-                                value: [.buildLoad: proxy.frame(in: .global)]
-                            )
-                        }
-                    )
-                }
-
-                if let saveStatusText {
-                    Text(saveStatusText)
-                        .font(AppTypography.caption)
-                        .foregroundColor(AppColors.textSecondary)
-                        .transition(.opacity)
                 }
             }
+            .padding()
+
         }
-        .padding()
         .background(AppColors.panelPurple.opacity(0.84))
-        .overlay(
-            LinearGradient(
-                colors: [AppColors.controlStroke.opacity(0.42), AppColors.neonCyan.opacity(0.16), AppColors.neonPink.opacity(0.12)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(height: 1),
-            alignment: .bottom
-        )
+        .overlay(alignment: .bottom) {
+            AppColors.controlStroke.opacity(0.42)
+                .frame(height: 1)
+        }
         .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
+        .animation(.easeOut(duration: 0.16), value: showingAudioSettings)
+        .zIndex(showingAudioSettings ? 20 : 0)
     }
 
     private func promptForRecordingURL() -> URL? {
@@ -288,233 +240,328 @@ struct HeaderView: View {
     }
 }
 
-private struct AudioSettingsButton: View {
-    @Binding var isPresented: Bool
-    @Binding var trimDB: Double
-    @Binding var makeupDB: Double
-    @Binding var ceilingEnabled: Bool
+private struct PresetSaveSplitButton: View {
+    let tint: Color
+    let isEnabled: Bool
+    let hasCurrentPreset: Bool
+    let onSave: () -> Void
+    let onSaveAs: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    isPresented.toggle()
-                }
-            } label: {
-                Image(systemName: isPresented ? "gearshape.fill" : "gearshape")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(isPresented ? AppColors.neonPink : AppColors.neonCyan)
-                    .frame(width: 34, height: 28)
+        HStack(spacing: 0) {
+            Button(action: hasCurrentPreset ? onSave : onSaveAs) {
+                Text("Save")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppColors.textPrimary.opacity(0.94))
+                    .padding(.leading, 10)
+                    .padding(.trailing, 8)
+                    .frame(height: 30)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(isPresented ? "Close audio settings" : "Audio settings")
 
-            if isPresented {
-                AudioSettingsInlineTray(
-                    trimDB: $trimDB,
-                    makeupDB: $makeupDB,
-                    ceilingEnabled: $ceilingEnabled
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .leading).combined(with: .opacity),
-                    removal: .opacity
-                ))
-            }
-        }
-    }
-}
+            Rectangle()
+                .fill(AppColors.controlStrokeSoft.opacity(isHovered ? 0.62 : 0.42))
+                .frame(width: 1, height: 18)
 
-private struct AudioSettingsInlineTray: View {
-    @Binding var trimDB: Double
-    @Binding var makeupDB: Double
-    @Binding var ceilingEnabled: Bool
-    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.classic.rawValue
-
-    var body: some View {
-        HStack(spacing: 12) {
-            AudioSettingsInlineSlider(
-                title: "Tap In",
-                valueText: String(format: "%.0f dB", trimDB),
-                value: Binding(
-                    get: { trimDB },
-                    set: { trimDB = min(max($0, -30), 0) }
-                ),
-                range: -30...0,
-                step: 1,
-                tint: AppColors.neonCyan,
-                width: 138
-            )
-
-            AudioSettingsInlineSlider(
-                title: "Makeup",
-                valueText: String(format: "%+.0f dB", makeupDB),
-                value: Binding(
-                    get: { makeupDB },
-                    set: { makeupDB = min(max($0, -12), 30) }
-                ),
-                range: -12...30,
-                step: 1,
-                tint: AppColors.neonPink,
-                width: 138
-            )
-
-            OutputCeilingButton(isOn: $ceilingEnabled)
-
-            ThemePickerButton(selectedThemeID: $selectedThemeID)
-
-            Button {
-                trimDB = -12
-                makeupDB = 12
-                ceilingEnabled = true
+            Menu {
+                Button("Save As", action: onSaveAs)
             } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 12, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(AppColors.textSecondary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 24, height: 30)
                     .contentShape(Rectangle())
             }
+            .menuIndicator(.hidden)
             .buttonStyle(.plain)
-            .help("Reset defaults")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
         .background(
-            Capsule(style: .continuous)
-                .fill(AppColors.deepBlack.opacity(0.18))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.72) : AppColors.controlPurple.opacity(0.46))
         )
         .overlay(
-            Capsule(style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            AppColors.neonCyan.opacity(0.28),
-                            AppColors.controlStrokeSoft.opacity(0.34),
-                            AppColors.neonPink.opacity(0.22)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    lineWidth: 1
-                )
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isHovered ? tint.opacity(0.44) : AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
         )
-        .shadow(color: AppColors.neonCyan.opacity(0.08), radius: 12)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.42)
+        .help(hasCurrentPreset ? "Save preset" : "Save as preset")
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
-private struct AudioSettingsInlineSlider: View {
+private struct PresetToolbarButton: View {
+    let title: String
+    let tint: Color
+    let isEnabled: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(AppColors.textPrimary.opacity(0.94))
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.72) : AppColors.controlPurple.opacity(0.46))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(isHovered ? tint.opacity(0.44) : AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.42)
+        .help("\(title) preset")
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
+private struct AudioSettingsButton: View {
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                isPresented.toggle()
+            }
+        } label: {
+            Image(systemName: isPresented ? "gearshape.fill" : "gearshape")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(AppColors.neonCyan)
+                .frame(width: 34, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isPresented ? "Close audio settings" : "Audio settings")
+    }
+}
+
+struct AudioSettingsFloatingStrip: View {
+    @Binding var trimDB: Double
+    @Binding var makeupDB: Double
+    @Binding var ceilingEnabled: Bool
+    @Binding var selectedThemeID: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            AudioSettingsInspectorSlider(
+                title: "Tap In",
+                valueText: String(format: "%.0f dB", trimDB),
+                value: $trimDB,
+                range: -30...0,
+                step: 1,
+                tint: AppColors.neonCyan
+            )
+            .frame(width: 122)
+
+            AudioSettingsGroupDivider()
+
+            AudioSettingsInspectorSlider(
+                title: "Makeup",
+                valueText: String(format: "%+.0f dB", makeupDB),
+                value: $makeupDB,
+                range: -12...30,
+                step: 1,
+                tint: AppColors.neonPink
+            )
+            .frame(width: 122)
+
+            AudioSettingsGroupDivider()
+
+            CeilingToggleRow(isOn: $ceilingEnabled)
+                .fixedSize(horizontal: true, vertical: false)
+
+            AudioSettingsGroupDivider()
+
+            ThemeCompactPicker(selectedThemeID: $selectedThemeID)
+                .frame(width: 156, alignment: .leading)
+                .layoutPriority(1)
+
+            AudioSettingsGroupDivider()
+
+            Button {
+                trimDB = ProcessTapRuntimeSettings.defaults.inputTrimDB
+                makeupDB = ProcessTapRuntimeSettings.defaults.outputMakeupDB
+                ceilingEnabled = ProcessTapRuntimeSettings.defaults.outputCeilingEnabled
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppColors.textSecondary)
+                    .frame(width: 26, height: 26)
+                    .background(AppColors.controlPurple.opacity(0.30))
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("Reset Tap In, Makeup, and Ceiling")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            Rectangle()
+                .fill(AppColors.panelPurple)
+        )
+        .overlay(
+            Rectangle()
+                .stroke(AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
+        )
+        .shadow(color: AppColors.deepBlack.opacity(0.30), radius: 8, x: 0, y: 6)
+    }
+}
+
+private struct AudioSettingsGroupDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(AppColors.controlStrokeSoft.opacity(0.54))
+            .frame(width: 1, height: 28)
+    }
+}
+
+private struct AudioSettingsInspectorSlider: View {
     let title: String
     let valueText: String
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     let tint: Color
-    let width: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
                 Text(title)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textSecondary)
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 8)
 
                 Text(valueText)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(AppTypography.paramValue)
                     .foregroundColor(tint)
                     .monospacedDigit()
             }
 
             Slider(
-                value: $value,
-                in: range,
-                step: step
+                value: Binding(
+                    get: { value },
+                    set: { newValue in
+                        let steppedValue = (newValue / step).rounded() * step
+                        value = min(max(steppedValue, range.lowerBound), range.upperBound)
+                    }
+                ),
+                in: range
             )
-            .controlSize(.mini)
+            .controlSize(.small)
             .tint(tint)
         }
-        .frame(width: width, height: 30)
     }
 }
 
-private struct ThemePickerButton: View {
-    @Binding var selectedThemeID: String
-
-    private var selectedTheme: AppTheme {
-        AppTheme.theme(for: selectedThemeID)
-    }
-
-    var body: some View {
-        Menu {
-            ForEach(AppTheme.allCases) { theme in
-                Button {
-                    selectedThemeID = theme.rawValue
-                } label: {
-                    HStack {
-                        Text(theme.displayName)
-                        if selectedThemeID == theme.rawValue {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 5) {
-                Text("Theme")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppColors.textSecondary)
-
-                Text(selectedTheme.shortName)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundColor(AppColors.neonCyan)
-            }
-            .frame(width: 112, height: 30)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(AppColors.deepBlack.opacity(0.26))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(AppColors.neonCyan.opacity(0.42), lineWidth: 1)
-            )
-            .contentShape(Rectangle())
-        }
-        .menuIndicator(.hidden)
-        .buttonStyle(.plain)
-        .help("Choose color theme")
-    }
-}
-
-private struct OutputCeilingButton: View {
+private struct CeilingToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Button {
-            isOn.toggle()
-        } label: {
-            HStack(spacing: 5) {
-                Text("Ceiling")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppColors.textSecondary)
+        HStack(spacing: 8) {
+            Text("Ceiling")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(AppColors.textSecondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
-                Text(isOn ? "On" : "Off")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(isOn ? AppColors.warning : AppColors.textMuted)
-                    .monospacedDigit()
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(AppColors.warning)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .help(isOn ? "Disable output ceiling" : "Enable output ceiling")
+    }
+}
+
+private struct ThemeCompactPicker: View {
+    @Binding var selectedThemeID: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text("Theme")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(AppColors.textSecondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            HStack(spacing: 4) {
+                ForEach(AppTheme.allCases) { theme in
+                    ThemeCompactButton(
+                        theme: theme,
+                        isSelected: selectedThemeID == theme.rawValue
+                    ) {
+                        selectedThemeID = theme.rawValue
+                    }
+                }
             }
-            .frame(width: 86, height: 30)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+private struct ThemeCompactButton: View {
+    let theme: AppTheme
+    let isSelected: Bool
+    let action: () -> Void
+
+    private var swatchColor: Color {
+        switch theme {
+        case .classic:
+            return Color(hex: "#7209B7")
+        case .magenta:
+            return Color(hex: "#FF2DAA")
+        case .black:
+            return Color(hex: "#747789")
+        case .gold:
+            return Color(hex: "#FFD21F")
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Circle()
+                .fill(swatchColor)
+                .frame(width: 11, height: 11)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(theme == .black ? 0.36 : 0), lineWidth: 1)
+                )
+                .frame(width: 22, height: 22)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(AppColors.deepBlack.opacity(0.26))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? AppColors.controlPurpleRaised.opacity(0.56) : AppColors.controlPurple.opacity(0.22))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isOn ? AppColors.warning.opacity(0.48) : AppColors.controlStrokeSoft.opacity(0.48), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isSelected ? swatchColor.opacity(0.58) : AppColors.controlStrokeSoft.opacity(0.38), lineWidth: 1)
             )
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(isOn ? "Disable output ceiling" : "Enable output ceiling")
+        .help(theme.displayName)
     }
 }
 
@@ -580,16 +627,7 @@ private struct OutputLevelBar: View {
                     )
 
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppColors.neonCyan.opacity(isActive ? 0.92 : 0.28),
-                                AppColors.neonPink.opacity(isActive ? 0.88 : 0.24)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(AppColors.neonCyan.opacity(isActive ? 0.86 : 0.24))
                     .frame(width: levelWidth)
                     .shadow(color: AppColors.neonCyan.opacity(isActive ? 0.22 : 0), radius: 5)
 

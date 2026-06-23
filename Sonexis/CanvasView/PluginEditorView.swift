@@ -52,7 +52,7 @@ struct PluginEditorFallbackView: View {
             }
         }
         .padding(20)
-        .background(AppGradients.background)
+        .background(AppSurfaces.background)
         .onAppear(perform: refreshParameters)
         .onReceive(Timer.publish(every: 1.2, on: .main, in: .common).autoconnect()) { _ in
             refreshParameters()

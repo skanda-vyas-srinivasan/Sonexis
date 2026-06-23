@@ -11,14 +11,16 @@ struct FlowLine: View {
     let beatPulse: CGFloat
     let fps: Double
     let allowAnimation: Bool
-    @State private var bounce: CGFloat = 0
-    @State private var cachedPath: Path?
+    let fromEndpointSize: CGSize
+    let toEndpointSize: CGSize
+    let endpointClearance: CGFloat = 12
 
     var body: some View {
         let intensity = min(max(CGFloat(level) * 3.0, 0.0), 1.0)
         let baseOpacity = 0.25 + 0.6 * intensity
         let thickness: CGFloat = 3.5
-        let path = cachedPath ?? makePath()
+        let segment = visibleSegment()
+        let path = makePath(from: segment.from, to: segment.to)
         Group {
             if isActive {
                 ZStack {
@@ -37,24 +39,24 @@ struct FlowLine: View {
                     if allowAnimation && fps > 0 {
                         TimelineView(.periodic(from: .now, by: 1.0 / max(fps, 1.0))) { context in
                             let time = context.date.timeIntervalSinceReferenceDate
-                            let dx = to.x - from.x
-                            let dy = to.y - from.y
+                            let dx = segment.to.x - segment.from.x
+                            let dy = segment.to.y - segment.from.y
                             let length = max(sqrt(dx * dx + dy * dy), 1)
                             let pixelsPerSecond: CGFloat = 90
                             let phaseSpeed = pixelsPerSecond / length
                             let phase = CGFloat((time * Double(phaseSpeed)).truncatingRemainder(dividingBy: 1.0))
 
                             MovingArrowheads(
-                                from: from,
-                                to: to,
+                                from: segment.from,
+                                to: segment.to,
                                 color: AppColors.neonCyan.opacity(0.85),
                                 phase: phase
                             )
                         }
                     } else {
                         MovingArrowheads(
-                            from: from,
-                            to: to,
+                            from: segment.from,
+                            to: segment.to,
                             color: AppColors.neonCyan.opacity(0.35),
                             phase: 0
                         )
@@ -72,26 +74,66 @@ struct FlowLine: View {
                         .contentShape(path.strokedPath(.init(lineWidth: thickness + 10)))
 
                     MovingArrowheads(
-                        from: from,
-                        to: to,
+                        from: segment.from,
+                        to: segment.to,
                         color: AppColors.wireInactive.opacity(0.44),
                         phase: 0
                     )
                 }
             }
         }
-        .onAppear {
-            cachedPath = makePath()
-        }
-        .onChange(of: from) { _ in
-            cachedPath = makePath()
-        }
-        .onChange(of: to) { _ in
-            cachedPath = makePath()
-        }
     }
 
-    private func makePath() -> Path {
+    private func visibleSegment() -> (from: CGPoint, to: CGPoint) {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 1 else { return (from, to) }
+
+        let direction = CGVector(dx: dx / length, dy: dy / length)
+        let fromTrim = endpointTrim(for: fromEndpointSize, direction: direction)
+        let toTrim = endpointTrim(for: toEndpointSize, direction: direction)
+        let totalTrim = fromTrim + toTrim
+        let trimScale = totalTrim > length - 1 && totalTrim > 0 ? (length - 1) / totalTrim : 1
+
+        let scaledFromTrim = fromTrim * trimScale
+        let scaledToTrim = toTrim * trimScale
+
+        return (
+            CGPoint(
+                x: from.x + direction.dx * scaledFromTrim,
+                y: from.y + direction.dy * scaledFromTrim
+            ),
+            CGPoint(
+                x: to.x - direction.dx * scaledToTrim,
+                y: to.y - direction.dy * scaledToTrim
+            )
+        )
+    }
+
+    private func endpointTrim(for size: CGSize, direction: CGVector) -> CGFloat {
+        guard size.width > 0 || size.height > 0 else { return 0 }
+
+        let halfWidth = max(size.width, 0) * 0.5
+        let halfHeight = max(size.height, 0) * 0.5
+        let x = abs(direction.dx)
+        let y = abs(direction.dy)
+        var trim = CGFloat.greatestFiniteMagnitude
+
+        if halfWidth > 0, x > 0.0001 {
+            trim = min(trim, halfWidth / x)
+        }
+        if halfHeight > 0, y > 0.0001 {
+            trim = min(trim, halfHeight / y)
+        }
+        if trim == CGFloat.greatestFiniteMagnitude {
+            trim = max(halfWidth, halfHeight)
+        }
+
+        return trim + endpointClearance
+    }
+
+    private func makePath(from: CGPoint, to: CGPoint) -> Path {
         Path { path in
             path.move(to: from)
             path.addLine(to: to)
@@ -380,56 +422,7 @@ struct NeonTile: View {
     let disabledFill: Color
 
     var body: some View {
-        let coreFill: LinearGradient = isEnabled
-            ? LinearGradient(
-                colors: [
-                    style.fillDark.opacity(0.35),
-                    style.fillDark.opacity(0.75),
-                    style.fillDark.opacity(0.98)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            : LinearGradient(
-                colors: [disabledFill, disabledFill.opacity(0.85)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-        let edgeGlow = RadialGradient(
-            colors: [
-                style.fill.opacity(0.22),
-                style.fill.opacity(0.08),
-                Color.clear
-            ],
-            center: .center,
-            startRadius: 70,
-            endRadius: 150
-        )
-
-        let accentSheen = LinearGradient(
-            colors: [
-                Color.clear,
-                style.highlight.opacity(0.75),
-                Color.clear
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-
-        let accentStroke = LinearGradient(
-            colors: [
-                style.highlight.opacity(0.12),
-                style.highlight.opacity(0.9),
-                style.highlight.opacity(0.2)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        let accentStrokeStyle = isEnabled
-            ? AnyShapeStyle(accentStroke)
-            : AnyShapeStyle(Color.clear)
-
+        let coreFill = isEnabled ? style.fillDark.opacity(0.88) : disabledFill
         let shape = RoundedRectangle(cornerRadius: 22)
 
         return ZStack {
@@ -437,7 +430,7 @@ struct NeonTile: View {
 
             if isEnabled {
                 shape
-                    .fill(edgeGlow)
+                    .fill(style.fill.opacity(0.08))
                     .blendMode(.screen)
             }
 
@@ -457,26 +450,13 @@ struct NeonTile: View {
                 )
 
             shape
-                .stroke(accentStrokeStyle, lineWidth: 1.5)
+                .stroke(isEnabled ? style.highlight.opacity(0.58) : .clear, lineWidth: 1.5)
                 .blendMode(.screen)
 
             shape
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.08), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .fill(Color.white.opacity(isEnabled ? 0.05 : 0))
                 .blendMode(.screen)
                 .padding(6)
-
-            shape
-                .fill(accentSheen)
-                .rotationEffect(.degrees(-12))
-                .blendMode(.screen)
-                .opacity(isEnabled ? 0.9 : 0)
-                .padding(10)
         }
     }
 }

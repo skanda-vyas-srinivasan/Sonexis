@@ -80,15 +80,9 @@ struct TutorialCardView: View {
                     .padding(.vertical, 8)
                     .background(
                         Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [AppColors.neonCyan, AppColors.neonPink],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                            .fill(AppColors.neonCyan.opacity(0.86))
                     )
-                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 12)
+                    .shadow(color: AppColors.neonCyan.opacity(0.24), radius: 8)
                 }
             } else if showNext {
                 Button(action: onNext) {
@@ -103,15 +97,9 @@ struct TutorialCardView: View {
                     .padding(.vertical, 8)
                     .background(
                         Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [AppColors.neonCyan, AppColors.neonPink],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                            .fill(AppColors.neonCyan.opacity(0.86))
                     )
-                    .shadow(color: AppColors.neonCyan.opacity(0.4), radius: 12)
+                    .shadow(color: AppColors.neonCyan.opacity(0.24), radius: 8)
                 }
                 .buttonStyle(.plain)
             }
@@ -120,30 +108,9 @@ struct TutorialCardView: View {
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppColors.deepBlack,
-                                AppColors.darkPurple,
-                                AppColors.gridLines
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(AppColors.deepBlack)
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                AppColors.neonCyan.opacity(0.8),
-                                AppColors.neonPink.opacity(0.9),
-                                AppColors.synthOrange.opacity(0.7)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1.5
-                    )
+                    .stroke(AppColors.neonCyan.opacity(0.58), lineWidth: 1.5)
                     .blur(radius: 2)
                 RoundedRectangle(cornerRadius: 20)
                     .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
