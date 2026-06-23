@@ -65,6 +65,7 @@ extension AudioEngine {
         completion: (() -> Void)? = nil
     ) {
         guard let engine = processTapEngine else {
+            stopRecording()
             completion?()
             return
         }
@@ -75,6 +76,7 @@ extension AudioEngine {
         }
 
         processTapStopInProgress = true
+        stopRecording()
         scheduleSnapshotUpdate()
         engine.stop(reason: reason) { [weak self] in
             DispatchQueue.main.async {
@@ -97,6 +99,7 @@ extension AudioEngine {
     }
 
     func stopProcessTapBackendImmediately(reason: String = "Sonexis terminate") {
+        stopRecording()
         guard let engine = processTapEngine else { return }
 
         processTapEngine = nil
@@ -110,6 +113,18 @@ extension AudioEngine {
 }
 
 extension AudioEngine: ProcessTapAudioProcessor {
+    func processTapFormatDidChange(
+        maxFrameCount: Int,
+        channelCount: Int,
+        sampleRate: Double
+    ) {
+        updateTapFormat(
+            frameLength: maxFrameCount,
+            channelCount: channelCount,
+            sampleRate: sampleRate
+        )
+    }
+
     func processSystemAudio(
         input: UnsafePointer<Float>,
         output: UnsafeMutablePointer<Float>,
@@ -118,6 +133,12 @@ extension AudioEngine: ProcessTapAudioProcessor {
         sampleRate: Double
     ) {
         guard frameCount > 0, channelCount > 0 else { return }
+
+        updateTapFormat(
+            frameLength: frameCount,
+            channelCount: channelCount,
+            sampleRate: sampleRate
+        )
 
         let runtimeSettings = currentProcessTapRuntimeSettings()
         let buffer = processTapBuffer(

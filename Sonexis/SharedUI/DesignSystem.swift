@@ -2,10 +2,11 @@ import SwiftUI
 
 enum AppTheme: String, CaseIterable, Identifiable {
     static let storageKey = "Sonexis.ColorTheme"
+    static let defaultThemeID = AppTheme.black.rawValue
 
+    case black
     case classic
     case magenta
-    case black
     case gold
 
     var id: String { rawValue }
@@ -38,7 +39,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     static func theme(for id: String) -> AppTheme {
         if id == "cream" { return .gold }
-        return AppTheme(rawValue: id) ?? .classic
+        return AppTheme(rawValue: id) ?? .black
     }
 
     var colorScheme: ColorScheme {
@@ -191,7 +192,7 @@ struct AppColorPalette {
 
 struct AppColors {
     private static var palette: AppColorPalette {
-        let id = UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? AppTheme.classic.rawValue
+        let id = UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? AppTheme.defaultThemeID
         return AppTheme.theme(for: id).palette
     }
 
@@ -240,30 +241,9 @@ struct AppTypography {
     static let paramValue = Font.system(size: 12, weight: .semibold, design: .monospaced)
 }
 
-struct AppGradients {
-    static var background: LinearGradient {
-        LinearGradient(
-            colors: [AppColors.deepBlack, AppColors.darkPurple, AppColors.midPurple, AppColors.deepBlack],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    static var nodeAccent: LinearGradient {
-        LinearGradient(
-            colors: [AppColors.synthPurple, AppColors.synthOrange, AppColors.synthPink],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    static var glow: RadialGradient {
-        RadialGradient(
-            colors: [AppColors.neonCyan.opacity(0.8), AppColors.neonCyan.opacity(0.2), .clear],
-            center: .center,
-            startRadius: 5,
-            endRadius: 40
-        )
+struct AppSurfaces {
+    static var background: Color {
+        AppColors.darkPurple
     }
 }
 

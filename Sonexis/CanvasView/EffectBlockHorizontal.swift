@@ -24,10 +24,10 @@ struct EffectBlockHorizontal: View {
     @State private var dropScale: CGFloat = 1.0
     @State private var dropRotation: Double = 0.0
     private let cardBackground = Color(red: 0.08, green: 0.07, blue: 0.12)
-    private let cardBorder = AppColors.neonPink
     private let tileDisabled = Color(hex: "#1A1426")
     private let disabledText = Color(hex: "#80759D")
     private let iconGlow = Color.white.opacity(0.85)
+    private let selectionColor = AppColors.neonPink
 
     var body: some View {
         let hoverScale: CGFloat = isHovered ? 1.03 : 1.0
@@ -38,54 +38,57 @@ struct EffectBlockHorizontal: View {
                 // Icon and name
                 VStack(spacing: 6) {
                     ZStack {
-                    NeonTile(
-                        isEnabled: getEffectEnabled(),
-                        style: tileStyle,
-                        disabledFill: tileDisabled
-                    )
+                        NeonTile(
+                            isEnabled: getEffectEnabled(),
+                            style: tileStyle,
+                            disabledFill: tileDisabled
+                        )
+                        .overlay(
+                            selectionIndicator
+                        )
 
-                    VStack(spacing: 6) {
-                        Image(systemName: effect.displayIcon)
-                            .font(.system(size: 26, weight: .medium))
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundColor(getEffectEnabled() ? tileStyle.text : disabledText)
-                            .shadow(color: getEffectEnabled() ? Color.white.opacity(0.6) : .clear, radius: 8)
-                            .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.5) : .clear, radius: 16)
+                        VStack(spacing: 6) {
+                            Image(systemName: effect.displayIcon)
+                                .font(.system(size: 26, weight: .medium))
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundColor(getEffectEnabled() ? tileStyle.text : disabledText)
+                                .shadow(color: getEffectEnabled() ? Color.white.opacity(0.6) : .clear, radius: 8)
+                                .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.5) : .clear, radius: 16)
 
-                        Text(effect.displayName)
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(1.2)
-                            .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.4) : .clear, radius: 10)
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        if let badge = effect.displayBadge {
-                            Text(badge)
-                                .font(.system(size: 9, weight: .bold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(Color.black.opacity(0.6))
-                                .foregroundColor(.white)
-                                .clipShape(Capsule())
-                                .offset(x: 6, y: -6)
+                            Text(effect.displayName)
+                                .font(.system(size: 10, weight: .semibold))
+                                .tracking(1.2)
+                                .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.4) : .clear, radius: 10)
                         }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if isPluginLoading {
-                            Text("Loading...")
-                                .font(.system(size: 9, weight: .semibold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.black.opacity(0.65))
-                                .foregroundColor(.white)
-                                .clipShape(Capsule())
-                                .offset(y: 6)
+                        .overlay(alignment: .topTrailing) {
+                            if let badge = effect.displayBadge {
+                                Text(badge)
+                                    .font(.system(size: 9, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.black.opacity(0.6))
+                                    .foregroundColor(.white)
+                                    .clipShape(Capsule())
+                                    .offset(x: 6, y: -6)
+                            }
                         }
+                        .overlay(alignment: .bottom) {
+                            if isPluginLoading {
+                                Text("Loading...")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.65))
+                                    .foregroundColor(.white)
+                                    .clipShape(Capsule())
+                                    .offset(y: 6)
+                            }
+                        }
+                        .padding(.horizontal, 6)
                     }
-                    .padding(.horizontal, 6)
-                }
                     .frame(width: 110, height: 110)
                 }
 
@@ -95,10 +98,6 @@ struct EffectBlockHorizontal: View {
             .rotationEffect(.degrees(dropRotation))
             .offset(y: hoverOffset)
             .opacity(isWired ? 1.0 : 0.45)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? cardBorder : Color.clear, lineWidth: 2)
-            )
             .shadow(color: Color.black.opacity(isHovered ? 0.35 : 0.15), radius: isHovered ? 12 : 6, y: isHovered ? 6 : 3)
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -212,6 +211,17 @@ struct EffectBlockHorizontal: View {
                     dropRotation = 0.0
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionIndicator: some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(selectionColor.opacity(0.94), lineWidth: 2.8)
+                .shadow(color: selectionColor.opacity(0.52), radius: 10)
+                .padding(-11)
+                .allowsHitTesting(false)
         }
     }
 

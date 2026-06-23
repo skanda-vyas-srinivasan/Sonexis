@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum HomeSignalVisualSettings {
+    static let signalIntensity = 0.45
+}
+
 struct HomeView: View {
     let onBuildFromScratch: (CGPoint) -> Void
     let onTutorial: () -> Void
@@ -123,7 +127,7 @@ private struct HomeSignalBackdrop: View {
     let reduceMotion: Bool
     @State private var animationStart = Date()
 
-    private let barHeights: [CGFloat] = [72, 128, 96, 180, 116, 148, 84, 164, 104, 136, 76]
+    private let barHeights: [CGFloat] = [36, 64, 48, 90, 58, 74, 42, 82, 52, 68, 38]
 
     var body: some View {
         GeometryReader { proxy in
@@ -133,21 +137,46 @@ private struct HomeSignalBackdrop: View {
             TimelineView(.animation) { context in
                 let elapsed = max(0, context.date.timeIntervalSince(animationStart))
                 let pulse = reduceMotion ? 0.5 : breathingPhase(elapsed: elapsed, offset: 0, cycle: 7.8)
+                let signalIntensity = HomeSignalVisualSettings.signalIntensity
+                let ringBase = min(width, height)
+                let outerRingSize = ringBase * 0.78
+                let innerRingSize = ringBase * 0.54
+                let outerRingScale = 0.94 + (0.14 * pulse)
+                let innerRingScale = 1.04 - (0.12 * pulse)
+                let ringLineWidth: CGFloat = 0.9 + (0.80 * signalIntensity)
+                let outerRingOpacity = 0.18 + (0.38 * signalIntensity) - (0.07 * pulse)
+                let innerRingOpacity = 0.14 + (0.34 * signalIntensity) + (0.07 * pulse)
+                let outerRingShadow = 0.12 + (0.30 * signalIntensity)
+                let innerRingShadow = 0.10 + (0.28 * signalIntensity)
+                let haloLineWidth: CGFloat = 1.8 + (3.2 * signalIntensity)
+                let haloBlur = 1.2 + (3.0 * signalIntensity)
 
                 ZStack {
                     Circle()
-                        .stroke(AppColors.neonPink.opacity(0.34 - (0.12 * pulse)), lineWidth: 1)
-                        .frame(width: min(width, height) * 0.78)
-                        .scaleEffect(0.94 + (0.14 * pulse))
-                        .blur(radius: 1)
-                        .shadow(color: AppColors.neonPink.opacity(0.22), radius: 10)
+                        .stroke(AppColors.neonPink.opacity(0.03 + (0.15 * signalIntensity)), lineWidth: haloLineWidth)
+                        .frame(width: outerRingSize)
+                        .scaleEffect(outerRingScale)
+                        .blur(radius: haloBlur)
 
                     Circle()
-                        .stroke(AppColors.neonCyan.opacity(0.20 + (0.18 * pulse)), lineWidth: 1)
-                        .frame(width: min(width, height) * 0.54)
-                        .scaleEffect(1.04 - (0.12 * pulse))
-                        .blur(radius: 1)
-                        .shadow(color: AppColors.neonCyan.opacity(0.24), radius: 10)
+                        .stroke(AppColors.neonCyan.opacity(0.03 + (0.13 * signalIntensity)), lineWidth: haloLineWidth * 0.86)
+                        .frame(width: innerRingSize)
+                        .scaleEffect(innerRingScale)
+                        .blur(radius: haloBlur * 0.9)
+
+                    Circle()
+                        .stroke(AppColors.neonPink.opacity(outerRingOpacity), lineWidth: ringLineWidth)
+                        .frame(width: outerRingSize)
+                        .scaleEffect(outerRingScale)
+                        .blur(radius: 0.75)
+                        .shadow(color: AppColors.neonPink.opacity(outerRingShadow), radius: 8 + (8 * signalIntensity))
+
+                    Circle()
+                        .stroke(AppColors.neonCyan.opacity(innerRingOpacity), lineWidth: ringLineWidth)
+                        .frame(width: innerRingSize)
+                        .scaleEffect(innerRingScale)
+                        .blur(radius: 0.68)
+                        .shadow(color: AppColors.neonCyan.opacity(innerRingShadow), radius: 7 + (7 * signalIntensity))
 
                     HStack(alignment: .center, spacing: 12) {
                         ForEach(Array(barHeights.enumerated()), id: \.offset) { index, barHeight in
@@ -158,10 +187,14 @@ private struct HomeSignalBackdrop: View {
                             )
                             let heightScale = 0.34 + (0.46 * barPulse)
                             let barColor = index.isMultiple(of: 2) ? AppColors.neonCyan : AppColors.neonPink
+                            let barOpacity = index.isMultiple(of: 2)
+                                ? 0.22 + (0.30 * signalIntensity)
+                                : 0.20 + (0.26 * signalIntensity)
+                            let barShadow = 0.16 + (0.28 * signalIntensity)
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(barColor.opacity(index.isMultiple(of: 2) ? 0.36 : 0.30))
+                                .fill(barColor.opacity(barOpacity))
                                 .frame(width: 6, height: isActive ? max(14, barHeight * heightScale) : 8)
-                                .shadow(color: barColor.opacity(0.30), radius: 14)
+                                .shadow(color: barColor.opacity(barShadow), radius: 8 + (8 * signalIntensity))
                         }
                     }
                     .scaleEffect(x: 0.985 + (0.03 * pulse), y: 1.02 - (0.04 * pulse))

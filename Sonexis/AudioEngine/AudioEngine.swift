@@ -369,7 +369,7 @@ struct ProcessTapRuntimeSettings {
     static let defaults = ProcessTapRuntimeSettings(
         inputTrimDB: -12,
         outputMakeupDB: 12,
-        outputCeilingEnabled: true
+        outputCeilingEnabled: false
     )
 }
 
@@ -1620,9 +1620,15 @@ class AudioEngine: ObservableObject {
 
     func updateTapFormat(frameLength: Int, channelCount: Int, sampleRate: Double) {
         recordingLock.lock()
-        tapFrameLength = frameLength
+        if tapChannelCount == channelCount, tapSampleRate == sampleRate {
+            tapFrameLength = max(tapFrameLength, frameLength)
+        } else {
+            tapFrameLength = frameLength
+        }
         tapChannelCount = channelCount
         tapSampleRate = sampleRate
+        recordingSampleRate = sampleRate
+        recordingChannelCount = AVAudioChannelCount(channelCount)
         recordingLock.unlock()
     }
 
@@ -1716,6 +1722,18 @@ class AudioEngine: ObservableObject {
         }
 
         if sampleRate != targetSampleRate || AVAudioChannelCount(channelCount) != targetChannelCount {
+            if let pooledBuffer {
+                recycleRecordingBuffer(pooledBuffer, file: cachedFile)
+            }
+            DispatchQueue.main.async {
+                self.errorMessage = "Recording format changed. Stop and start recording again."
+                self.stopRecording()
+            }
+            return
+        }
+
+        if let format = cachedFormat,
+           format.sampleRate != sampleRate || format.channelCount != AVAudioChannelCount(channelCount) {
             if let pooledBuffer {
                 recycleRecordingBuffer(pooledBuffer, file: cachedFile)
             }

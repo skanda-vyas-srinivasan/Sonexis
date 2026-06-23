@@ -1,11 +1,112 @@
 import SwiftUI
 import AppKit
 
+private struct ScreenFrameReader: NSViewRepresentable {
+    let onChange: (CGRect) -> Void
+
+    func makeNSView(context: Context) -> ScreenFrameReportingView {
+        let view = ScreenFrameReportingView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ nsView: ScreenFrameReportingView, context: Context) {
+        nsView.onChange = onChange
+        nsView.scheduleReport()
+    }
+}
+
+private final class ScreenFrameReportingView: NSView {
+    var onChange: ((CGRect) -> Void)?
+    private var lastFrame: CGRect = .zero
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scheduleReport()
+    }
+
+    override func layout() {
+        super.layout()
+        scheduleReport()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        scheduleReport()
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        scheduleReport()
+    }
+
+    func scheduleReport() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil else { return }
+            let rectInWindow = self.convert(self.bounds, to: nil)
+            guard rectInWindow.width > 1, rectInWindow.height > 1 else { return }
+            if self.lastFrame != rectInWindow {
+                self.lastFrame = rectInWindow
+                self.onChange?(rectInWindow)
+            }
+        }
+    }
+}
+
+private final class AudioSettingsOutsideClickCoordinator: ObservableObject {
+    var panelFrame: CGRect = .zero
+    private var monitor: Any?
+
+    func start(onDismiss: @escaping () -> Void) {
+        guard monitor == nil else { return }
+
+        monitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            guard self.panelFrame.width > 1, self.panelFrame.height > 1 else { return event }
+
+            var clickPoints = [event.locationInWindow]
+            if let contentHeight = event.window?.contentView?.bounds.height {
+                clickPoints.append(
+                    CGPoint(
+                        x: event.locationInWindow.x,
+                        y: contentHeight - event.locationInWindow.y
+                    )
+                )
+            }
+
+            let expandedPanelFrame = self.panelFrame.insetBy(dx: -16, dy: -16)
+            if clickPoints.contains(where: { expandedPanelFrame.contains($0) }) {
+                return event
+            }
+
+            DispatchQueue.main.async {
+                onDismiss()
+            }
+            return nil
+        }
+    }
+
+    func stop() {
+        panelFrame = .zero
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+
+    deinit {
+        stop()
+    }
+}
+
 struct ContentView: View {
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
     @StateObject private var pluginManager = PluginManager()
     @StateObject private var tutorial = TutorialController()
+    @StateObject private var audioSettingsOutsideClick = AudioSettingsOutsideClickCoordinator()
     @State private var activeScreen: AppScreen = .home
     @State private var showingSaveDialog = false
     @State private var showingLoadDialog = false
@@ -25,11 +126,12 @@ struct ContentView: View {
     @State private var showEngineStoppedAlert = false
     @State private var hasEngineBeenOnDuringTutorial = false
     @State private var homeTransitionRipple: HomeTransitionRipple?
-    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.classic.rawValue
+    @State private var showingAudioSettings = false
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
 
     var body: some View {
         ZStack {
-            AppGradients.background
+            AppSurfaces.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -66,9 +168,11 @@ struct ContentView: View {
                                 presetNameInput = ""
                                 showingSaveDialog = true
                             },
+                            hasCurrentPreset: currentPresetID != nil,
                             allowSave: !tutorial.isActive || tutorial.step == .buildSave,
                             allowLoad: !tutorial.isActive || tutorial.step == .buildLoad,
-                            saveStatusText: $saveStatusText
+                            saveStatusText: $saveStatusText,
+                            showingAudioSettings: $showingAudioSettings
                         )
                     }
 
@@ -117,6 +221,20 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
 
+            if activeScreen == .beginner && showingAudioSettings {
+                AudioSettingsRootOverlay(
+                    trimDB: $audioEngine.processTapInputTrimDB,
+                    makeupDB: $audioEngine.processTapOutputMakeupDB,
+                    ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled,
+                    selectedThemeID: $selectedThemeID,
+                    onPanelFrameChange: { frame in
+                        audioSettingsOutsideClick.panelFrame = frame
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(30)
+            }
+
             if tutorial.isActive {
                 TutorialOverlay(
                     step: tutorial.step,
@@ -156,10 +274,27 @@ struct ContentView: View {
             tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
         }
         .onChange(of: activeScreen) { newValue in
+            if newValue != .beginner {
+                showingAudioSettings = false
+            }
             if !(lastActiveScreen == .home && newValue == .beginner) {
                 showGlitch = true
             }
             handleScreenChange(to: newValue)
+        }
+        .onChange(of: showingAudioSettings) { isShowing in
+            if isShowing {
+                audioSettingsOutsideClick.start {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        showingAudioSettings = false
+                    }
+                }
+            } else {
+                audioSettingsOutsideClick.stop()
+            }
+        }
+        .onDisappear {
+            audioSettingsOutsideClick.stop()
         }
         .onChange(of: tutorial.step) { newStep in
             if newStep == .welcome {
@@ -378,6 +513,38 @@ enum AppScreen {
     case beginner
 }
 
+private struct AudioSettingsRootOverlay: View {
+    @Binding var trimDB: Double
+    @Binding var makeupDB: Double
+    @Binding var ceilingEnabled: Bool
+    @Binding var selectedThemeID: String
+    let onPanelFrameChange: (CGRect) -> Void
+
+    private let topPadding: CGFloat = 122
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                AudioSettingsFloatingStrip(
+                    trimDB: $trimDB,
+                    makeupDB: $makeupDB,
+                    ceilingEnabled: $ceilingEnabled,
+                    selectedThemeID: $selectedThemeID
+                )
+                .frame(width: min(640, max(620, proxy.size.width - 32)))
+                .background(
+                    ScreenFrameReader(onChange: onPanelFrameChange)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {}
+                .padding(.top, topPadding)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+        }
+        .ignoresSafeArea()
+    }
+}
+
 private struct HomeTransitionRipple: Equatable {
     let id = UUID()
     let origin: CGPoint
@@ -403,18 +570,7 @@ private struct HomeTransitionRippleView: View {
                     .ignoresSafeArea()
 
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppColors.neonCyan.opacity(expanded ? 0.18 : 0.55),
-                                AppColors.midPurple.opacity(expanded ? 0.42 : 0.72),
-                                AppColors.deepBlack.opacity(expanded ? 0.50 : 0.82)
-                            ],
-                            center: .center,
-                            startRadius: 4,
-                            endRadius: max(40, diameter * 0.5)
-                        )
-                    )
+                    .fill(AppColors.midPurple.opacity(expanded ? 0.48 : 0.72))
                     .overlay(
                         Circle()
                             .stroke(AppColors.neonCyan.opacity(fading ? 0 : (expanded ? 0.14 : 0.8)), lineWidth: expanded ? 1 : 2)

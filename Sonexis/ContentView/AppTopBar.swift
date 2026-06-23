@@ -46,12 +46,8 @@ struct AppTopBar: View {
         .padding(.bottom, 8)
         .background(AppColors.panelPurple.opacity(0.78))
         .overlay(
-            LinearGradient(
-                colors: [AppColors.controlStroke.opacity(0.32), AppColors.neonCyan.opacity(0.10), .clear],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(height: 1),
+            AppColors.controlStroke.opacity(0.32)
+                .frame(height: 1),
             alignment: .bottom
         )
     }

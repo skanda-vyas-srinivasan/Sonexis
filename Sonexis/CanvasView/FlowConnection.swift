@@ -22,13 +22,7 @@ struct FlowConnection: View {
             // Animated flow
             if isActive {
                 Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.clear, glow, glow, .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(glow)
                     .frame(width: 30, height: thickness + 1)
                     .offset(x: animationProgress * 70 - 35)
                     .shadow(color: glow.opacity(0.6), radius: 6, y: 0)
@@ -41,4 +35,3 @@ struct FlowConnection: View {
         }
     }
 }
-

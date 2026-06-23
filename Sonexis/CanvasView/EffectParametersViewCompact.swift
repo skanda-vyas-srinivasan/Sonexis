@@ -269,18 +269,7 @@ struct CompactSlider: View {
 
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                tint.opacity(0.28),
-                                AppColors.controlPurpleRaised.opacity(0.92),
-                                AppColors.panelPurple.opacity(0.98)
-                            ],
-                            center: .topLeading,
-                            startRadius: 2,
-                            endRadius: knobSize
-                        )
-                    )
+                    .fill(AppColors.controlPurpleRaised.opacity(0.88))
                     .overlay(
                         Circle()
                             .stroke(AppColors.controlStrokeSoft.opacity(0.82), lineWidth: 1)
