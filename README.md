@@ -21,8 +21,6 @@ Sonexis is a macOS application that allows users to build custom audio processin
 
 Users create effect graphs visually by connecting audio nodes together. These graphs can contain built-in DSP effects, custom routing configurations, and third-party plugins, allowing everything from simple equalization to complex multi-branch processing chains.
 
-The project began as an attempt to solve a simple problem: most macOS audio software is either designed for professional production workflows or limited to a small set of audio enhancements. Sonexis was built to make advanced audio processing accessible through a flexible visual interface.
-
 Today Sonexis has been downloaded by over 1,000 users.
 
 ![Screenshot](docs/main-window.png)
