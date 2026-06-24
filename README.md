@@ -1,134 +1,91 @@
 # Sonexis
 
-Real-time audio effects for your entire Mac.
+<p align="center">
+  <img src="docs/logo.png" width="128">
+</p>
 
-Sonexis captures system audio with macOS Process Taps, runs it through a visual effect chain you design, and outputs the processed sound to your current speakers or headphones.
+<p align="center">
+  A node-based audio processing platform for macOS.
+</p>
 
----
-
-## What It Does
-
-1. You build an effect chain by dragging effects onto a canvas
-2. You press the power button
-3. Sonexis captures your system audio through a Process Tap
-4. Everything you hear on your Mac now goes through your effects
-5. Turn it off and normal system audio resumes
-
-No virtual audio driver. No manual output-device switching. Just press power.
+<p align="center">
+  <a href="https://sonexis.ink">Website</a> •
+  <a href="https://sonexis.ink/download">Download</a>
+</p>
 
 ---
 
-## Effects
+## Overview
 
-20 built-in effects:
+Sonexis is a macOS application that allows users to build custom audio processing pipelines and apply them to audio from any application on their system.
 
-| Effect | What it does |
-|--------|--------------|
-| **Night Drive** | Dark, wide, bass-forward color for late-night listening |
-| **Chrome Punch** | Adds impact, attack, and tight low-end body |
-| **Midnight Glow** | Smooths harsh edges with warm, gentle loudness |
-| **Afterglow** | Adds air, stereo shimmer, and a short spacious tail |
-| **Bass Boost** | Adds power to low frequencies |
-| **Clarity** | Brings out vocals and instruments |
-| **Reverb** | Adds space and depth |
-| **Stereo Widening** | Makes the soundstage feel wider |
-| **Enhancer** | Adds clarity, warmth, and punch in one step |
-| **Pitch (Rubber Band)** | High-quality pitch shifting (±12 semitones) |
-| **Simple EQ** | 3-band bass/mid/treble control |
-| **Delay** | Echoes and rhythmic repeats |
-| **Amp** | Preamp drive and output gain |
-| **Tremolo** | Pulsing volume modulation |
-| **Auto Pan** | Constant-power left/right movement |
-| **Chorus** | Thick, lush modulation |
-| **Phaser** | Swirling, sweeping movement |
-| **Flanger** | Jet-like sweeping effect |
-| **Bitcrusher** | Lo-fi digital crunch |
-| **Tape Saturation** | Warm analog-style saturation |
+Users create effect graphs visually by connecting audio nodes together. These graphs can contain built-in DSP effects, custom routing configurations, and third-party plugins, allowing everything from simple equalization to complex multi-branch processing chains.
 
-Older retired effect IDs remain decodable so existing presets do not crash, but they are not exposed as active built-in blocks.
+The project began as an attempt to solve a simple problem: most macOS audio software is either designed for professional production workflows or limited to a small set of audio enhancements. Sonexis was built to make advanced audio processing accessible through a flexible visual interface.
 
----
+Today Sonexis has been downloaded by over 1,000 users.
 
-## The Canvas
+![Screenshot](docs/main-window.png)
 
-Build your effect chain visually:
+## Features
 
-- **Drag and drop** effects from the sidebar onto the canvas
-- **Rearrange** by dragging effects to change processing order
-- **Manual wiring** (Option+drag) for custom signal routing
-- **Dual-mono mode** for independent left/right channel processing
-- **Real-time visualization** shows audio flowing through your chain
+* Visual node-based audio graph editor
+* Real-time audio processing
+* System-wide audio routing
+* Support for complex multi-branch processing chains
+* Third-party plugin integration
+* Live graph editing while audio is running
+* Preset management and graph persistence
 
-Right-click any effect to edit parameters or remove it.
+## Technical Challenges
 
----
+Building Sonexis required solving several problems beyond traditional desktop application development.
 
-## Requirements
+### Real-Time DSP
 
-- macOS 14.4 or later
-- Audio capture permission
-- No virtual audio driver required
+Audio processing occurs under strict latency constraints. Every effect must execute within the available audio callback window without introducing audible artifacts.
 
----
+### Dynamic Graph Execution
 
-## Install
+Users can freely modify processing graphs while audio is actively running. Sonexis performs graph validation and applies updates without interrupting playback.
 
-Download the `.pkg` from [Releases](https://github.com/skanda-vyas-srinivasan/Sonexis/releases), open it, done.
+### Audio Routing on macOS
 
----
+System-wide audio processing is not directly supported by macOS. Sonexis uses a custom routing architecture that allows audio from external applications to be processed through user-defined graphs.
 
-## Build from Source
+## Architecture
 
-```bash
-git clone https://github.com/skanda-vyas-srinivasan/Sonexis.git
-cd Sonexis
-open Sonexis.xcodeproj
+At a high level, Sonexis consists of:
+
+* Graph editor for creating processing pipelines
+* Audio engine responsible for graph execution
+* DSP effect framework
+* Plugin hosting layer
+* Audio routing subsystem
+
+```text
+Application Audio
+        │
+        ▼
+ Audio Routing
+        │
+        ▼
+ Processing Graph
+        │
+ ┌──────┼──────┐
+ ▼      ▼      ▼
+EQ   Reverb  Delay
+ └──────┼──────┘
+        ▼
+ Audio Output
 ```
 
-Build with ⌘R.
+## Download
 
----
+Sonexis is available for macOS.
 
-## How It Works
+https://sonexis.ink
 
-Sonexis uses macOS Process Taps:
+## Author
 
-```
-System Audio → Core Audio Process Tap → Sonexis effect graph → Current macOS Default Output
-```
-
-Current state:
-
-- No virtual audio driver is required.
-- No manual output-device switching is required.
-- System audio is captured with `AudioHardwareCreateProcessTap`.
-- The original output path is muted while tapped, then processed audio is played through the current macOS default output.
-- The captured signal is processed through Sonexis's existing visual effect graph.
-- Process Tap playback follows the macOS default output device.
-- Route changes rebuild the Process Tap pipeline.
-- Manual stress testing is still required before treating this as production-ready.
-
-Build and run the developer Process Tap smoke test with:
-
-```bash
-Scripts/smoke-process-tap.sh
-```
-
----
-
-## Tech
-
-- Swift / SwiftUI
-- AVFoundation / CoreAudio
-- Custom DSP (biquad filters, circular buffers, LFOs)
-- RubberBand library for high-quality pitch shifting
-
----
-
-## Acknowledgments
-
-- [RubberBand](https://breakfastquay.com/rubberband/) - Audio time-stretching and pitch-shifting library (GPL-2.0)
-
-## License
-
-GPL-3.0
+Built by Skanda Vyas.
