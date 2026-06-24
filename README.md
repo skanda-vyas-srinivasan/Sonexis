@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  A node-based audio processing platform for macOS.
+  Shape your system audio.
 </p>
 
 <p align="center">
