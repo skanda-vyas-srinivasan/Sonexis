@@ -22,9 +22,6 @@ Users create effect graphs visually by connecting audio nodes together. These gr
 
 Today Sonexis has been downloaded by over 1,000 users.
 
-![Screenshot](docs/main-window.png)
-
-
 ## Architecture
 
 At a high level, Sonexis consists of:
