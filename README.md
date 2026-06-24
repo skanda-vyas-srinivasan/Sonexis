@@ -48,12 +48,6 @@ Applications
  Output Device
 ```
 
-## Download
-
-Sonexis is available for macOS.
-
-https://sonexis.ink
-
 ## Author
 
 Built by Skanda Vyas Srinivasan.
