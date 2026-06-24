@@ -10,7 +10,6 @@
 
 <p align="center">
   <a href="https://sonexis.ink">Website</a> •
-  <a href="https://sonexis.ink/download">Download</a>
 </p>
 
 ---
