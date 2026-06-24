@@ -33,20 +33,19 @@ At a high level, Sonexis consists of:
 * Audio routing subsystem
 
 ```text
-Application Audio
-        │
-        ▼
+Applications
+      │
+      ▼
  Audio Routing
-        │
-        ▼
- Processing Graph
-        │
- ┌──────┼──────┐
- ▼      ▼      ▼
-EQ   Reverb  Delay
- └──────┼──────┘
-        ▼
- Audio Output
+      │
+      ▼
+ Sonexis Engine
+      │
+      ▼
+ Effect Graph
+      │
+      ▼
+ Output Device
 ```
 
 ## Download
