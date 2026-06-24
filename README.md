@@ -25,15 +25,7 @@ Today Sonexis has been downloaded by over 1,000 users.
 
 ![Screenshot](docs/main-window.png)
 
-## Features
 
-* Visual node-based audio graph editor
-* Real-time audio processing
-* System-wide audio routing
-* Support for complex multi-branch processing chains
-* Third-party plugin integration
-* Live graph editing while audio is running
-* Preset management and graph persistence
 
 ## Technical Challenges
 
@@ -86,4 +78,4 @@ https://sonexis.ink
 
 ## Author
 
-Built by Skanda Vyas.
+Built by Skanda Vyas Srinivasan.
