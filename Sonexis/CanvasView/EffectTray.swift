@@ -46,12 +46,6 @@ struct EffectTray: View {
     private var effectCategories: [EffectPaletteCategory] {
         [
             EffectPaletteCategory(
-                title: "Signature",
-                tint: effectPanelHighlightTint,
-                style: .featured,
-                effects: [.nightDrive, .chromePunch, .midnightGlow, .afterglow]
-            ),
-            EffectPaletteCategory(
                 title: "Tone",
                 tint: effectPanelHighlightTint,
                 style: .standard,
@@ -74,6 +68,12 @@ struct EffectTray: View {
                 tint: effectPanelHighlightTint,
                 style: .standard,
                 effects: [.amp, .bitcrusher, .tapeSaturation]
+            ),
+            EffectPaletteCategory(
+                title: "Signature",
+                tint: effectPanelHighlightTint,
+                style: .featured,
+                effects: [.nightDrive, .chromePunch, .midnightGlow, .afterglow]
             )
         ]
     }

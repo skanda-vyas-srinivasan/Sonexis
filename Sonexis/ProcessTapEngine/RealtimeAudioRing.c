@@ -167,6 +167,92 @@ static void copyRingFrameToInterleaved(
     }
 }
 
+static float interpolatedRingSample(
+    const SonexisAudioRingBuffer *ringBuffer,
+    uint64_t readFrame,
+    uint32_t sourceFrameCount,
+    uint32_t outputFrame,
+    uint32_t outputFrameCount,
+    uint32_t channel
+) {
+    if (sourceFrameCount <= 1 || outputFrameCount <= 1) {
+        uint32_t inputBase = (uint32_t)(readFrame % ringBuffer->capacityFrames) * ringBuffer->channels;
+        return ringBuffer->samples[inputBase + channel];
+    }
+
+    double sourcePosition = (double)outputFrame * (double)(sourceFrameCount - 1) /
+        (double)(outputFrameCount - 1);
+    uint32_t firstOffset = (uint32_t)sourcePosition;
+    uint32_t secondOffset = firstOffset + 1;
+    if (secondOffset >= sourceFrameCount) {
+        secondOffset = sourceFrameCount - 1;
+    }
+    float fraction = (float)(sourcePosition - (double)firstOffset);
+    uint32_t firstBase = (uint32_t)((readFrame + firstOffset) % ringBuffer->capacityFrames) *
+        ringBuffer->channels;
+    uint32_t secondBase = (uint32_t)((readFrame + secondOffset) % ringBuffer->capacityFrames) *
+        ringBuffer->channels;
+    float first = ringBuffer->samples[firstBase + channel];
+    float second = ringBuffer->samples[secondBase + channel];
+    return first + ((second - first) * fraction);
+}
+
+static void copyResampledRingFramesToAudioBufferList(
+    const SonexisAudioRingBuffer *ringBuffer,
+    AudioBufferList *outputData,
+    uint64_t readFrame,
+    uint32_t sourceFrameCount,
+    uint32_t outputFrameCount
+) {
+    for (uint32_t outputFrame = 0; outputFrame < outputFrameCount; ++outputFrame) {
+        uint32_t inputChannel = 0;
+        for (uint32_t bufferIndex = 0; bufferIndex < outputData->mNumberBuffers; ++bufferIndex) {
+            AudioBuffer *buffer = &outputData->mBuffers[bufferIndex];
+            if (buffer->mData == NULL || buffer->mNumberChannels == 0) {
+                continue;
+            }
+
+            float *samples = (float *)buffer->mData;
+            for (uint32_t channel = 0; channel < buffer->mNumberChannels; ++channel) {
+                if (inputChannel >= ringBuffer->channels) {
+                    break;
+                }
+                samples[(outputFrame * buffer->mNumberChannels) + channel] = interpolatedRingSample(
+                    ringBuffer,
+                    readFrame,
+                    sourceFrameCount,
+                    outputFrame,
+                    outputFrameCount,
+                    inputChannel
+                );
+                inputChannel += 1;
+            }
+        }
+    }
+}
+
+static void copyResampledRingFramesToInterleaved(
+    const SonexisAudioRingBuffer *ringBuffer,
+    float *outputSamples,
+    uint64_t readFrame,
+    uint32_t sourceFrameCount,
+    uint32_t outputFrameCount
+) {
+    for (uint32_t outputFrame = 0; outputFrame < outputFrameCount; ++outputFrame) {
+        uint32_t outputBase = outputFrame * ringBuffer->channels;
+        for (uint32_t channel = 0; channel < ringBuffer->channels; ++channel) {
+            outputSamples[outputBase + channel] = interpolatedRingSample(
+                ringBuffer,
+                readFrame,
+                sourceFrameCount,
+                outputFrame,
+                outputFrameCount,
+                channel
+            );
+        }
+    }
+}
+
 void SonexisAudioRingBufferDestroy(SonexisAudioRingBuffer *ringBuffer) {
     if (ringBuffer == NULL) {
         return;
@@ -434,8 +520,19 @@ uint32_t SonexisAudioRingBufferReadToAudioBufferList(
         );
     }
 
-    for (uint32_t frame = 0; frame < framesToCopy; ++frame) {
-        copyRingFrameToAudioBufferList(ringBuffer, outputData, frame, readFrame + frame);
+    if (framesToConsume != requestedFrames && framesToConsume > 1 && readableFrames >= requestedFrames) {
+        copyResampledRingFramesToAudioBufferList(
+            ringBuffer,
+            outputData,
+            readFrame,
+            framesToConsume,
+            requestedFrames
+        );
+        framesToCopy = requestedFrames;
+    } else {
+        for (uint32_t frame = 0; frame < framesToCopy; ++frame) {
+            copyRingFrameToAudioBufferList(ringBuffer, outputData, frame, readFrame + frame);
+        }
     }
 
     atomic_fetch_add_explicit(
@@ -498,8 +595,19 @@ uint32_t SonexisAudioRingBufferReadInterleaved(
         );
     }
 
-    for (uint32_t frame = 0; frame < framesToCopy; ++frame) {
-        copyRingFrameToInterleaved(ringBuffer, outputSamples, frame, readFrame + frame);
+    if (framesToConsume != frames && framesToConsume > 1 && readableFrames >= frames) {
+        copyResampledRingFramesToInterleaved(
+            ringBuffer,
+            outputSamples,
+            readFrame,
+            framesToConsume,
+            frames
+        );
+        framesToCopy = frames;
+    } else {
+        for (uint32_t frame = 0; frame < framesToCopy; ++frame) {
+            copyRingFrameToInterleaved(ringBuffer, outputSamples, frame, readFrame + frame);
+        }
     }
 
     atomic_fetch_add_explicit(
