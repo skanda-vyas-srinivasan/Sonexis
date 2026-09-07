@@ -198,7 +198,7 @@ struct CanvasView: View {
 
     @ViewBuilder
     private var toolbarView: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 10) {
             Menu {
                 Button("Stereo") {
                     graphMode = .single
@@ -304,6 +304,8 @@ struct CanvasView: View {
 
             HStack(spacing: 8) {
                 Text("Auto-connect End")
+                    .lineLimit(1)
+                    .fixedSize()
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textMuted)
                 Toggle("", isOn: $autoConnectEnd)
@@ -427,6 +429,8 @@ struct CanvasView: View {
             )
             .disabled(tutorial.isBuildStep && ![.buildResetWiringForParallel, .buildClearCanvasForDualMono].contains(tutorial.step))
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(AppColors.panelPurple.opacity(0.72))
@@ -1069,6 +1073,7 @@ struct CanvasView: View {
                             }
                         )
                 }
+                .frame(minWidth: 820, maxWidth: .infinity, maxHeight: .infinity)
                 .zIndex(CanvasLayerZIndex.canvasPane)
             }
 
@@ -1764,7 +1769,7 @@ struct CanvasView: View {
         let nodesWithState = effectChain.map { node in
             guard node.type == .plugin, var plugin = node.plugin else { return node }
             var updated = node
-            plugin.stateData = audioEngine.pluginStateData(for: node.id)
+            plugin.stateData = audioEngine.pluginStateData(for: node.id) ?? plugin.stateData
             updated.plugin = plugin
             return updated
         }
@@ -3098,6 +3103,8 @@ private struct CanvasToolbarMenuLabel: View {
                 .font(.system(size: 8, weight: .bold))
                 .foregroundColor(tint.opacity(0.82))
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: true)
         .padding(.horizontal, 10)
         .frame(height: 28)
         .background(

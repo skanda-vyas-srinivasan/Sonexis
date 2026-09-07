@@ -99,7 +99,7 @@ extension AudioEngine {
     }
 
     func stopProcessTapBackendImmediately(reason: String = "Sonexis terminate") {
-        stopRecording()
+        stopRecording(waitForWrites: true)
         guard let engine = processTapEngine else { return }
 
         processTapEngine = nil
@@ -133,6 +133,13 @@ extension AudioEngine: ProcessTapAudioProcessor {
         sampleRate: Double
     ) {
         guard frameCount > 0, channelCount > 0 else { return }
+
+        // A single recording tap after all output staging, including early bypass
+        // returns. The writer copies this buffer before the worker reuses it.
+        defer {
+            recordFinalOutput(UnsafePointer(output), frameCount: frameCount,
+                channelCount: channelCount, sampleRate: sampleRate)
+        }
 
         updateTapFormat(
             frameLength: frameCount,

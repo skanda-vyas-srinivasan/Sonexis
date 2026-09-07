@@ -294,7 +294,7 @@ struct PresetView: View {
 
     private func overwriteImportPreset() {
         guard let preset = pendingImportPreset else { return }
-        presetManager.addPreset(preset, overwriteExistingNamed: preset.name)
+        guard presetManager.addPreset(preset, overwriteExistingNamed: preset.name) else { return }
         pendingImportPreset = nil
     }
 
@@ -319,7 +319,7 @@ struct PresetView: View {
             graph: preset.graph,
             createdDate: preset.createdDate
         )
-        presetManager.addPreset(renamedPreset)
+        guard presetManager.addPreset(renamedPreset) else { return }
         pendingImportPreset = nil
         showRenameDialog = false
     }

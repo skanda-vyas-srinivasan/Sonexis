@@ -533,6 +533,23 @@ extension AudioEngine {
 
     func updateGraphSnapshot(_ snapshot: GraphSnapshot?) {
         currentGraphSnapshot = snapshot
+        let comparison = snapshot?.presetComparisonData
+        if currentPresetComparisonData != comparison {
+            currentPresetComparisonData = comparison
+        }
+    }
+
+    /// Native plugin editors do not emit canvas parameter edits. Refresh their saved
+    /// state periodically and immediately before saving without rebuilding audio.
+    func refreshPresetPluginState() {
+        guard var snapshot = currentGraphSnapshot,
+              snapshot.nodes.contains(where: { $0.type == .plugin }) else { return }
+        for index in snapshot.nodes.indices where snapshot.nodes[index].type == .plugin {
+            if let state = pluginStateData(for: snapshot.nodes[index].id) {
+                snapshot.nodes[index].plugin?.stateData = state
+            }
+        }
+        updateGraphSnapshot(snapshot)
     }
 
     func requestGraphLoad(

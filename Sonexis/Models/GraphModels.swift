@@ -600,6 +600,83 @@ struct GraphSnapshot: Codable {
     }
 }
 
+extension GraphSnapshot {
+    /// Stable saved-content comparison: wire IDs are transient, and dictionary-backed
+    /// gain overrides have no meaningful ordering. Layout only matters when it
+    /// changes the effective automatic chain order.
+    var presetComparisonData: Data? {
+        struct Edge: Codable {
+            let from: UUID
+            let to: UUID
+            let gain: Double
+        }
+        struct Content: Encodable {
+            let graphMode: GraphMode
+            let wiringMode: GraphWiringMode
+            let autoConnectEnd: Bool
+            let nodes: [BeginnerNode]
+            let connections: [Edge]
+            let gains: [Edge]
+            let automaticOrder: [[UUID]]
+        }
+        let terminals = [startNodeID, endNodeID, leftStartNodeID, leftEndNodeID, rightStartNodeID, rightEndNodeID]
+        func canonicalID(_ id: UUID) -> UUID {
+            guard let index = terminals.firstIndex(where: { $0 == id }) else { return id }
+            return UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!
+        }
+        func edges(_ values: [BeginnerConnection]) -> [Edge] {
+            values.map { Edge(from: canonicalID($0.fromNodeId), to: canonicalID($0.toNodeId), gain: $0.gain) }
+                .sorted {
+                    if $0.from != $1.from { return $0.from.uuidString < $1.from.uuidString }
+                    if $0.to != $1.to { return $0.to.uuidString < $1.to.uuidString }
+                    return $0.gain < $1.gain
+                }
+        }
+        func automaticPath(lane: GraphLane?, start: UUID?, end: UUID?) -> [UUID] {
+            guard let start, let end else { return [] }
+            let ordered = nodes.filter { lane == nil || $0.lane == lane }.sorted {
+                if $0.position.x == $1.position.x { return $0.position.y < $1.position.y }
+                return $0.position.x < $1.position.x
+            }
+            guard let first = ordered.first else { return [] }
+            var next: [UUID: UUID] = [start: first.id]
+            for index in ordered.indices {
+                next[ordered[index].id] = index + 1 < ordered.count ? ordered[index + 1].id : end
+            }
+            let ids = Set(ordered.map(\.id))
+            for edge in connections where (edge.fromNodeId == start || ids.contains(edge.fromNodeId))
+                && (edge.toNodeId == end || ids.contains(edge.toNodeId)) {
+                next[edge.fromNodeId] = edge.toNodeId
+            }
+            var path: [UUID] = []
+            var visited: Set<UUID> = [start]
+            var current = next[start]
+            while let id = current, id != end, ids.contains(id), visited.insert(id).inserted {
+                path.append(id)
+                current = next[id]
+            }
+            return path
+        }
+        let order: [[UUID]] = wiringMode == .manual ? [] : graphMode == .single
+            ? [automaticPath(lane: nil, start: startNodeID, end: endNodeID)]
+            : [automaticPath(lane: .left, start: leftStartNodeID, end: leftEndNodeID),
+               automaticPath(lane: .right, start: rightStartNodeID, end: rightEndNodeID)]
+        let processingNodes = nodes.sorted { $0.id.uuidString < $1.id.uuidString }.map { node in
+            var result = node
+            result.position = .zero
+            result.accentIndex = 0
+            if graphMode == .single { result.lane = .left }
+            return result
+        }
+        let content = Content(graphMode: graphMode, wiringMode: wiringMode,
+            autoConnectEnd: autoConnectEnd, nodes: processingNodes,
+            connections: edges(connections), gains: edges(autoGainOverrides), automaticOrder: order)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(content)
+    }
+}
+
 enum GraphLoadMode {
     case visualOnly
     case audioAndVisual

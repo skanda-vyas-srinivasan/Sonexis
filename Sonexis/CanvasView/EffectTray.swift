@@ -306,7 +306,7 @@ struct EffectTray: View {
                         .font(.system(size: 11, weight: isActive ? .semibold : .medium, design: .rounded))
                         .foregroundColor(isActive ? AppColors.textPrimary : AppColors.textMuted)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.84)
+                        .truncationMode(.tail)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .background(
@@ -476,7 +476,7 @@ struct EffectPaletteButton: View {
                     .font(.system(size: isFeatured ? 12 : 11, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textPrimary.opacity(0.94))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .truncationMode(.tail)
 
                 Spacer(minLength: 28)
             }
@@ -763,7 +763,7 @@ struct PluginDragPreview: View {
                     .foregroundColor(tileStyle.text.opacity(0.95))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.7)
+                    .truncationMode(.tail)
                     .shadow(color: tileStyle.fill.opacity(0.4), radius: 10)
             }
             .padding(.horizontal, 6)
@@ -797,7 +797,7 @@ struct EffectDragPreview: View {
                     .tracking(1.2)
                     .foregroundColor(tileStyle.text.opacity(0.95))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .truncationMode(.tail)
                     .shadow(color: tileStyle.fill.opacity(0.4), radius: 10)
             }
             .padding(.horizontal, 6)

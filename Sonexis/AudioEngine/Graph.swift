@@ -23,12 +23,6 @@ extension AudioEngine {
             snapshot: snapshot
         )
         updateEffectLevelsIfNeeded(levelSnapshot)
-        recordIfNeeded(
-            processed,
-            frameLength: frameLength,
-            channelCount: channelCount,
-            sampleRate: sampleRate
-        )
         return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
     }
 

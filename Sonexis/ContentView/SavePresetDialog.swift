@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SavePresetDialog: View {
     @Binding var presetName: String
+    var errorMessage: String? = nil
+    var title: String = "Save preset"
+    var actionTitle: String = "Save"
     let onSave: () -> Void
     let onCancel: () -> Void
 
@@ -12,7 +15,7 @@ struct SavePresetDialog: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             PresetDialogHeader(
-                title: "Save preset"
+                title: title
             )
 
             PresetDialogTextField(
@@ -21,6 +24,13 @@ struct SavePresetDialog: View {
                 systemImage: nil,
                 tint: AppColors.neonPink
             )
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack(spacing: 12) {
                 Spacer()
@@ -34,7 +44,7 @@ struct SavePresetDialog: View {
                 .keyboardShortcut(.cancelAction)
 
                 PresetDialogActionButton(
-                    title: "Save",
+                    title: actionTitle,
                     tint: AppColors.neonPink,
                     isPrimary: true,
                     isEnabled: canSave,
@@ -111,6 +121,8 @@ struct PresetDialogActionButton: View {
                 .foregroundColor(foregroundColor)
                 .padding(.horizontal, 12)
                 .frame(height: 30)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: true)
                 .background(fill)
                 .overlay(stroke)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

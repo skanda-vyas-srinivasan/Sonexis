@@ -106,22 +106,7 @@ extension AudioEngine {
         let channelCount = Int(buffer.format.channelCount)
         let sampleRate = buffer.format.sampleRate
 
-        let recordingActive = isRecordingActive()
-
         if snapshot.isReconfiguring {
-            if recordingActive {
-                let inputBuffer = deinterleavedInput(
-                    channelData: channelData,
-                    frameLength: frameLength,
-                    channelCount: channelCount
-                )
-                recordIfNeeded(
-                    inputBuffer,
-                    frameLength: frameLength,
-                    channelCount: channelCount,
-                    sampleRate: sampleRate
-                )
-            }
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
@@ -132,19 +117,6 @@ extension AudioEngine {
         }
 
         if !snapshot.processingEnabled {
-            if recordingActive {
-                let inputBuffer = deinterleavedInput(
-                    channelData: channelData,
-                    frameLength: frameLength,
-                    channelCount: channelCount
-                )
-                recordIfNeeded(
-                    inputBuffer,
-                    frameLength: frameLength,
-                    channelCount: channelCount,
-                    sampleRate: sampleRate
-                )
-            }
             ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
             for frame in 0..<frameLength {
                 for channel in 0..<channelCount {
@@ -186,12 +158,6 @@ extension AudioEngine {
                 signature: snapshot.graphSignature
             )
             updateEffectLevelsIfNeeded(levelSnapshot)
-            recordIfNeeded(
-                output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate
-            )
             return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
         }
 
@@ -242,12 +208,6 @@ extension AudioEngine {
                 channelCount: channelCount,
                 sampleRate: sampleRate,
                 signature: snapshot.graphSignature
-            )
-            recordIfNeeded(
-                output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate
             )
             return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
         }
@@ -358,12 +318,6 @@ extension AudioEngine {
                 signature: snapshot.graphSignature
             )
             updateEffectLevelsIfNeeded(targetLevels)
-            recordIfNeeded(
-                output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate
-            )
             return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
         }
 
@@ -383,12 +337,6 @@ extension AudioEngine {
                 signature: snapshot.graphSignature
             )
             updateEffectLevelsIfNeeded(levelSnapshot)
-            recordIfNeeded(
-                output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate
-            )
             return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
         }
 
@@ -402,12 +350,6 @@ extension AudioEngine {
             signature: snapshot.graphSignature
         )
         updateEffectLevelsIfNeeded(levelSnapshot)
-        recordIfNeeded(
-            output,
-            frameLength: frameLength,
-            channelCount: channelCount,
-            sampleRate: sampleRate
-        )
         return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
     }
 

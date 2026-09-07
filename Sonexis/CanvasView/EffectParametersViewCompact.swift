@@ -264,7 +264,7 @@ struct CompactSlider: View {
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundColor(AppColors.textSecondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.68)
+                .truncationMode(.tail)
                 .frame(maxWidth: .infinity, minHeight: 15, alignment: .center)
 
             ZStack {
@@ -354,7 +354,7 @@ struct CompactSlider: View {
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundColor(AppColors.textMuted)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.68)
+                        .truncationMode(.tail)
                 }
             }
             .frame(height: 20)

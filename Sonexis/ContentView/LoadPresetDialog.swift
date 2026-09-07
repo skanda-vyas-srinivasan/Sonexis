@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LoadPresetDialog: View {
     @ObservedObject var presetManager: PresetManager
@@ -6,63 +7,171 @@ struct LoadPresetDialog: View {
     let onApply: (SavedPreset) -> Void
     let onCancel: () -> Void
     @State private var searchText = ""
+    @State private var showImportPicker = false
+    @State private var showExportPicker = false
+    @State private var exportDocument: PresetExportDocument?
+    @State private var exportFilename = "Preset.sonexis"
+    @State private var fileError: String?
+    @State private var pendingImport: SavedPreset?
+    @State private var showImportConflict = false
+    @State private var deletingPreset: SavedPreset?
+    @State private var showDeleteConfirm = false
+    @State private var renamingPreset: SavedPreset?
+    @State private var renameText = ""
+
+    private var canManage: Bool { tutorialStep == .inactive }
 
     var body: some View {
-        let filteredPresets = presetManager.presets.filter { preset in
-            searchText.isEmpty || preset.name.lowercased().contains(searchText.lowercased())
+        let filtered = presetManager.presets.filter {
+            searchText.isEmpty || $0.name.localizedCaseInsensitiveContains(searchText)
         }
-
         VStack(alignment: .leading, spacing: 12) {
             if tutorialStep == .buildLoad || tutorialStep == .buildCloseLoad {
                 LoadPresetTutorialCard(tutorialStep: tutorialStep)
             }
+            HStack {
+                PresetDialogHeader(title: "Load preset")
+                PresetDialogActionButton(title: "Import", tint: AppColors.neonCyan,
+                    isPrimary: false, isEnabled: canManage) {
+                    showImportPicker = true
+                }
+            }
+            PresetDialogTextField(text: $searchText, placeholder: "Search presets",
+                systemImage: "magnifyingglass", tint: AppColors.neonCyan)
 
-            PresetDialogHeader(
-                title: "Load preset"
-            )
-
-            PresetDialogTextField(
-                text: $searchText,
-                placeholder: "Search presets",
-                systemImage: "magnifyingglass",
-                tint: AppColors.neonCyan
-            )
-
-            if filteredPresets.isEmpty {
-                LoadPresetEmptyState()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if filtered.isEmpty {
+                VStack(spacing: 9) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 22))
+                    Text(presetManager.presets.isEmpty ? "No saved presets yet" : "No matching presets")
+                        .font(AppTypography.body)
+                    Text(presetManager.presets.isEmpty ? "Save your current chain or import a preset." : "Try a different name or clear your search.")
+                        .font(AppTypography.caption)
+                        .multilineTextAlignment(.center)
+                    if !searchText.isEmpty {
+                        PresetDialogActionButton(title: "Clear search", tint: AppColors.neonCyan,
+                            isPrimary: false) { searchText = "" }
+                    }
+                }
+                .foregroundColor(AppColors.textSecondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical, showsIndicators: true) {
+                ScrollView {
                     LazyVStack(spacing: 7) {
-                        ForEach(filteredPresets) { preset in
-                            LoadPresetRow(
-                                preset: preset,
+                        ForEach(filtered) { preset in
+                            LoadPresetRow(preset: preset,
                                 isDisabled: tutorialStep == .buildCloseLoad,
-                                onApply: {
-                                    onApply(preset)
-                                }
-                            )
+                                canManage: canManage,
+                                onApply: { onApply(preset) },
+                                onRename: {
+                                    renameText = preset.name
+                                    renamingPreset = preset
+                                },
+                                onExport: { beginExport(preset) },
+                                onDelete: {
+                                    deletingPreset = preset
+                                    showDeleteConfirm = true
+                                })
                         }
                     }
                     .padding(.trailing, 2)
                 }
-                .frame(maxHeight: 330)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
             HStack {
                 Spacer()
-                PresetDialogActionButton(
-                    title: "Cancel",
-                    tint: AppColors.textMuted,
-                    isPrimary: false,
-                    action: onCancel
-                )
-                .keyboardShortcut(.cancelAction)
+                PresetDialogActionButton(title: "Cancel", tint: AppColors.textMuted,
+                    isPrimary: false, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
             }
         }
         .padding(14)
         .frame(width: 438, height: 500)
         .sonexisFloatingPanel(tint: AppColors.neonCyan, cornerRadius: 12, glowOpacity: 0)
+        .fileImporter(isPresented: $showImportPicker,
+            allowedContentTypes: [.sonexisPreset, .json], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first { importPreset(url) }
+            case .failure(let error): fileError = "Import failed: \(error.localizedDescription)"
+            }
+        }
+        .fileExporter(isPresented: $showExportPicker, document: exportDocument,
+            contentType: .sonexisPreset, defaultFilename: exportFilename) { result in
+            if case .failure(let error) = result { fileError = "Export failed: \(error.localizedDescription)" }
+        }
+        .alert("Preset operation failed", isPresented: Binding(
+            get: { renamingPreset == nil && (fileError != nil || presetManager.saveError != nil) },
+            set: { if !$0 { fileError = nil; presetManager.saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) { fileError = nil; presetManager.saveError = nil }
+        } message: { Text(fileError ?? presetManager.saveError ?? "") }
+        .alert("Replace existing preset?", isPresented: $showImportConflict) {
+            Button("Replace", role: .destructive) { finishImport(replace: true) }
+            Button("Keep Both") { finishImport(replace: false) }
+            Button("Cancel", role: .cancel) { pendingImport = nil }
+        } message: {
+            Text("A preset named \"\(pendingImport?.name ?? "")\" already exists. Keep Both imports a separately named copy.")
+        }
+        .alert("Delete preset?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                if let preset = deletingPreset { presetManager.deletePreset(preset) }
+                deletingPreset = nil
+            }
+            Button("Cancel", role: .cancel) { deletingPreset = nil }
+        } message: {
+            Text("Delete \"\(deletingPreset?.name ?? "")\" from your library? The chain currently on the canvas will stay open.")
+        }
+        .sheet(item: $renamingPreset) { preset in
+            SavePresetDialog(presetName: $renameText, errorMessage: presetManager.saveError,
+                title: "Rename preset", actionTitle: "Rename",
+                onSave: {
+                    if presetManager.renamePreset(id: preset.id, name: renameText) {
+                        renamingPreset = nil
+                        searchText = ""
+                    }
+                }, onCancel: { renamingPreset = nil; presetManager.saveError = nil })
+        }
+    }
+
+    private func beginExport(_ preset: SavedPreset) {
+        do {
+            exportDocument = PresetExportDocument(data: try encodePresetExportData(preset))
+            let safeName = preset.name.replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: ":", with: "-")
+            exportFilename = "\(safeName).sonexis"
+            showExportPicker = true
+        } catch { fileError = "Export failed: \(error.localizedDescription)" }
+    }
+
+    private func importPreset(_ url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let preset = try decodePresetImportData(Data(contentsOf: url))
+            if presetManager.presets.contains(where: { $0.name.caseInsensitiveCompare(preset.name) == .orderedSame }) {
+                pendingImport = preset
+                showImportConflict = true
+            } else if presetManager.addPreset(preset) { searchText = "" }
+        } catch { fileError = "Import failed: \(error.localizedDescription)" }
+    }
+
+    private func finishImport(replace: Bool) {
+        guard let preset = pendingImport else { return }
+        var imported = preset
+        if !replace {
+            var suffix = 2
+            var name = "\(preset.name) (\(suffix))"
+            while presetManager.presets.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+                suffix += 1
+                name = "\(preset.name) (\(suffix))"
+            }
+            imported = SavedPreset(name: name, graph: preset.graph)
+        }
+        if presetManager.addPreset(imported, overwriteExistingNamed: replace ? preset.name : nil) {
+            pendingImport = nil
+            searchText = ""
+        }
     }
 }
 
@@ -103,79 +212,52 @@ private struct LoadPresetTutorialCard: View {
 private struct LoadPresetRow: View {
     let preset: SavedPreset
     let isDisabled: Bool
+    let canManage: Bool
     let onApply: () -> Void
+    let onRename: () -> Void
+    let onExport: () -> Void
+    let onDelete: () -> Void
     @State private var isHovered = false
 
     var body: some View {
         Button(action: onApply) {
             HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isHovered ? AppColors.neonCyan.opacity(0.15) : Color.black.opacity(0.36))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(isHovered ? AppColors.neonCyan.opacity(0.50) : AppColors.controlStrokeSoft.opacity(0.14), lineWidth: 1)
-                        )
-
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(isHovered ? AppColors.neonCyan : AppColors.textSecondary.opacity(0.90))
-                }
-                .frame(width: 34, height: 34)
-
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppColors.neonCyan)
+                    .frame(width: 34, height: 34)
+                    .background(AppColors.controlPurple)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(preset.name)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppColors.textPrimary.opacity(0.94))
+                        .foregroundColor(AppColors.textPrimary)
                         .lineLimit(1)
-
                     Text("\(preset.graph.nodes.count) effects")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(isHovered ? AppColors.neonCyan.opacity(0.92) : AppColors.textMuted)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textMuted)
                 }
-
-                Spacer(minLength: 10)
+                Spacer(minLength: 0)
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 8)
-            .padding(.vertical, 8)
+            .padding(8)
             .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.38) : Color.black.opacity(0.42))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isHovered ? AppColors.neonCyan.opacity(0.44) : Color.clear, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.42 : 1.0)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.14)) {
-                isHovered = hovering
+        .accessibilityLabel("Load \(preset.name)")
+        .contextMenu {
+            if canManage {
+                Button("Rename", action: onRename)
+                Button("Export", action: onExport)
+                Divider()
+                Button("Delete", role: .destructive, action: onDelete)
             }
         }
-    }
-}
-
-private struct LoadPresetEmptyState: View {
-    var body: some View {
-        VStack(spacing: 9) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundColor(AppColors.textMuted.opacity(0.70))
-                .frame(width: 34, height: 34)
-                .background(AppColors.controlPurple.opacity(0.22))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-
-            Text("No presets found")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(AppColors.textSecondary)
-        }
-        .padding(.vertical, 28)
+        .help(canManage ? "\(preset.name) — Click to load; right-click for Rename, Export, or Delete" : preset.name)
+        .background(isHovered ? AppColors.controlPurpleRaised.opacity(0.38) : AppColors.deepBlack.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .opacity(isDisabled ? 0.42 : 1)
+        .onHover { isHovered = $0 }
     }
 }

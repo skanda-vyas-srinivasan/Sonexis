@@ -383,6 +383,12 @@ class AudioEngine: ObservableObject {
     @Published var signalFlowToken: Int = 0
     @Published var betaRecordingUnlocked = false
     @Published var isRecording = false
+    @Published var isFinalizingRecording = false
+    @Published var recordingWarningText: String?
+    @Published var recordingIssuePresented = false
+    @Published var lastRecordingURL: URL?
+    private var recordingSessionID: UUID?
+    private var recordingSession: AudioRecordingSession?
     @Published var pluginStatusToken: Int = 0
     @Published var outputMeterLevel: Float = 0
     @Published var outputMeterPeakDBFS: Float = -96
@@ -413,15 +419,9 @@ class AudioEngine: ObservableObject {
     @Published var processTapTrimmedInputPeakDBFS: Float = -96
     @Published var processTapWarningText: String?
 
-    private var recordingFile: AVAudioFile?
     private let recordingLock = NSLock()
-    private let recordingQueue = DispatchQueue(label: "Sonexis.AudioRecordingWriter", qos: .utility)
-    private let recordingBufferPoolSize = 8
     private var recordingSampleRate: Double = 44100
     private var recordingChannelCount: AVAudioChannelCount = 2
-    private var recordingFormat: AVAudioFormat?
-    private var recordingBufferPool: [AVAudioPCMBuffer] = []
-    private var recordingFrameCapacity: Int = 0
     private var tapFrameLength: Int = 0
     private var tapChannelCount: Int = 0
     private var tapSampleRate: Double = 0
@@ -1038,6 +1038,7 @@ class AudioEngine: ObservableObject {
     @Published var pendingGraphLoadRequest: GraphLoadRequest?
 
     var currentGraphSnapshot: GraphSnapshot?
+    @Published var currentPresetComparisonData: Data?
 
     var deviceListMonitorTimer: DispatchSourceTimer?
     var deviceListMonitorListener: AudioObjectPropertyListenerBlock?
@@ -1632,171 +1633,80 @@ class AudioEngine: ObservableObject {
         recordingLock.unlock()
     }
 
-    func isRecordingActive() -> Bool {
-        recordingLock.lock()
-        let active = isRecording
-        recordingLock.unlock()
-        return active
-    }
-
     func startRecording(url: URL) {
+        guard !isRecording, !isFinalizingRecording else { return }
         recordingLock.lock()
-        if isRecording {
-            recordingLock.unlock()
-            return
-        }
-        let targetSampleRate = recordingSampleRate
-        let targetChannelCount = recordingChannelCount
-        let targetFrameLength = tapFrameLength
+        let sampleRate = recordingSampleRate
+        let channels = recordingChannelCount
+        let capacity = tapFrameLength
         recordingLock.unlock()
-
-        guard targetFrameLength > 0 else {
+        guard capacity > 0 else {
             errorMessage = "Recording is not ready yet. Start audio first."
             return
         }
-
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: targetSampleRate,
-            channels: targetChannelCount,
-            interleaved: false
-        ) else {
-            errorMessage = "Unable to create recording format."
-            return
-        }
-
+        let id = UUID()
         do {
-            var bufferPool: [AVAudioPCMBuffer] = []
-            bufferPool.reserveCapacity(recordingBufferPoolSize)
-            for _ in 0..<recordingBufferPoolSize {
-                guard let buffer = AVAudioPCMBuffer(
-                    pcmFormat: format,
-                    frameCapacity: AVAudioFrameCount(targetFrameLength)
-                ) else {
-                    errorMessage = "Unable to create recording buffer."
-                    return
+            let session = try AudioRecordingSession(url: url, sampleRate: sampleRate,
+                channels: channels, frameCapacity: max(capacity, 1_024)) { [weak self] message in
+                DispatchQueue.main.async {
+                    guard let self, self.recordingSessionID == id else { return }
+                    self.recordingWarningText = message
+                    self.recordingLock.lock()
+                    let session = self.recordingSession
+                    self.recordingLock.unlock()
+                    if session?.mustStop == true { self.stopRecording() }
                 }
-                bufferPool.append(buffer)
             }
-            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            recordingSessionID = id
+            recordingWarningText = nil
+            recordingIssuePresented = false
+            lastRecordingURL = nil
             recordingLock.lock()
-            recordingFile = file
-            recordingFormat = format
-            recordingBufferPool = bufferPool
-            recordingFrameCapacity = targetFrameLength
-            isRecording = true
+            recordingSession = session
             recordingLock.unlock()
+            isRecording = true
         } catch {
             errorMessage = "Recording failed: \(error.localizedDescription)"
         }
     }
 
-    func stopRecording() {
+    func stopRecording(waitForWrites: Bool = false) {
         recordingLock.lock()
-        recordingFile = nil
-        recordingFormat = nil
-        recordingBufferPool.removeAll(keepingCapacity: false)
-        recordingFrameCapacity = 0
-        isRecording = false
+        let session = recordingSession
+        // Keep the session until completion so termination can drain a recording
+        // whose normal asynchronous stop is already in progress.
         recordingLock.unlock()
-    }
-
-    func recordIfNeeded(
-        _ buffer: [[Float]],
-        frameLength: Int,
-        channelCount: Int,
-        sampleRate: Double
-    ) {
-        recordingLock.lock()
-        let active = isRecording
-        let targetSampleRate = recordingSampleRate
-        let targetChannelCount = recordingChannelCount
-        let cachedFormat = recordingFormat
-        let cachedFile = recordingFile
-        let pooledBuffer = active ? recordingBufferPool.popLast() : nil
-        recordingLock.unlock()
-        guard active else { return }
-        guard channelCount > 0, frameLength > 0, buffer.count >= channelCount else {
-            recycleRecordingBuffer(pooledBuffer, file: cachedFile)
-            return
-        }
-
-        if sampleRate != targetSampleRate || AVAudioChannelCount(channelCount) != targetChannelCount {
-            if let pooledBuffer {
-                recycleRecordingBuffer(pooledBuffer, file: cachedFile)
-            }
-            DispatchQueue.main.async {
-                self.errorMessage = "Recording format changed. Stop and start recording again."
-                self.stopRecording()
-            }
-            return
-        }
-
-        if let format = cachedFormat,
-           format.sampleRate != sampleRate || format.channelCount != AVAudioChannelCount(channelCount) {
-            if let pooledBuffer {
-                recycleRecordingBuffer(pooledBuffer, file: cachedFile)
-            }
-            DispatchQueue.main.async {
-                self.errorMessage = "Recording format changed. Stop and start recording again."
-                self.stopRecording()
-            }
-            return
-        }
-
-        guard let format = cachedFormat,
-              let file = cachedFile,
-              let pcmBuffer = pooledBuffer,
-              pcmBuffer.frameCapacity >= AVAudioFrameCount(frameLength),
-              format.sampleRate == sampleRate,
-              format.channelCount == AVAudioChannelCount(channelCount)
-        else {
-            // If the writer queue is behind, drop the recording block instead of stalling live audio.
-            if pooledBuffer == nil { return }
-            recycleRecordingBuffer(pooledBuffer, file: cachedFile)
-            return
-        }
-
-        pcmBuffer.frameLength = AVAudioFrameCount(frameLength)
-
-        guard let channelData = pcmBuffer.floatChannelData else {
-            recycleRecordingBuffer(pcmBuffer, file: file)
-            return
-        }
-
-        for channel in 0..<channelCount {
-            buffer[channel].withUnsafeBufferPointer { src in
-                guard let base = src.baseAddress else { return }
-                channelData[channel].update(from: base, count: frameLength)
-            }
-        }
-
-        recordingQueue.async { [weak self] in
-            var writeError: Error?
-            do {
-                try file.write(from: pcmBuffer)
-            } catch {
-                writeError = error
-            }
-
-            self?.recycleRecordingBuffer(pcmBuffer, file: file)
-
-            if let writeError {
+        guard let session else { return }
+        if !isFinalizingRecording {
+            isRecording = false
+            isFinalizingRecording = true
+            let id = recordingSessionID
+            session.stop { [weak self] result in
                 DispatchQueue.main.async {
-                    self?.errorMessage = "Recording failed: \(writeError.localizedDescription)"
-                    self?.stopRecording()
+                    guard let self, self.recordingSessionID == id else { return }
+                    self.recordingLock.lock()
+                    self.recordingSession = nil
+                    self.recordingLock.unlock()
+                    self.isFinalizingRecording = false
+                    self.lastRecordingURL = result.url
+                    if let error = result.error {
+                        self.recordingWarningText = error
+                    } else if result.droppedFrames > 0 {
+                        self.recordingWarningText = "Recording finished with \(result.droppedFrames) missing frames. The saved file contains gaps."
+                    }
+                    self.recordingIssuePresented = self.recordingWarningText != nil
                 }
             }
         }
+        if waitForWrites { session.waitForWrites() }
     }
 
-    private func recycleRecordingBuffer(_ buffer: AVAudioPCMBuffer?, file: AVAudioFile?) {
-        guard let buffer, let file else { return }
+    func recordFinalOutput(_ output: UnsafePointer<Float>, frameCount: Int,
+                           channelCount: Int, sampleRate: Double) {
         recordingLock.lock()
-        defer { recordingLock.unlock() }
-        if isRecording, recordingFile === file {
-            recordingBufferPool.append(buffer)
-        }
+        let session = recordingSession
+        recordingLock.unlock()
+        session?.append(output, frames: frameCount, channels: channelCount, sampleRate: sampleRate)
     }
 
     deinit {

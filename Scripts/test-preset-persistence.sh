@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sonexis-preset-build.XXXXXX")
+trap 'rm -rf "$TEST_DIR"' EXIT
+xcrun swiftc -module-cache-path "$TEST_DIR/module-cache" \
+    "$ROOT_DIR/Sonexis/Models/EffectType.swift" \
+    "$ROOT_DIR/Sonexis/Models/GraphModels.swift" \
+    "$ROOT_DIR/Sonexis/Models/PluginModels.swift" \
+    "$ROOT_DIR/Sonexis/PresetManager.swift" \
+    "$ROOT_DIR/Tests/PresetPersistence/main.swift" \
+    -o "$TEST_DIR/preset-tests"
+"$TEST_DIR/preset-tests"

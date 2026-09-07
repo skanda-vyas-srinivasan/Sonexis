@@ -8,6 +8,8 @@ struct HeaderView: View {
     let onLoad: () -> Void
     let onSaveAs: () -> Void
     let hasCurrentPreset: Bool
+    let presetDisplayName: String?
+    let isPresetModified: Bool
     let allowSave: Bool
     let allowLoad: Bool
     @Binding var saveStatusText: String?
@@ -15,7 +17,7 @@ struct HeaderView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 16) {
+            HStack(spacing: 10) {
                 let powerLockedByTutorial = tutorial.isActive && tutorial.step != .buildPower
 
                 // Power button with status
@@ -76,7 +78,7 @@ struct HeaderView: View {
                     .frame(height: 30)
                     .background(AppColors.controlStrokeSoft.opacity(0.65))
 
-                let recordDisabled = (!audioEngine.isRunning && !audioEngine.isRecording) || tutorial.isActive
+                let recordDisabled = (!audioEngine.isRunning && !audioEngine.isRecording) || audioEngine.isFinalizingRecording || tutorial.isActive
                 Button(action: {
                     if audioEngine.isRecording {
                         audioEngine.stopRecording()
@@ -85,10 +87,11 @@ struct HeaderView: View {
                     }
                 }) {
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(audioEngine.isRecording ? AppColors.error : AppColors.textMuted)
-                            .frame(width: 8, height: 8)
-                        Text(audioEngine.isRecording ? "Recording" : "Record")
+                        Image(systemName: audioEngine.recordingWarningText == nil ? "circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(audioEngine.recordingWarningText != nil ? AppColors.warning : (audioEngine.isRecording ? AppColors.error : AppColors.textMuted))
+                            .frame(width: 10, height: 10)
+                        Text(audioEngine.isFinalizingRecording ? "Finishing…" : (audioEngine.isRecording ? "Recording" : "Record"))
                             .font(AppTypography.caption)
                             .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
                     }
@@ -97,7 +100,15 @@ struct HeaderView: View {
                 .buttonStyle(.plain)
                 .disabled(recordDisabled)
                 .opacity(recordDisabled ? 0.4 : 1.0)
-                .help(audioEngine.isRecording ? "Stop Recording" : "Start Recording")
+                .help(audioEngine.recordingWarningText ?? (audioEngine.isFinalizingRecording ? "Finishing queued recording writes" : (audioEngine.isRecording ? "Stop Recording" : "Record final processed output")))
+                .alert("Recording incomplete", isPresented: $audioEngine.recordingIssuePresented) {
+                    if let url = audioEngine.lastRecordingURL {
+                        Button("Show File") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    }
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(audioEngine.recordingWarningText ?? "The recording may contain gaps.")
+                }
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -188,8 +199,47 @@ struct HeaderView: View {
                     }
                 }
 
-                // Save/Load buttons
-                VStack(alignment: .leading, spacing: 4) {
+                // A fixed-height identity block beside the actions keeps the canvas stable.
+                HStack(spacing: 10) {
+                    ZStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(presetDisplayName == nil ? "" : "PRESET")
+                                .font(.system(size: 9, weight: .semibold))
+                                .tracking(1)
+                                .foregroundColor(AppColors.textMuted)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: 12)
+                                .accessibilityHidden(presetDisplayName == nil)
+
+                            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                                Text(presetDisplayName ?? saveStatusText ?? "")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundColor(AppColors.textPrimary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if presetDisplayName != nil && isPresetModified {
+                                    Text("· Modified")
+                                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                                        .foregroundColor(AppColors.warning)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 18)
+                            .accessibilityHidden(presetDisplayName == nil && saveStatusText == nil)
+                        }
+                        .id(presetDisplayName)
+                        .transition(.opacity)
+                    }
+                    .frame(width: 130, height: 32, alignment: .leading)
+                    .animation(.easeOut(duration: 0.22), value: presetDisplayName)
+                    .help([presetDisplayName, isPresetModified ? "Unsaved changes" : nil, saveStatusText]
+                        .compactMap { $0 }.joined(separator: " — "))
+
+                    Divider()
+                        .frame(height: 26)
+                        .opacity(presetDisplayName != nil || saveStatusText != nil ? 1 : 0)
+
                     HStack(spacing: 6) {
                         PresetSaveSplitButton(
                             tint: AppColors.neonPink,
@@ -223,25 +273,22 @@ struct HeaderView: View {
                         )
                     }
 
-                    if let saveStatusText {
-                        Text(saveStatusText)
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textSecondary)
-                            .transition(.opacity)
-                    }
+
                 }
             }
+            .lineLimit(1)
             .padding()
 
         }
         .background(AppColors.panelPurple.opacity(0.84))
-        .overlay(alignment: .bottom) {
+        // Keep the separator behind descendant overlays such as Save As.
+        .background(alignment: .bottom) {
             AppColors.controlStroke.opacity(0.42)
                 .frame(height: 1)
         }
         .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
         .animation(.easeOut(duration: 0.16), value: showingAudioSettings)
-        .zIndex(showingAudioSettings ? 20 : 0)
+        .zIndex(20)
     }
 
     private func promptForRecordingURL() -> URL? {
@@ -261,16 +308,24 @@ private struct PresetSaveSplitButton: View {
     let onSave: () -> Void
     let onSaveAs: () -> Void
     @State private var isHovered = false
+    @State private var isMenuPresented = false
+    @State private var isItemHovered = false
+    @StateObject private var menuEvents = PresetMenuEvents()
 
     var body: some View {
         HStack(spacing: 0) {
-            Button(action: hasCurrentPreset ? onSave : onSaveAs) {
+            Button(action: {
+                isMenuPresented = false
+                if hasCurrentPreset { onSave() } else { onSaveAs() }
+            }) {
                 Text("Save")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textPrimary.opacity(0.94))
                     .padding(.leading, 10)
                     .padding(.trailing, 8)
-                    .frame(height: 30)
+                    .frame(width: 46, height: 30)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: true)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -279,17 +334,18 @@ private struct PresetSaveSplitButton: View {
                 .fill(AppColors.controlStrokeSoft.opacity(isHovered ? 0.62 : 0.42))
                 .frame(width: 1, height: 18)
 
-            Menu {
-                Button("Save As", action: onSaveAs)
+            Button {
+                isMenuPresented.toggle()
             } label: {
-                Image(systemName: "chevron.down")
+                Image(systemName: isMenuPresented ? "chevron.up" : "chevron.down")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(AppColors.textSecondary)
                     .frame(width: 24, height: 30)
                     .contentShape(Rectangle())
             }
-            .menuIndicator(.hidden)
             .buttonStyle(.plain)
+            .accessibilityLabel("Save options")
+            .accessibilityValue(isMenuPresented ? "Expanded" : "Collapsed")
         }
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -300,6 +356,47 @@ private struct PresetSaveSplitButton: View {
                 .stroke(isHovered ? tint.opacity(0.44) : AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(PresetMenuRegion(events: menuEvents, isAnchor: true))
+        .overlay(alignment: .topLeading) {
+            GeometryReader { anchor in
+                if isMenuPresented {
+                    Button(action: chooseSaveAs) {
+                        HStack {
+                            Text("Save As")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundColor(AppColors.textPrimary)
+                        .padding(.horizontal, 8)
+                        .frame(height: 30)
+                        .background(isItemHovered ? AppColors.controlPurpleRaised : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { isItemHovered = $0 }
+                    .padding(5)
+                    .frame(width: anchor.size.width)
+                    .background(AppColors.panelPurple)
+                    .sonexisFloatingPanel(tint: tint, cornerRadius: 8, glowOpacity: 0)
+                    .background(PresetMenuRegion(events: menuEvents, isAnchor: false))
+                    .offset(y: 36)
+                    .onAppear {
+                        menuEvents.start(onDismiss: { isMenuPresented = false }, onSelect: chooseSaveAs)
+                    }
+                    .onDisappear {
+                        menuEvents.stop()
+                        isItemHovered = false
+                    }
+                }
+            }
+        }
+        .onChange(of: isEnabled) { _, enabled in
+            if !enabled { isMenuPresented = false }
+        }
+        .onDisappear { menuEvents.stop() }
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.42)
         .help(hasCurrentPreset ? "Save preset" : "Save as preset")
@@ -308,6 +405,11 @@ private struct PresetSaveSplitButton: View {
                 isHovered = hovering
             }
         }
+    }
+
+    private func chooseSaveAs() {
+        isMenuPresented = false
+        onSaveAs()
     }
 }
 
@@ -324,7 +426,9 @@ private struct PresetToolbarButton: View {
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(AppColors.textPrimary.opacity(0.94))
                 .padding(.horizontal, 10)
-                .frame(height: 30)
+                .frame(minWidth: 48, minHeight: 30)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: true)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(isHovered ? AppColors.controlPurpleRaised.opacity(0.72) : AppColors.controlPurple.opacity(0.46))
@@ -667,4 +771,63 @@ private struct OutputLevelBar: View {
         let db = 20 * log10(clamped)
         return CGFloat(min(max((db + 60) / 60, 0), 1))
     }
+}
+
+// Track actual view regions so outside-click dismissal works with either window
+// coordinate orientation and does not steal clicks inside the dropdown.
+private final class PresetMenuEvents: ObservableObject {
+    weak var anchor: NSView?
+    weak var menu: NSView?
+    private var monitor: Any?
+
+    func start(onDismiss: @escaping () -> Void, onSelect: @escaping () -> Void) {
+        stop()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            guard let self else { return event }
+            if event.type == .keyDown {
+                guard event.window === self.anchor?.window else {
+                    onDismiss()
+                    return event
+                }
+                switch event.keyCode {
+                case 53, 48: // Escape / Tab dismiss; let Tab continue navigation.
+                    onDismiss()
+                    return event.keyCode == 48 ? event : nil
+                case 36, 76, 49: // Return / keypad Enter / Space activate the only item.
+                    onSelect()
+                    return nil
+                case 125, 126: // A one-item menu has no alternate selection.
+                    return nil
+                default:
+                    onDismiss()
+                    return event
+                }
+            }
+            let inside = [self.anchor, self.menu].compactMap { $0 }.contains { view in
+                view.window === event.window && view.bounds.contains(view.convert(event.locationInWindow, from: nil))
+            }
+            if !inside { onDismiss() }
+            return event
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+
+    deinit { stop() }
+}
+
+private struct PresetMenuRegion: NSViewRepresentable {
+    let events: PresetMenuEvents
+    let isAnchor: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        if isAnchor { events.anchor = view } else { events.menu = view }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

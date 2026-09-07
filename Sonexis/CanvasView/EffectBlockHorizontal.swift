@@ -60,7 +60,7 @@ struct EffectBlockHorizontal: View {
                                 .tracking(1.2)
                                 .foregroundColor((getEffectEnabled() ? tileStyle.text : disabledText).opacity(0.95))
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .truncationMode(.tail)
                                 .shadow(color: getEffectEnabled() ? tileStyle.fill.opacity(0.4) : .clear, radius: 10)
                         }
                         .overlay(alignment: .topTrailing) {
@@ -132,7 +132,7 @@ struct EffectBlockHorizontal: View {
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundColor(AppColors.textPrimary)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
+                            .truncationMode(.tail)
 
                         Spacer()
                     }

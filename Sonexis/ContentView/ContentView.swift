@@ -126,6 +126,16 @@ struct ContentView: View {
     @State private var showingAudioSettings = false
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
 
+    private var currentPreset: SavedPreset? {
+        presetManager.presets.first { $0.id == currentPresetID }
+    }
+
+    private var isPresetModified: Bool {
+        guard let preset = currentPreset else { return false }
+        guard let current = audioEngine.currentPresetComparisonData else { return false }
+        return current != preset.graph.presetComparisonData
+    }
+
     var body: some View {
         ZStack {
             AppSurfaces.background
@@ -172,12 +182,17 @@ struct ContentView: View {
                                 presetNameInput = ""
                                 showingSaveDialog = true
                             },
-                            hasCurrentPreset: currentPresetID != nil,
+                            hasCurrentPreset: currentPreset != nil,
+                            presetDisplayName: currentPreset?.name,
+                            isPresetModified: isPresetModified,
                             allowSave: !tutorial.isActive || tutorial.step == .buildSave,
                             allowLoad: !tutorial.isActive || tutorial.step == .buildLoad,
                             saveStatusText: $saveStatusText,
                             showingAudioSettings: $showingAudioSettings
                         )
+                        // The dropdown extends beyond the header's layout bounds.
+                        // Set sibling ordering here, above the divider and canvas.
+                        .zIndex(20)
                     }
 
                     Divider()
@@ -204,7 +219,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .frame(minWidth: 800, minHeight: 700)
+            .frame(minWidth: 1100, minHeight: 700)
             .animation(.easeInOut(duration: 0.2), value: selectedThemeID)
             .coordinateSpace(name: "tutorialRoot")
             .onPreferenceChange(TutorialTargetPreferenceKey.self) { value in
@@ -363,13 +378,14 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.7), value: showSetupOverlay)
         .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
             _ = audioEngine.refreshSetupStatus()
+            audioEngine.refreshPresetPluginState()
         }
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
                 presetName: $presetNameInput,
+                errorMessage: presetManager.saveError,
                 onSave: {
                     savePresetAs()
-                    showingSaveDialog = false
                 },
                 onCancel: {
                     showingSaveDialog = false
@@ -402,8 +418,8 @@ struct ContentView: View {
                 tutorial.advance()
             }
         }
-        .alert("Preset Save Failed", isPresented: Binding(
-            get: { presetManager.saveError != nil },
+        .alert("Preset Storage", isPresented: Binding(
+            get: { presetManager.saveError != nil && !showingSaveDialog && !showingLoadDialog },
             set: { if !$0 { presetManager.saveError = nil } }
         )) {
             Button("OK") { presetManager.saveError = nil }
@@ -413,13 +429,18 @@ struct ContentView: View {
     }
 
     private func savePresetAs() {
+        audioEngine.refreshPresetPluginState()
         guard !presetNameInput.isEmpty else { return }
 
         guard let graph = audioEngine.currentGraphSnapshot else {
             // No-op: missing graph snapshot.
             return
         }
-        let preset = presetManager.savePreset(name: presetNameInput, graph: graph)
+        guard let preset = presetManager.savePreset(name: presetNameInput, graph: graph) else {
+            showSaveStatus("Not saved — try again")
+            return
+        }
+        showingSaveDialog = false
         currentPresetID = preset.id
         showSaveStatus("Saved at \(formattedTime())")
         tutorial.advanceIf(.buildSave)
@@ -487,13 +508,17 @@ struct ContentView: View {
     }
 
     private func saveCurrentPreset(overwrite: Bool = false) {
+        audioEngine.refreshPresetPluginState()
         guard let graph = audioEngine.currentGraphSnapshot else {
             // No-op: missing graph snapshot.
             return
         }
 
         if overwrite, let presetID = currentPresetID {
-            presetManager.updatePreset(id: presetID, graph: graph)
+            guard presetManager.updatePreset(id: presetID, graph: graph) else {
+                showSaveStatus("Not saved — try again")
+                return
+            }
             showSaveStatus("Saved at \(formattedTime())")
             tutorial.advanceIf(.buildSave)
             // Update succeeded.
