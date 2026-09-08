@@ -614,14 +614,14 @@ struct TutorialOverlay: View {
         case .buildWiringManual:
             return (
                 title: "Manual Wiring",
-                body: "Switch Wiring to Manual. In Manual mode, you draw the connections yourself.",
+                body: "Switch Wiring to Manual. Your automatic connections become editable wires.",
                 showNext: false,
                 isBasicsComplete: false
             )
         case .buildConnect:
             return (
                 title: "Connect First Chain",
-                body: "Hold Option and drag from Start to Bass Boost. Then drag from Bass Boost to End.",
+                body: "Your chain is already connected. Practice editing a wire: hold Option and drag from Start to Bass Boost to reconnect it.",
                 showNext: false,
                 isBasicsComplete: false
             )

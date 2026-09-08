@@ -79,21 +79,31 @@ Effort descriptions are relative, not delivery commitments. Per-app routing is a
 
 ### UX-04 — Simplify everyday controls · P1
 
-**Change:** Add a compact listening view with source, preset, macro controls, level, and bypass. Keep Edit chain visible. In the canvas, expose manual wiring controls contextually. Move Flow FPS into appearance/performance preferences.
+**Decision — 2026-09-07:** Skip the separate listening screen. The user agrees that preset selection, power, bypass, and a meter do not justify another screen alongside the existing editor. Revisit these controls as a menu-bar popover under UX-08; no implementation is authorized by this decision.
 
-**Acceptance:** Ordinary preset use does not require understanding wiring or dual mono. Advanced controls remain accessible. Switching views preserves the same audio state and does not rebuild an unchanged graph.
+**Remaining ideas:** In the canvas, expose manual wiring controls contextually. Move Flow FPS into appearance/performance preferences. Discuss these separately before implementation.
+
+**Acceptance:** Everyday controls remain accessible without adding a separate listening screen. A future menu-bar popover shares the editor's audio state and does not rebuild an unchanged graph.
 
 ### UX-05 — Discoverable and reversible graph editing · P1
 
 **Observed:** Double-click opens effects; manual connection uses Option-drag. Disconnected tiles are dimmed. Switching to Manual clears `manualConnections`.
 
-**Change:** Add visible connection ports and an edit affordance for selection. Provide a plain “Not connected” explanation and suggested connection action. Preserve manual wiring across mode switches, or convert automatic edges when entering Manual. Record mode changes as undoable graph edits.
+**Change:** Add visible connection ports and an edit affordance for selection. Provide a plain “Not connected” explanation and suggested connection action. Per the user's decision, convert the current automatic edges into manual wires when entering Manual. Do not remember a separate previous manual topology. Record mode changes as undoable graph edits.
 
-**Acceptance:** Users can connect and edit without a tutorial. Manual → Automatic → Manual does not silently lose the prior manual graph. Undo restores topology and audio behavior. Invalid cycles or unsupported graph structures have clear handling. Deleting a connected node produces a predictable, documented result.
+**Acceptance:** Users can connect and edit without a tutorial. Automatic → Manual preserves the current automatic connections and wire gains, including both populated split lanes. Empty lanes pass audio without a generated manual wire. Manual → Automatic resumes position-based routing; switching back converts that current routing. Undo restores topology and audio behavior. Invalid cycles or unsupported graph structures have clear handling. Deleting a connected node produces a predictable, documented result.
 
 **Evidence:** `Sonexis/CanvasView/CanvasView.swift`, `EffectBlockHorizontal.swift`.
 
+**Wiring conversion implemented — 2026-09-07:** Selecting Manual copies the current generated connections, including gain overrides and both populated split lanes, into editable manual wires. Selecting Automatic uses position-based routing as before. Switching back to Manual converts that current automatic routing; no separate remembered manual topology is restored. Menu mode changes record an undo snapshot, and snapshot restoration does not rerun conversion. Tutorial wording now explains that the wires are retained. Debug build and whitespace checks passed; interactive conversion/undo checks remain manual. Other UX-05 affordances remain separate.
+
+**Entering Dual Mono — 2026-09-07:** Per user preference, switching from Stereo to Dual Mono clears all nodes, manual wires, gain overrides, and selection instead of dividing the existing chain by canvas position. The wiring mode remains selected; Automatic generates empty-lane passthrough. This is one undoable graph-mode change. Selecting the already active mode does nothing. Loading a saved split graph or restoring one through undo/session recovery preserves its nodes; clearing applies only to the explicit mode-menu action. Returning to Stereo retains the current behavior.
+
 ### UX-06 — Readability and accessible parameter editing · P1
+
+**Parameter controls implemented — 2026-09-07:** Built-in effect knobs support Shift-drag at one-tenth sensitivity, Option-click reset, a right-click Reset to Default action, and focused arrow-key adjustment (Up/Right increase, Down/Left decrease; Shift uses a finer step). Every knob receives its parameter's canonical default, including individual EQ bands. A subtle focus ring identifies the keyboard target. VoiceOver adjustment and reset actions use the same value setter. Typed numeric entry remains; readouts expose the precision needed for fine steps. Native plugin-owned editors are outside this change.
+
+Drag motion accumulates unrounded deltas, so switching Shift mid-drag does not reinterpret earlier motion or jump the value, and fine integer drags do not stall. Keyboard steps use displayed units; integer knobs always step by one. Values are clamped and non-finite typed values rejected. Debug build and `sh Scripts/test-knob-controls.sh` pass, covering sensitivity/modifier changes, bounds/reversal, integer accumulation, key-step units, typed precision, and invalid values. Pointer/focus/VoiceOver interaction remains a manual verification step.
 
 **Observed:** Effect names use 10-point text with further scaling; several labels use 9–11 points. Knobs have exact numeric entry and accessibility labels/values, but their main adjustment is a drag gesture.
 
@@ -109,13 +119,13 @@ Effort descriptions are relative, not delivery commitments. Per-app routing is a
 
 **Acceptance:** Tutorials can be skipped and reopened. Ending or interrupting a lesson restores prior work. Tutorial advancement depends on successful actions, including successful engine start and preset persistence.
 
-### UX-08 — Menu-bar and background operation · P1
+### UX-08 — Background operation and Dock reopening · P1
 
-**Observed:** `applicationShouldTerminateAfterLastWindowClosed` returns true.
+**Original issue:** Closing the last window terminated the app and stopped processing.
 
-**Change:** Offer background operation with menu-bar preset selection, bypass, engine status, Open editor, and explicit Quit. Explain the preference once. Define behavior for closing the editor, quitting, login launch, and restoring processing separately.
+**Decision — 2026-09-08:** Keep the app running when the editor closes; reopen through the Dock. No menu-bar icon or close-behavior preference for this pass. A separate quick-control surface is unnecessary for the agreed workflow. Explicit Quit/Command-Q still exits and stops processing. Login launch remains separate.
 
-**Acceptance:** Closing the editor follows the selected preference. Quit reliably releases capture and restores normal output. The menu-bar state stays consistent with the editor. No extra engine is created by opening another view/window.
+**Acceptance:** The red close button and Command-W hide the editor while processing continues. Clicking the Dock icon reopens the same editor, including from a minimized state, without creating another engine. Quit reliably releases capture and restores normal output. Workspace persistence runs on hide and quit.
 
 ## 5. Engine and recording backlog
 
@@ -140,6 +150,10 @@ Effort descriptions are relative, not delivery commitments. Per-app routing is a
 **Evidence:** `Sonexis/ProcessTapEngine/ProcessTapDSPApp.swift`, `Sonexis/AudioEngine/ProcessTapBackend.swift`.
 
 ### ENG-03 — Latency profiles and telemetry · P1
+
+**Decision — 2026-09-08:** User is satisfied with the current 4,096-frame buffer and does not consider latency a bottleneck. Defer buffer reduction and latency-profile implementation. Retain the investigation for future reference; no smaller-buffer trial is planned now.
+
+**Investigation — 2026-09-08:** See [latency investigation](LATENCY-INVESTIGATION.md). Confirmed the 4,096-frame target and measured synthetic stall tolerance using the actual C ring implementation. A 2,048-frame target is a candidate for an opt-in trial, not a validated default. The worker does not wait for a full 1,024-frame chunk. Hardware loopback, scheduling/DSP timing, and live stability checks remain outstanding. No product latency setting was changed.
 
 **Observed:** Playback reservoir target is 4,096 frames: 85.3 ms at 48 kHz or 92.9 ms at 44.1 kHz. Actual delay includes device, scheduling, effect, and other buffering contributions. Two seconds of ring capacity is capacity, not a claim of normal two-second latency.
 
@@ -421,7 +435,7 @@ For each item: explain the current issue and user impact; agree on the concrete 
 Decisions requiring product/engineering review:
 
 - Whether the default launch surface is compact listening or the restored editor.
-- Whether closing the window keeps processing by default or by opt-in.
+- Closing the window keeps processing; Dock reopens it and explicit Quit exits (resolved 2026-09-08).
 - Exact preset-copy versus linked-preset semantics; recommendation: copies first.
 - Whether global mode and selected-app mode remain exclusive after MVP.
 - App grouping confidence/fallback rules and supported browser behavior.
@@ -442,7 +456,9 @@ Use one row per active item; extend as work begins.
 | UX-01 identity | Codex | Implemented | Working tree | Saved-content comparison checks and Debug build passed | Manual header/plugin editor verification |
 | ENG-02 | Unassigned | Deferred by user | — | Recovery-path inspection | Revisit after current fixes |
 | REC-01 | Codex | Recording correctness implemented; live verification pending | Working tree | WAV writer regression checks and Debug build passed | Live makeup/protection comparison and device-change check |
-| ENG-01 | Unassigned | Proposed | — | Explicit zero-fill transition | Capture before/after waveform |
+| ENG-01 | Codex | Forced dropout and shared-state double render fixed | Working tree | Transition waveform checks and offline engine/recording integration passed | Live listening; tail preservation and latency alignment remain separate |
+| UX-02 | Codex | Workspace recovery implemented | Working tree | Persistence/recovery regression tests and Debug build passed | Manual quit/relaunch, tutorial and native plugin-editor checks; first-launch redesign remains separate |
+| UX-08 | Codex | Background operation and Dock reopening implemented | Working tree | Window-controller tests and Debug build passed | Live close/reopen/quit audio check |
 | APP-01 A | Unassigned | Deferred | — | API feasibility only | Revisit after agreed current-app fixes |
 
 Completion note template: item ID; implementation summary; changed behavior; tests/measurements; remaining limitations; revision/PR; reviewer; completion date.
@@ -565,3 +581,49 @@ Sample-rate or channel-count changes stop recording with an explanation, preserv
 Validation: `sh Scripts/test-recording.sh` passed using the actual writer and temporary WAV files. Coverage includes exact stereo sample values/order, variable blocks, stop/drain ordering, post-stop rejection, bounded writer overload, oversized-block recovery, format changes preserving queued audio, injected disk failure, and an independent mono session. Debug macOS build and diff whitespace checks passed. Source inspection verifies the single final-output tap covers all positive-length output paths. Live playback/WAV comparison with makeup and protection, device switching, and visual alert verification remain manual checks; no physical-output listening test is claimed.
 
 Remaining REC-01 polish: elapsed-time display and convenient Reveal in Finder for successful recordings. These are separate from the recording-correctness fix and should not expand the existing toolbar without a design review.
+
+### ENG-01 graph-edit dropout fix — 2026-09-07
+
+Remove the graph-change path that inserted 20 ms of zeros followed by a 120 ms fade-in. Replace it with a worker-owned, five-millisecond smoothstep ramp from each channel's last emitted sample into the newly rendered output. The weights sum to one, so the ramp stays between its anchor and the current new sample instead of boosting correlated signals. There is no additional buffering delay. This is a short boundary-smoothing ramp, not a full old/new graph crossfade; it can briefly change the waveform near an edit.
+
+Automatic, manual, split, global bypass, and reconfiguration output share this transition stage before final makeup/protection and recording. The identity includes routing mode and auto-connect flags, in addition to the existing topology/enabled-state signature. Rapid edits restart from the actual last emitted sample. Sample-rate/channel changes discard incompatible history; starting a new engine session resets history before its worker starts. Unchanged audio passes through without modification.
+
+Remove the separate 200 ms automatic/manual transition that rendered both graphs against shared effect instances and summed them with equal-power weights. Only the selected graph renders now. Existing per-node DSP state remains under its existing ownership/reset rules; this transition does not create a second stateful render or reset unchanged effects itself.
+
+Validation: Debug macOS build passed. `sh Scripts/test-graph-transitions.sh` checks unchanged samples, same-signal edits without dips/boosts at 44.1/48/96 kHz, bounded polarity changes, arbitrary block partitions, rapid edits, mode/bypass changes, format/reset isolation, and sustained-tone output without an inserted silent run. `sh Scripts/test-graph-transition-integration.sh` links the current Debug app and exercises real offline DSP through add/remove/reorder/rewire, global bypass, split/manual/automatic routing, and recording. Neutral audio remains continuous, saved WAV samples exactly match final emitted samples, and a shared tremolo advances exactly once per block in both directions of an automatic/manual switch. Tests use temporary files and never start live capture/playback.
+
+Remaining limits: no claim of a completed live music/plugin listening test. Removing delay/reverb still follows existing tail disposal behavior; this fix does not preserve those tails or align differing plugin latencies. Preparation of compiled graphs outside the worker, independent old/new effect state for longer crossfades, and asynchronous plugin-readiness transitions remain follow-up engine work. The short ramp bounds its own blend; it does not normalize a deliberately louder new chain or prevent all possible plugin-generated transients.
+
+### UX-02 automatic workspace recovery — 2026-09-07
+
+Authorized scope: restore the last working canvas on relaunch, including unsaved changes, independently of named presets. First-launch redesign remains separate. Following the user's launch-screen preference, a recovered session starts on Home with its workspace queued; entering Build restores that canvas and preset identity. Automatic tutorial startup is skipped for recovered sessions. Capture and recording remain stopped; their running states are not serialized.
+
+The versioned `workspace.json` in Application Support/Sonexis contains the full graph snapshot (node IDs, positions, parameters, enabled states, plugin state, wiring, split lanes, and gain overrides), active preset ID, effects-bypass preference, input trim, output makeup, and output protection. Preset identity resolves against the existing library. Modified is recomputed with the existing saved-content comparison; the preset itself is never overwritten by autosave. If that preset is missing, the recovered graph remains available without a preset name. Empty and never-named workspaces are valid recovery states.
+
+Canvas edits publish their snapshot before the existing audio-apply debounce. Workspace writes are debounced by 500 ms, encoded and atomically written on a serial storage queue, and skipped when unchanged. Normal window closure and application termination capture/flush the latest pending workspace. Native plugin state refreshes through the existing two-second timer and at shutdown. Abrupt termination can still lose edits inside the debounce interval or plugin changes since the last refresh; this is recovery storage, not a guarantee against every crash or disk failure.
+
+Each successful update keeps the previous valid workspace as `workspace.backup.json`. Unreadable primary data is copied into Workspace Recovery before restoring a valid backup. Unsupported versions and unrecoverable files pause autosave and offer Retry Restore, Show Recovery Files, and Start Fresh. Start Fresh archives both originals before clearing them; preservation failure leaves autosave blocked. Incomplete graph objects and duplicate identifiers are rejected rather than silently becoming empty canvases. Recovery never writes the named preset library.
+
+Active tutorials suspend workspace capture and flush the pending user workspace before demo edits begin. Skipping restores the prior canvas; a first-launch tutorial also has an explicit empty prior canvas. Existing tutorial completion behavior remains: if a lesson intentionally keeps its result, that result becomes the working canvas after the tutorial ends.
+
+Validation: `sh Scripts/test-workspace-persistence.sh` passed with temporary directories and the actual models/store. Coverage includes graph/layout/settings/identity round-trip, Modified comparison, preset-file isolation, unchanged-write suppression, debounce and immediate-quit flushing, corrupted-primary backup recovery and archival, future-version preservation, explicit fresh start, incomplete/duplicate graphs, injected disk failure and retry, anonymous/empty workspaces, split/plugin-state data, and archival failure. Debug macOS build passed. Live quit/relaunch UI checks, native plugin editor restoration, and tutorial flow verification remain manual checks. Undo history, selection, viewport zoom/pan, and first-launch design are outside this change.
+
+### Empty Manual canvas audio — 2026-09-07
+
+An empty Manual canvas (or empty split lane) passes input through without creating a visible Start → End wire. Automatic → Manual converts only populated chains; empty lanes receive no generated manual connections. The engine passthrough applies only when both nodes and connections are empty. Once an effect is present, manual wiring determines the output, so disconnected effects do not create an implicit dry path. Explicit Start → End wires still honor their gain. Existing graph limiting and final output protection remain in the signal path. Clearing the canvas returns to audible passthrough.
+
+Validation covers empty manual passthrough, disconnected effects producing no routed output, explicit dry-wire gain, and empty split lanes through the offline engine integration test. Live visual confirmation remains a manual check.
+
+### Disconnected effect styling trial — 2026-09-07
+
+User explicitly prefers no added labels or hover text for disconnected effects. Trial a subtle amber outline/glow on tiles outside the current signal path, retaining the existing dimming and separate selection outline. The overlay does not receive pointer events or change layout. This supersedes the proposed disconnected-state text/hint for this pass. Visual feedback from the user will determine whether to keep or tune the glow.
+
+### Wire animation after menu dismissal — 2026-09-07
+
+Remove the canvas's application-wide window key/resign subscriptions. Popup-window focus events could mark the canvas inactive even though its own window stayed focused; choosing the already-selected Stereo option does not emit a graph-mode change, so the existing mode-change refresh did not repair this. Retain the window-scoped WindowFocusReader as the focus source. Signal-flow refreshes now use that canvas focus state instead of the application's currently key popup/plugin window. Graph routing and mode selection are unchanged. Debug build/whitespace verification passed; manual repro is selecting Stereo again while already in Stereo with Manual wiring and audio running, then checking arrows continue after menu dismissal.
+
+### Background editor lifecycle — 2026-09-08
+
+The app now has a single SwiftUI editor Window. A retained window controller intercepts ordinary close requests and orders the editor out instead of destroying its content and StateObjects. The existing SwiftUI window delegate receives all other callbacks through forwarding. Dock reopening brings that same window forward, deminiaturizing when necessary, even if a plugin window is visible. Explicit termination enables the normal close path and retains the existing engine shutdown/recording drain. Hiding refreshes plugin state and flushes workspace storage; it does not stop the engine or add a menu-bar item.
+
+Validation: Debug build and `sh Scripts/test-background-window.sh` passed. Tests use non-presenting AppKit test windows and verify hide versus quit, content/window identity across repeated reopening, workspace-hide notifications, minimized reopening, delegate forwarding, and repeated attachment/detachment. No live capture or real user workspace was used by these tests. Live red-close/Command-W, Dock-click, and Command-Q playback verification remains a manual check. This supersedes the earlier menu-bar and optional-close-preference proposal.

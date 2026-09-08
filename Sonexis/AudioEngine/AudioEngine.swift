@@ -1038,6 +1038,7 @@ class AudioEngine: ObservableObject {
     @Published var pendingGraphLoadRequest: GraphLoadRequest?
 
     var currentGraphSnapshot: GraphSnapshot?
+    @Published var graphSnapshotRevision = 0
     @Published var currentPresetComparisonData: Data?
 
     var deviceListMonitorTimer: DispatchSourceTimer?
@@ -1318,17 +1319,7 @@ class AudioEngine: ObservableObject {
     var graphOutputBuffers: [UUID: [[Float]]] = [:]
     var graphIndegree: [UUID: Int] = [:]
     var graphQueue: [UUID] = []
-    var graphTransitionSamplesRemaining: Int = 0
-    var graphTransitionSamplesTotal: Int = 0
-    var graphTransitionFromManual: Bool = false
-    var lastUseManualGraph: Bool = false
-    var lastGraphSignature: Int = 0
-    var graphChangeSamplesRemaining: Int = 0
-    var graphChangeSamplesTotal: Int = 0
-    var graphChangeFadeOutSamplesTotal: Int = 0
-    var graphChangeFadeInSamplesTotal: Int = 0
-    var graphChangePrevOutput: [[Float]] = []
-    var lastOutputBuffer: [[Float]] = []
+    let graphOutputTransition = GraphOutputTransition()
     var dspFaultCountsByEffect: [EffectType: Int] = [:]
     var dspFaultCountsByNode: [UUID: Int] = [:]
 

@@ -2,9 +2,21 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var processTapSmokeAudioEngine: AudioEngine?
+    let editorWindowController = EditorWindowController()
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return true
+        return false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Handled here even when another Sonexis window (such as a plugin
+        // editor) is visible. Never create another engine on a Dock click.
+        return !editorWindowController.reopen()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        editorWindowController.isQuitting = true
+        return .terminateNow
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -45,11 +57,14 @@ struct SonexisApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        Window("Sonexis", id: "editor") {
             if ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" {
                 EmptyView()
             } else {
                 ContentView()
+                    .background(EditorWindowReader { window in
+                        appDelegate.editorWindowController.attach(to: window)
+                    })
             }
         }
         .windowStyle(.hiddenTitleBar)

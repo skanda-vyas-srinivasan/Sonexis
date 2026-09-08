@@ -27,65 +27,6 @@ extension AudioEngine {
         }
     }
 
-    private func ensureGraphOutputBuffer(_ buffer: inout [[Float]], channelCount: Int, frameLength: Int) {
-        if buffer.count != channelCount {
-            buffer = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
-            return
-        }
-        let currentLength = buffer.first?.count ?? 0
-        guard currentLength < frameLength else { return }
-        let extra = frameLength - currentLength
-        for index in 0..<channelCount {
-            buffer[index].append(contentsOf: repeatElement(0, count: extra))
-        }
-    }
-
-    private func applyGraphChangeCrossfade(
-        _ processed: inout [[Float]],
-        frameLength: Int,
-        channelCount: Int,
-        sampleRate: Double,
-        signature: Int
-    ) {
-        if lastGraphSignature != signature {
-            if lastGraphSignature != 0 {
-                graphChangeFadeOutSamplesTotal = max(1, Int(sampleRate * 0.02))
-                graphChangeFadeInSamplesTotal = max(1, Int(sampleRate * 0.12))
-                graphChangeSamplesTotal = graphChangeFadeOutSamplesTotal + graphChangeFadeInSamplesTotal
-                graphChangeSamplesRemaining = graphChangeSamplesTotal
-            }
-            lastGraphSignature = signature
-        }
-
-        if graphChangeSamplesRemaining > 0 {
-            let total = max(graphChangeSamplesTotal, 1)
-            let fadeOutTotal = max(graphChangeFadeOutSamplesTotal, 1)
-            let fadeInTotal = max(graphChangeFadeInSamplesTotal, 1)
-            let start = max(0, total - graphChangeSamplesRemaining)
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    let pos = min(total, start + frame)
-                    if pos < fadeOutTotal {
-                        processed[channel][frame] = 0
-                    } else {
-                        let fadeInPosition = min(fadeInTotal, pos - fadeOutTotal)
-                        let t = Double(fadeInPosition) / Double(fadeInTotal)
-                        let gain = Float(sin(t * 0.5 * Double.pi))
-                        processed[channel][frame] *= gain
-                    }
-                }
-            }
-            graphChangeSamplesRemaining = max(0, graphChangeSamplesRemaining - frameLength)
-        }
-
-        ensureGraphOutputBuffer(&lastOutputBuffer, channelCount: channelCount, frameLength: frameLength)
-        for channel in 0..<channelCount {
-            for frame in 0..<frameLength {
-                lastOutputBuffer[channel][frame] = processed[channel][frame]
-            }
-        }
-    }
-
     func interleaveBuffer(_ buffer: [[Float]], frameLength: Int, channelCount: Int) -> [Float] {
         ensureInterleavedCapacity(frameLength: frameLength, channelCount: channelCount)
         for frame in 0..<frameLength {
@@ -97,10 +38,20 @@ extension AudioEngine {
     }
 
     func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
-        guard let channelData = buffer.floatChannelData else { return [] }
-
-        // Lock-free: snapshot has its own lock, pendingResets has its own lock
         let snapshot = currentProcessingSnapshot()
+        var output = renderGraphAudio(from: buffer, snapshot: snapshot)
+        graphOutputTransition.process(&output, frames: Int(buffer.frameLength),
+            channels: Int(buffer.format.channelCount), sampleRate: buffer.format.sampleRate,
+            identity: GraphOutputTransition.Identity(signature: snapshot.graphSignature,
+                manual: snapshot.useManualGraph, split: snapshot.useSplitGraph,
+                bypass: !snapshot.processingEnabled || snapshot.isReconfiguring,
+                autoConnect: snapshot.manualGraphAutoConnectEnd,
+                splitAutoConnect: snapshot.splitAutoConnectEnd))
+        return output
+    }
+
+    private func renderGraphAudio(from buffer: AVAudioPCMBuffer, snapshot: ProcessingSnapshot) -> [Float] {
+        guard let channelData = buffer.floatChannelData else { return [] }
         applyPendingResets()
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
@@ -138,28 +89,20 @@ extension AudioEngine {
 
             let autoConnect = snapshot.splitAutoConnectEnd
             if channelCount < 2 {
-            let (processed, levelSnapshot) = processGraph(
-                inputBuffer: inputBuffer,
-                channelCount: channelCount,
-                sampleRate: sampleRate,
-                nodes: snapshot.splitLeftNodes,
+                let (processed, levelSnapshot) = processGraph(
+                    inputBuffer: inputBuffer,
+                    channelCount: channelCount,
+                    sampleRate: sampleRate,
+                    nodes: snapshot.splitLeftNodes,
                     connections: snapshot.splitLeftConnections,
                     startID: snapshot.splitLeftStartID,
                     endID: snapshot.splitLeftEndID,
-                autoConnectEnd: autoConnect,
-                snapshot: snapshot
-            )
-            var output = processed
-            applyGraphChangeCrossfade(
-                &output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate,
-                signature: snapshot.graphSignature
-            )
-            updateEffectLevelsIfNeeded(levelSnapshot)
-            return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
-        }
+                    autoConnectEnd: autoConnect,
+                    snapshot: snapshot
+                )
+                updateEffectLevelsIfNeeded(levelSnapshot)
+                return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
+            }
 
             let leftInput = [inputBuffer[0]]
             let rightInput = [inputBuffer[1]]
@@ -201,15 +144,7 @@ extension AudioEngine {
             }
             updateEffectLevelsIfNeeded(mergedSnapshot)
 
-            var output = combined
-            applyGraphChangeCrossfade(
-                &output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate,
-                signature: snapshot.graphSignature
-            )
-            return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
+            return interleaveBuffer(combined, frameLength: frameLength, channelCount: channelCount)
         }
 
         func renderManualGraph(inputBuffer: [[Float]]) -> ([[Float]], [UUID: Float]) {
@@ -272,55 +207,6 @@ extension AudioEngine {
         }
 
         let useManual = snapshot.useManualGraph
-        if lastUseManualGraph != useManual {
-            graphTransitionFromManual = lastUseManualGraph
-            graphTransitionSamplesTotal = max(1, Int(sampleRate * 0.2))
-            graphTransitionSamplesRemaining = graphTransitionSamplesTotal
-            lastUseManualGraph = useManual
-        }
-
-        if graphTransitionSamplesRemaining > 0 {
-            let inputBuffer = deinterleavedInput(
-                channelData: channelData,
-                frameLength: frameLength,
-                channelCount: channelCount
-            )
-            let (manualProcessed, manualLevels) = renderManualGraph(inputBuffer: inputBuffer)
-            let (autoProcessed, autoLevels) = renderAutomaticGraph()
-
-            let fromProcessed = graphTransitionFromManual ? manualProcessed : autoProcessed
-            let toProcessed = graphTransitionFromManual ? autoProcessed : manualProcessed
-            let targetLevels = useManual ? manualLevels : autoLevels
-
-            var mixed = fromProcessed
-            let total = max(graphTransitionSamplesTotal, 1)
-            let start = total - graphTransitionSamplesRemaining
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    let t = min(1.0, Double(start + frame) / Double(total))
-                    let fadeOut = Float(cos(t * 0.5 * Double.pi))
-                    let fadeIn = Float(sin(t * 0.5 * Double.pi))
-                    mixed[channel][frame] = fromProcessed[channel][frame] * fadeOut
-                        + toProcessed[channel][frame] * fadeIn
-                }
-            }
-
-            graphTransitionSamplesRemaining = max(0, graphTransitionSamplesRemaining - frameLength)
-            if snapshot.limiterEnabled {
-                mixed = applySoftLimiter(mixed)
-            }
-            var output = mixed
-            applyGraphChangeCrossfade(
-                &output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate,
-                signature: snapshot.graphSignature
-            )
-            updateEffectLevelsIfNeeded(targetLevels)
-            return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
-        }
-
         if useManual {
             let inputBuffer = deinterleavedInput(
                 channelData: channelData,
@@ -328,29 +214,13 @@ extension AudioEngine {
                 channelCount: channelCount
             )
             let (processed, levelSnapshot) = renderManualGraph(inputBuffer: inputBuffer)
-            var output = processed
-            applyGraphChangeCrossfade(
-                &output,
-                frameLength: frameLength,
-                channelCount: channelCount,
-                sampleRate: sampleRate,
-                signature: snapshot.graphSignature
-            )
             updateEffectLevelsIfNeeded(levelSnapshot)
-            return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
+            return interleaveBuffer(processed, frameLength: frameLength, channelCount: channelCount)
         }
 
         let (processedAudio, levelSnapshot) = renderAutomaticGraph()
-        var output = processedAudio
-        applyGraphChangeCrossfade(
-            &output,
-            frameLength: frameLength,
-            channelCount: channelCount,
-            sampleRate: sampleRate,
-            signature: snapshot.graphSignature
-        )
         updateEffectLevelsIfNeeded(levelSnapshot)
-        return interleaveBuffer(output, frameLength: frameLength, channelCount: channelCount)
+        return interleaveBuffer(processedAudio, frameLength: frameLength, channelCount: channelCount)
     }
 
     func ensureInterleavedCapacity(frameLength: Int, channelCount: Int) {

@@ -104,6 +104,7 @@ private final class AudioSettingsOutsideClickCoordinator: ObservableObject {
 struct ContentView: View {
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
+    @StateObject private var workspaceStore = WorkspaceStore()
     @StateObject private var pluginManager = PluginManager()
     @StateObject private var tutorial = TutorialController()
     @StateObject private var audioSettingsOutsideClick = AudioSettingsOutsideClickCoordinator()
@@ -124,6 +125,8 @@ struct ContentView: View {
     @State private var tutorialRestorePresetID: UUID?
     @State private var homeTransitionRipple: HomeTransitionRipple?
     @State private var showingAudioSettings = false
+    @State private var workspaceReady = false
+    @State private var didRestoreWorkspace = false
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
 
     private var currentPreset: SavedPreset? {
@@ -278,10 +281,13 @@ struct ContentView: View {
         .onAppear {
             guard !hasShownSetupThisSession else { return }
             hasShownSetupThisSession = true
+            restoreWorkspace()
             if !audioEngine.setupReadyForCurrentBackend {
                 showSetupOverlay = true
             }
-            tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
+            if !didRestoreWorkspace && !workspaceStore.recoveryRequired {
+                tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
+            }
         }
         .onChange(of: activeScreen) { newValue in
             if newValue != .beginner {
@@ -303,12 +309,19 @@ struct ContentView: View {
         }
         .onDisappear {
             audioSettingsOutsideClick.stop()
+            audioEngine.refreshPresetPluginState()
+            captureWorkspace()
+            workspaceStore.flush()
         }
         .onChange(of: tutorial.step) { newStep in
             if newStep == .welcome || newStep == .advancedIntro {
+                // Finish the user's pending autosave before the tutorial starts
+                // changing the graph. Tutorial snapshots are never autosaved.
+                workspaceStore.flush()
                 // Save current state for restoration when tutorial ends
                 if tutorialRestoreSnapshot == nil {
-                    tutorialRestoreSnapshot = audioEngine.currentGraphSnapshot
+                    tutorialRestoreSnapshot = audioEngine.pendingGraphLoadRequest?.snapshot
+                        ?? audioEngine.currentGraphSnapshot ?? emptyWorkspaceGraph()
                     tutorialRestorePresetID = currentPresetID
                 }
 
@@ -319,21 +332,7 @@ struct ContentView: View {
 
                 if newStep == .welcome {
                     // Start Basics from a clean, predictable canvas.
-                    let resetSnapshot = GraphSnapshot(
-                        graphMode: .single,
-                        wiringMode: .automatic,
-                        autoConnectEnd: false,
-                        nodes: [],
-                        connections: [],
-                        autoGainOverrides: [],
-                        startNodeID: UUID(),
-                        endNodeID: UUID(),
-                        leftStartNodeID: UUID(),
-                        leftEndNodeID: UUID(),
-                        rightStartNodeID: UUID(),
-                        rightEndNodeID: UUID(),
-                        hasNodeParameters: true
-                    )
+                    let resetSnapshot = emptyWorkspaceGraph()
 
                     lastGraphSnapshot = nil
                     currentPresetID = nil
@@ -369,7 +368,9 @@ struct ContentView: View {
         }
         .onChange(of: showSetupOverlay) { isVisible in
             if !isVisible {
-                tutorial.startIfNeeded(isSetupVisible: false)
+                if !didRestoreWorkspace && !workspaceStore.recoveryRequired {
+                    tutorial.startIfNeeded(isSetupVisible: false)
+                }
                 if tutorial.step == .advancedIntro {
                     ensureTutorialEngineRunningIfPossible()
                 }
@@ -379,6 +380,23 @@ struct ContentView: View {
         .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
             _ = audioEngine.refreshSetupStatus()
             audioEngine.refreshPresetPluginState()
+            captureWorkspace()
+        }
+        .onReceive(audioEngine.$graphSnapshotRevision) { _ in captureWorkspace() }
+        .onChange(of: currentPresetID) { _ in captureWorkspace() }
+        .onChange(of: audioEngine.processingEnabled) { _ in captureWorkspace() }
+        .onChange(of: audioEngine.processTapInputTrimDB) { _ in captureWorkspace() }
+        .onChange(of: audioEngine.processTapOutputMakeupDB) { _ in captureWorkspace() }
+        .onChange(of: audioEngine.processTapOutputCeilingEnabled) { _ in captureWorkspace() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            audioEngine.refreshPresetPluginState()
+            captureWorkspace()
+            workspaceStore.flush()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sonexisEditorWillHide)) { _ in
+            audioEngine.refreshPresetPluginState()
+            captureWorkspace()
+            workspaceStore.flush()
         }
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
@@ -426,6 +444,66 @@ struct ContentView: View {
         } message: {
             Text(presetManager.saveError ?? "")
         }
+        .alert("Workspace Recovery", isPresented: Binding(
+            get: { workspaceStore.issue != nil },
+            set: { if !$0 { workspaceStore.issue = nil } }
+        )) {
+            if workspaceStore.recoveryRequired {
+                Button("Retry Restore") {
+                    DispatchQueue.main.async { restoreWorkspace() }
+                }
+                Button("Start Fresh") {
+                    DispatchQueue.main.async {
+                        if workspaceStore.startFresh() {
+                            workspaceReady = true
+                            activeScreen = .beginner
+                            captureWorkspace()
+                        }
+                    }
+                }
+            }
+            Button("Show Recovery Files") {
+                NSWorkspace.shared.open(workspaceStore.directory)
+            }
+            Button("OK", role: .cancel) { workspaceStore.issue = nil }
+        } message: {
+            Text(workspaceStore.issue ?? "")
+        }
+    }
+
+    private func emptyWorkspaceGraph() -> GraphSnapshot {
+        GraphSnapshot(graphMode: .single, wiringMode: .automatic, nodes: [], connections: [],
+            startNodeID: UUID(), endNodeID: UUID(), leftStartNodeID: UUID(), leftEndNodeID: UUID(),
+            rightStartNodeID: UUID(), rightEndNodeID: UUID())
+    }
+
+    private func restoreWorkspace() {
+        if let snapshot = workspaceStore.restore() {
+            // Restore bypass/gain preferences, never capture or recording state.
+            audioEngine.processTapInputTrimDB = snapshot.inputTrimDB
+            audioEngine.processTapOutputMakeupDB = snapshot.outputMakeupDB
+            audioEngine.processTapOutputCeilingEnabled = snapshot.outputCeilingEnabled
+            audioEngine.processingEnabled = snapshot.effectsEnabled
+            currentPresetID = presetManager.presets.contains(where: { $0.id == snapshot.presetID })
+                ? snapshot.presetID : nil
+            lastGraphSnapshot = snapshot.graph
+            skipRestoreOnEnter = true
+            didRestoreWorkspace = true
+            // Keep Home visible; Canvas consumes the pending workspace when
+            // the user enters Build. Preserve audioAndVisual for that first entry.
+            audioEngine.requestGraphLoad(snapshot.graph, mode: .audioAndVisual, reason: "workspace recovery")
+        }
+        workspaceReady = true
+    }
+
+    private func captureWorkspace() {
+        guard workspaceReady, !tutorial.isActive, tutorialRestoreSnapshot == nil,
+              let graph = audioEngine.pendingGraphLoadRequest?.snapshot ?? audioEngine.currentGraphSnapshot else { return }
+        workspaceStore.schedule(WorkspaceSnapshot(graph: graph, presetID: currentPresetID,
+            inputTrimDB: audioEngine.processTapInputTrimDB,
+            outputMakeupDB: audioEngine.processTapOutputMakeupDB,
+            outputCeilingEnabled: audioEngine.processTapOutputCeilingEnabled,
+            effectsEnabled: audioEngine.processingEnabled))
     }
 
     private func savePresetAs() {
@@ -482,6 +560,8 @@ struct ContentView: View {
                     mode: .visualOnly,
                     reason: "screen navigation"
                 )
+            } else if audioEngine.currentGraphSnapshot == nil && audioEngine.pendingGraphLoadRequest == nil {
+                audioEngine.requestGraphLoad(emptyWorkspaceGraph(), reason: "new workspace")
             }
         }
 

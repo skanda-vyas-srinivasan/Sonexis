@@ -43,6 +43,14 @@ struct EffectBlockHorizontal: View {
                             style: tileStyle,
                             disabledFill: tileDisabled
                         )
+                        .overlay {
+                            if !isWired {
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .stroke(AppColors.warning.opacity(0.9), lineWidth: 1.5)
+                                    .shadow(color: AppColors.warning.opacity(0.65), radius: 8)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                         .overlay(
                             selectionIndicator
                         )

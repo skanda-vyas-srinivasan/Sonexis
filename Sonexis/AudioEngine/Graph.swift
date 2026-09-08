@@ -41,6 +41,13 @@ extension AudioEngine {
             return (inputBuffer, [:])
         }
 
+        // An empty canvas/lane stays audible without a visible bypass wire.
+        // Explicit wires still honor their gains; disconnected effects do not
+        // qualify for this fallback and continue to require manual routing.
+        if nodes.isEmpty && connections.isEmpty {
+            return (snapshot.limiterEnabled ? applySoftLimiter(inputBuffer) : inputBuffer, [:])
+        }
+
         // Clear and reuse pre-allocated scratch buffers (avoids allocation)
         for key in graphOutEdges.keys { graphOutEdges[key]?.removeAll(keepingCapacity: true) }
         for key in graphInEdges.keys { graphInEdges[key]?.removeAll(keepingCapacity: true) }

@@ -36,6 +36,7 @@ extension AudioEngine {
             configuration: .productBaseline,
             audioProcessor: self
         )
+        graphOutputTransition.reset() // No processing worker is running yet.
         processTapEngine = engine
         resetOutputMeter()
         resetProcessTapInputMeter()

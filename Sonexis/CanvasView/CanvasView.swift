@@ -201,10 +201,10 @@ struct CanvasView: View {
         HStack(spacing: 10) {
             Menu {
                 Button("Stereo") {
-                    graphMode = .single
+                    changeGraphMode(to: .single)
                 }
                 Button("Dual Mono") {
-                    graphMode = .split
+                    changeGraphMode(to: .split)
                 }
             } label: {
                 CanvasToolbarMenuLabel(
@@ -248,10 +248,10 @@ struct CanvasView: View {
 
             Menu {
                 Button("Automatic") {
-                    wiringMode = .automatic
+                    changeWiringMode(to: .automatic)
                 }
                 Button("Manual") {
-                    wiringMode = .manual
+                    changeWiringMode(to: .manual)
                 }
             } label: {
                 CanvasToolbarMenuLabel(
@@ -280,9 +280,6 @@ struct CanvasView: View {
                     activeConnectionFromID = nil
                     activeConnectionPoint = .zero
                     isOptionHeld = false
-                } else if newMode == .manual {
-                    // Clear all wiring when switching to manual
-                    manualConnections.removeAll()
                 }
                 applyChainToEngine()
                 updateCursor()
@@ -1119,12 +1116,6 @@ struct CanvasView: View {
         .onChange(of: scenePhase) { phase in
             updateSignalFlowVisibility(scenePhase: phase)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            updateFocusState(isKeyWindow: true)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
-            updateFocusState(isKeyWindow: false)
-        }
         .onReceive(audioEngine.$pendingGraphLoadRequest) { request in
             guard let request else { return }
             DispatchQueue.main.async {
@@ -1137,8 +1128,9 @@ struct CanvasView: View {
             }
         }
         .onReceive(audioEngine.$signalFlowToken) { _ in
-            let keyWindow = NSApp.keyWindow?.isKeyWindow ?? isWindowKey
-            updateFocusState(isKeyWindow: keyWindow)
+            // WindowFocusReader tracks this canvas's window. A popup or plugin
+            // window becoming/resigning key must not overwrite that state.
+            updateSignalFlowVisibility()
         }
         .onReceive(audioEngine.$pluginStatusToken) { token in
             guard pluginStatusToken != token else { return }
@@ -1422,6 +1414,9 @@ struct CanvasView: View {
         reason: String = "graph edit",
         forceAudioApply: Bool = false
     ) {
+        // Publish the latest workspace immediately; quitting before the audio
+        // apply debounce fires must not lose the final canvas edit.
+        audioEngine.updateGraphSnapshot(currentGraphSnapshot())
         if forceAudioApply {
             cancelPendingAudioGraphApply()
             performChainApplyToEngine(reason: reason, forceAudioApply: true)
@@ -1839,6 +1834,37 @@ struct CanvasView: View {
         return connections.map { connection in
             "\(name(for: connection.fromNodeId))→\(name(for: connection.toNodeId))"
         }
+    }
+
+    private func changeGraphMode(to mode: GraphMode) {
+        guard graphMode != mode else { return }
+        recordUndoSnapshot()
+        if mode == .split {
+            // Enter Dual Mono with an empty workspace instead of assigning
+            // the stereo chain to channels based on canvas positions.
+            clearGraphContents()
+        }
+        graphMode = mode
+    }
+
+    private func changeWiringMode(to mode: WiringMode) {
+        guard wiringMode != mode else { return }
+        recordUndoSnapshot()
+        if mode == .manual {
+            // Materialize the currently generated edges, including gain overrides
+            // and both split lanes, before leaving Automatic.
+            manualConnections = chainPath(for: .left).isEmpty ? [] : autoConnections(for: .left)
+            if graphMode == .split {
+                if !chainPath(for: .right).isEmpty {
+                    manualConnections += autoConnections(for: .right)
+                }
+            }
+        }
+        selectedWireID = nil
+        selectedAutoWire = nil
+        activeConnectionFromID = nil
+        activeConnectionPoint = .zero
+        wiringMode = mode
     }
 
     private func autoConnections(for lane: GraphLane) -> [BeginnerConnection] {
@@ -2274,6 +2300,12 @@ struct CanvasView: View {
         guard canUseClearCanvasAction else { return }
 
         recordUndoSnapshot()
+        clearGraphContents()
+        applyChainToEngine()
+        tutorial.advanceIf(.buildClearCanvasForDualMono)
+    }
+
+    private func clearGraphContents() {
         effectChain.removeAll()
         manualConnections.removeAll()
         autoGainOverrides.removeAll()
@@ -2281,9 +2313,10 @@ struct CanvasView: View {
         expandedControlPanelLifts.removeAll()
         selectedWireID = nil
         selectedAutoWire = nil
+        activeConnectionFromID = nil
+        activeConnectionPoint = .zero
+        customContextMenu = nil
         nextAccentIndex = 0
-        applyChainToEngine()
-        tutorial.advanceIf(.buildClearCanvasForDualMono)
     }
 
     private func resetWiring() {

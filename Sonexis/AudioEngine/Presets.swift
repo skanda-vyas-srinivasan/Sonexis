@@ -537,6 +537,7 @@ extension AudioEngine {
         if currentPresetComparisonData != comparison {
             currentPresetComparisonData = comparison
         }
+        graphSnapshotRevision &+= 1
     }
 
     /// Native plugin editors do not emit canvas parameter edits. Refresh their saved

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A9EC01000000000000000002 /* AudioRecordingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC01000000000000000001 /* AudioRecordingSession.swift */; };
+		A9EC02000000000000000002 /* GraphOutputTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC02000000000000000001 /* GraphOutputTransition.swift */; };
 		02BE2B51B4BA49988F010853 /* CanvasDropDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4AFFA79197E4AE3939EC87A /* CanvasDropDelegate.swift */; };
 		043972D804664239B44A86FC /* EffectBlockHorizontal.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD475BF9350040D4AF8B42D8 /* EffectBlockHorizontal.swift */; };
 		0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */; };
@@ -44,6 +45,8 @@
 		A6223C4A21044FB3BC10846A /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5448F10ACA734BCA8141D567 /* HomeView.swift */; };
 		AA0000010000000000000001 /* SonexisApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* SonexisApp.swift */; };
 		AA0000090000000000000003 /* PresetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000100000000000000003 /* PresetManager.swift */; };
+		A9EC03000000000000000002 /* WorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC03000000000000000001 /* WorkspaceStore.swift */; };
+		A9EC04000000000000000002 /* EditorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC04000000000000000001 /* EditorWindowController.swift */; };
 		B0A1C2D3E4F5061728394052 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B0A1C2D3E4F5061728394051 /* Assets.xcassets */; };
 		BAA24474EA674B5D81098ACF /* GraphModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82822CB130BF4C54A774D7F8 /* GraphModels.swift */; };
 		C301B96200C4474DB6404092 /* EffectType.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80F14336B4B4196BB00C2FB /* EffectType.swift */; };
@@ -72,6 +75,7 @@
 
 /* Begin PBXFileReference section */
 		A9EC01000000000000000001 /* AudioRecordingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecordingSession.swift; sourceTree = "<group>"; };
+		A9EC02000000000000000001 /* GraphOutputTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphOutputTransition.swift; sourceTree = "<group>"; };
 		073C10634DF64EA7B3E73A15 /* ProjectModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModels.swift; sourceTree = "<group>"; };
 		088D4BB8A51F4CDD9BBC4C3F /* SupportingTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingTypes.swift; sourceTree = "<group>"; };
 		08C15E7511CA4796A695E13F /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
@@ -99,6 +103,8 @@
 		AA0000070000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000080000000000000001 /* Sonexis.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Sonexis.entitlements; sourceTree = "<group>"; };
 		AA0000100000000000000003 /* PresetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetManager.swift; sourceTree = "<group>"; };
+		A9EC03000000000000000001 /* WorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStore.swift; sourceTree = "<group>"; };
+		A9EC04000000000000000001 /* EditorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorWindowController.swift; sourceTree = "<group>"; };
 		AAB805BA1A5C35A66D9C8624 /* Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lifecycle.swift; sourceTree = "<group>"; };
 		AC3C35E7AD3E4E449915932A /* AdvancedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedModels.swift; sourceTree = "<group>"; };
 		AD475BF9350040D4AF8B42D8 /* EffectBlockHorizontal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectBlockHorizontal.swift; sourceTree = "<group>"; };
@@ -198,6 +204,7 @@
 			children = (
 				B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */,
 				A9EC01000000000000000001 /* AudioRecordingSession.swift */,
+				A9EC02000000000000000001 /* GraphOutputTransition.swift */,
 				F0C1A1B2C3D4E5F607182932 /* PluginHosting.swift */,
 				C5CD68673030CDE14EBC9571 /* Effects.swift */,
 				E5BD1F558BD122C461C6973C /* Graph.swift */,
@@ -257,6 +264,8 @@
 				A19256146F90870535C89A39 /* AudioEngine */,
 				5A0000000000000000000001 /* ProcessTapEngine */,
 				AA0000100000000000000003 /* PresetManager.swift */,
+				A9EC03000000000000000001 /* WorkspaceStore.swift */,
+				A9EC04000000000000000001 /* EditorWindowController.swift */,
 				AA0000200000000000000001 /* Wrappers */,
 				E44CBC109AE6D1E8CE0252D6 /* Sonexis-Bridging-Header.h */,
 				AA0000070000000000000001 /* Info.plist */,
@@ -391,6 +400,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A9EC01000000000000000002 /* AudioRecordingSession.swift in Sources */,
+				A9EC02000000000000000002 /* GraphOutputTransition.swift in Sources */,
 				D9F68784BB3B45F0BFE27724 /* DesignSystem.swift in Sources */,
 				4F98459F3F0C4FE8A9EF273B /* TutorialCardView.swift in Sources */,
 				C301B96200C4474DB6404092 /* EffectType.swift in Sources */,
@@ -436,6 +446,8 @@
 				129CB3F47F11795BF43B10B6 /* Presets.swift in Sources */,
 				7C7976BF0F52D5D8AC916119 /* Routing.swift in Sources */,
 				AA0000090000000000000003 /* PresetManager.swift in Sources */,
+				A9EC03000000000000000002 /* WorkspaceStore.swift in Sources */,
+				A9EC04000000000000000002 /* EditorWindowController.swift in Sources */,
 				23EAB7A039BA0230FE29927A /* RubberBandWrapper.mm in Sources */,
 				0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */,
 				5A0000000000000000000012 /* AudioOutputEngine.swift in Sources */,

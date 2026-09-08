@@ -30,6 +30,7 @@ extension AudioEngine {
     }
 
     @objc private func handleAppWillTerminate(notification: Notification) {
+        refreshPresetPluginState()
         stopProcessTapBackendImmediately(reason: "Sonexis terminate")
     }
 }
