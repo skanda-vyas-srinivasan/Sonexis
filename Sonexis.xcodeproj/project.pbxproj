@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A9EC06000000000000000002 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC06000000000000000001 /* MenuBarController.swift */; };
 		A9EC01000000000000000002 /* AudioRecordingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC01000000000000000001 /* AudioRecordingSession.swift */; };
 		A9EC02000000000000000002 /* GraphOutputTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC02000000000000000001 /* GraphOutputTransition.swift */; };
 		A9EC05000000000000000002 /* GraphRoutingPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC05000000000000000001 /* GraphRoutingPlan.swift */; };
@@ -75,6 +76,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A9EC06000000000000000001 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		A9EC01000000000000000001 /* AudioRecordingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecordingSession.swift; sourceTree = "<group>"; };
 		A9EC02000000000000000001 /* GraphOutputTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphOutputTransition.swift; sourceTree = "<group>"; };
 		A9EC05000000000000000001 /* GraphRoutingPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphRoutingPlan.swift; sourceTree = "<group>"; };
@@ -259,6 +261,7 @@
 		AA0000020000000000000002 /* Sonexis */ = {
 			isa = PBXGroup;
 			children = (
+				A9EC06000000000000000001 /* MenuBarController.swift */,
 				AA0000020000000000000001 /* SonexisApp.swift */,
 				D66A6809EC0B4F4EBE673B9D /* ContentView */,
 				C150ADB2C304463B8EB70A19 /* CanvasView */,
@@ -402,6 +405,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A9EC06000000000000000002 /* MenuBarController.swift in Sources */,
 				A9EC01000000000000000002 /* AudioRecordingSession.swift in Sources */,
 				A9EC02000000000000000002 /* GraphOutputTransition.swift in Sources */,
 				A9EC05000000000000000002 /* GraphRoutingPlan.swift in Sources */,

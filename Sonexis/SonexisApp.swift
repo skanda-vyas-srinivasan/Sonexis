@@ -20,6 +20,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Use the flat artwork directly for the running Dock icon.
+        if let dockIcon = NSImage(named: "DockMark") {
+            NSApp.applicationIconImage = dockIcon
+        }
+
         guard ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" else {
             return
         }
@@ -61,7 +66,10 @@ struct SonexisApp: App {
             if ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" {
                 EmptyView()
             } else {
-                ContentView()
+                ContentView(openEditor: {
+                    NSApp.activate(ignoringOtherApps: true)
+                    appDelegate.editorWindowController.reopen()
+                })
                     .background(EditorWindowReader { window in
                         appDelegate.editorWindowController.attach(to: window)
                     })

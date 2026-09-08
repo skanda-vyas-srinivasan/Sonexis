@@ -102,6 +102,8 @@ private final class AudioSettingsOutsideClickCoordinator: ObservableObject {
 }
 
 struct ContentView: View {
+    var openEditor: () -> Void = {}
+    @StateObject private var menuBar = MenuBarController()
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
     @StateObject private var workspaceStore = WorkspaceStore()
@@ -282,6 +284,27 @@ struct ContentView: View {
             guard !hasShownSetupThisSession else { return }
             hasShownSetupThisSession = true
             restoreWorkspace()
+            menuBar.install {
+                AnyView(SonexisMenuBarPanel(
+                    audioEngine: audioEngine,
+                    presetManager: presetManager,
+                    currentPresetID: $currentPresetID,
+                    loadPreset: { preset in
+                        audioEngine.requestGraphLoad(preset.graph, mode: .audioAndVisual, reason: "menu bar preset")
+                        currentPresetID = preset.id
+                        lastGraphSnapshot = preset.graph
+                        if activeScreen != .beginner {
+                            // Mount the canvas to consume the audio-and-visual request,
+                            // without replacing it with navigation's visual-only restore.
+                            skipRestoreOnEnter = true
+                            activeScreen = .beginner
+                        }
+                        captureWorkspace()
+                    },
+                    openEditor: openEditor,
+                    close: { menuBar.close() }
+                ))
+            }
             if !audioEngine.setupReadyForCurrentBackend {
                 showSetupOverlay = true
             }

@@ -653,3 +653,26 @@ These timings isolate the offline renderer in a Debug build, not total app CPU, 
 ### Automatic routing after switching modes
 
 Fixed a pre-existing bug where Automatic → Manual → Automatic retained manual edges that overrode position-based routing, leaving newly added effects disconnected. Automatic now derives its chain solely from node positions in each lane; retained manual edges cannot override it, including in restored snapshots. Automatic → Manual still materializes the generated wires with their gains. Preset comparison follows the same rule and ignores inactive manual edges in Automatic mode. Regression coverage checks retained edges, inserted nodes, and reordered nodes; User verified the mode-switch fix in the live app and confirmed audio sounds good.
+
+
+### Minimal menu bar controls
+
+User approved keeping both the Dock and a menu bar entry. Added a waveform status icon with a compact popover that follows the selected Sonexis palette. Controls: effects on/bypass, saved preset selection, Open Sonexis, and Quit; a small Running/Stopped label reflects engine state. The preset list expands only when requested and scrolls for longer libraries. The panel shares the existing engine and preset library, and uses the existing preset-load and workspace-save paths. Selecting a preset from Home mounts the canvas without opening the hidden window or starting capture. Open reuses the retained editor; Quit follows the existing shutdown/drain path. Launch still begins on Home. Buffer reuse and recording polish remain deferred; per-process effects are the next design discussion. Build validation completed; interactive menu bar appearance and controls need user verification.
+
+Menu bar branding: replaced the placeholder waveform with a centered, bold, slightly slanted vector S. The original S asset/font could not be located; this is a new approximation for review. No background badge or decoration. The status icon uses macOS template rendering; the panel mark uses the selected theme’s pink accent.
+
+Branding refinement: user supplied a reference with a rounded geometric S, horizontal strokes, and soft pink glow. Updated the vector mark to that direction, replacing the initial italic approximation; panel adds a subtle accent glow.
+
+Final mark choice: after comparing both previews, user preferred the original bold, slightly slanted S. Restored that vector and removed the rounded variant’s panel glow.
+
+Menu bar panel refinement: removed the Sonexis wordmark, Running/Stopped label, and labeled toggle. The top row now contains the S plus the editor's power-circle and effects-slider controls, using the same state colors and engine actions. Open and Quit sit below the preset selector. Failed starts reveal the editor for setup/error feedback. Dock/AppIcon assets now use the approved bold S on a dark rounded tile at every required resolution; `swift Scripts/render-app-icon.swift` regenerates them from the shared SVG. Debug build passed. User visual verification is pending; changes are not committed.
+
+Menu bar presentation: replaced the native arrowed popover with a borderless floating panel beneath the status icon, with a small gap, rounded corners, and no pointer. The panel stays within horizontal screen bounds and resizes downward when presets expand. Outside clicks, Escape, and loss of focus dismiss it; repeated status-icon clicks toggle it. Removed the status-item tooltip that overlapped the panel in the user's screenshot. Debug build verified; live positioning/dismissal remains a visual check.
+
+Dock icon color refinement: sampled the user's flat pink reference in sRGB (#F160A4), regenerated all app icon sizes with that solid fill, and added a normal DockMark image asset assigned to applicationIconImage at launch. This supplies the running Dock with flat artwork outside the AppIcon asset path; no gradient, bevel, or glow is drawn. Build passed; the actual Dock appearance needs verification after relaunch.
+
+Dock color correction: screenshot sampling appeared too light. Use the app’s Black theme accent directly: solid sRGB #FF2D95 (Sonexis red-pink), replacing #F160A4.
+
+Panel opening fix: set the initial frame synchronously while the panel is hidden, before ordering it on screen. Previously positioning was deferred one run-loop turn, causing a flash at the bottom-left screen origin. Later preset-list layout changes remain deferred and tied to the same panel instance. Open now uses the same muted text color as Quit.
+
+Menu bar accepted: user approved the flat panel after removing its drop shadow. Final controls are S branding, power, effects bypass, preset selection, and muted Open/Quit. Initial positioning is completed before display. Next discussion: per-process app assignments and chain presentation.
