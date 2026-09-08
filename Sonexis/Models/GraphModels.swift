@@ -644,10 +644,6 @@ extension GraphSnapshot {
                 next[ordered[index].id] = index + 1 < ordered.count ? ordered[index + 1].id : end
             }
             let ids = Set(ordered.map(\.id))
-            for edge in connections where (edge.fromNodeId == start || ids.contains(edge.fromNodeId))
-                && (edge.toNodeId == end || ids.contains(edge.toNodeId)) {
-                next[edge.fromNodeId] = edge.toNodeId
-            }
             var path: [UUID] = []
             var visited: Set<UUID> = [start]
             var current = next[start]
@@ -670,7 +666,7 @@ extension GraphSnapshot {
         }
         let content = Content(graphMode: graphMode, wiringMode: wiringMode,
             autoConnectEnd: autoConnectEnd, nodes: processingNodes,
-            connections: edges(connections), gains: edges(autoGainOverrides), automaticOrder: order)
+            connections: wiringMode == .manual ? edges(connections) : [], gains: edges(autoGainOverrides), automaticOrder: order)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         return try? encoder.encode(content)

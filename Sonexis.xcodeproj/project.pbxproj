@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A9EC01000000000000000002 /* AudioRecordingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC01000000000000000001 /* AudioRecordingSession.swift */; };
 		A9EC02000000000000000002 /* GraphOutputTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC02000000000000000001 /* GraphOutputTransition.swift */; };
+		A9EC05000000000000000002 /* GraphRoutingPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC05000000000000000001 /* GraphRoutingPlan.swift */; };
 		02BE2B51B4BA49988F010853 /* CanvasDropDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4AFFA79197E4AE3939EC87A /* CanvasDropDelegate.swift */; };
 		043972D804664239B44A86FC /* EffectBlockHorizontal.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD475BF9350040D4AF8B42D8 /* EffectBlockHorizontal.swift */; };
 		0686A9ED3F990334D64579AF /* RubberBandSingle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F54EE98CCF74A98E20A3D0F8 /* RubberBandSingle.cpp */; };
@@ -76,6 +77,7 @@
 /* Begin PBXFileReference section */
 		A9EC01000000000000000001 /* AudioRecordingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecordingSession.swift; sourceTree = "<group>"; };
 		A9EC02000000000000000001 /* GraphOutputTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphOutputTransition.swift; sourceTree = "<group>"; };
+		A9EC05000000000000000001 /* GraphRoutingPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphRoutingPlan.swift; sourceTree = "<group>"; };
 		073C10634DF64EA7B3E73A15 /* ProjectModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectModels.swift; sourceTree = "<group>"; };
 		088D4BB8A51F4CDD9BBC4C3F /* SupportingTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingTypes.swift; sourceTree = "<group>"; };
 		08C15E7511CA4796A695E13F /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
@@ -205,6 +207,7 @@
 				B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */,
 				A9EC01000000000000000001 /* AudioRecordingSession.swift */,
 				A9EC02000000000000000001 /* GraphOutputTransition.swift */,
+				A9EC05000000000000000001 /* GraphRoutingPlan.swift */,
 				F0C1A1B2C3D4E5F607182932 /* PluginHosting.swift */,
 				C5CD68673030CDE14EBC9571 /* Effects.swift */,
 				E5BD1F558BD122C461C6973C /* Graph.swift */,
@@ -401,6 +404,7 @@
 			files = (
 				A9EC01000000000000000002 /* AudioRecordingSession.swift in Sources */,
 				A9EC02000000000000000002 /* GraphOutputTransition.swift in Sources */,
+				A9EC05000000000000000002 /* GraphRoutingPlan.swift in Sources */,
 				D9F68784BB3B45F0BFE27724 /* DesignSystem.swift in Sources */,
 				4F98459F3F0C4FE8A9EF273B /* TutorialCardView.swift in Sources */,
 				C301B96200C4474DB6404092 /* EffectType.swift in Sources */,

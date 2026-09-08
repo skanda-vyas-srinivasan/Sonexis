@@ -97,6 +97,9 @@ struct ProcessingSnapshot {
     let rubberBandPitchEnabled: Bool
     let rubberBandPitchSemitones: Double
     let graphSignature: Int
+    let manualRoutingPlan: GraphRoutingPlan
+    let splitLeftRoutingPlan: GraphRoutingPlan
+    let splitRightRoutingPlan: GraphRoutingPlan
 
     static let empty = ProcessingSnapshot(
         useSplitGraph: false,
@@ -192,7 +195,10 @@ struct ProcessingSnapshot {
         resampleCrossfade: 0,
         rubberBandPitchEnabled: false,
         rubberBandPitchSemitones: 0,
-        graphSignature: 0
+        graphSignature: 0,
+        manualRoutingPlan: .unconfigured,
+        splitLeftRoutingPlan: .unconfigured,
+        splitRightRoutingPlan: .unconfigured
     )
 }
 
@@ -1313,12 +1319,11 @@ class AudioEngine: ObservableObject {
     var processTapPCMBufferFrameCapacity: Int = 0
     var processTapPCMBufferChannelCount: Int = 0
     var processTapPCMBufferSampleRate: Double = 0
-    // Graph processing scratch buffers (reused to avoid allocations)
-    var graphOutEdges: [UUID: [UUID]] = [:]
-    var graphInEdges: [UUID: [(UUID, Double)]] = [:]
+    // Per-block output storage; routing caches are used only during publication.
     var graphOutputBuffers: [UUID: [[Float]]] = [:]
-    var graphIndegree: [UUID: Int] = [:]
-    var graphQueue: [UUID] = []
+    private let manualRoutingCache = GraphRoutingPlanCache()
+    private let splitLeftRoutingCache = GraphRoutingPlanCache()
+    private let splitRightRoutingCache = GraphRoutingPlanCache()
     let graphOutputTransition = GraphOutputTransition()
     var dspFaultCountsByEffect: [EffectType: Int] = [:]
     var dspFaultCountsByNode: [UUID: Int] = [:]
@@ -1501,7 +1506,13 @@ class AudioEngine: ObservableObject {
             resampleCrossfade: 0,
             rubberBandPitchEnabled: rubberBandPitchEnabled,
             rubberBandPitchSemitones: rubberBandPitchSemitones,
-            graphSignature: graphSignature
+            graphSignature: graphSignature,
+            manualRoutingPlan: manualRoutingCache.plan(nodes: manualNodes, connections: manualConnections,
+                startID: manualStartID, endID: manualEndID, autoConnectEnd: manualAutoConnect),
+            splitLeftRoutingPlan: splitLeftRoutingCache.plan(nodes: splitLeftNodes, connections: splitLeftConnections,
+                startID: splitLeftStartID, endID: splitLeftEndID, autoConnectEnd: splitAutoConnect),
+            splitRightRoutingPlan: splitRightRoutingCache.plan(nodes: splitRightNodes, connections: splitRightConnections,
+                startID: splitRightStartID, endID: splitRightEndID, autoConnectEnd: splitAutoConnect)
         )
 
         snapshotLock.lock()

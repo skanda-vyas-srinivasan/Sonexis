@@ -87,17 +87,12 @@ extension AudioEngine {
                 channelCount: channelCount
             )
 
-            let autoConnect = snapshot.splitAutoConnectEnd
             if channelCount < 2 {
                 let (processed, levelSnapshot) = processGraph(
                     inputBuffer: inputBuffer,
                     channelCount: channelCount,
                     sampleRate: sampleRate,
-                    nodes: snapshot.splitLeftNodes,
-                    connections: snapshot.splitLeftConnections,
-                    startID: snapshot.splitLeftStartID,
-                    endID: snapshot.splitLeftEndID,
-                    autoConnectEnd: autoConnect,
+                    plan: snapshot.splitLeftRoutingPlan,
                     snapshot: snapshot
                 )
                 updateEffectLevelsIfNeeded(levelSnapshot)
@@ -111,22 +106,14 @@ extension AudioEngine {
                 inputBuffer: leftInput,
                 channelCount: 1,
                 sampleRate: sampleRate,
-                nodes: snapshot.splitLeftNodes,
-                connections: snapshot.splitLeftConnections,
-                startID: snapshot.splitLeftStartID,
-                endID: snapshot.splitLeftEndID,
-                autoConnectEnd: autoConnect,
+                plan: snapshot.splitLeftRoutingPlan,
                 snapshot: snapshot
             )
             let (rightProcessed, rightSnapshot) = processGraph(
                 inputBuffer: rightInput,
                 channelCount: 1,
                 sampleRate: sampleRate,
-                nodes: snapshot.splitRightNodes,
-                connections: snapshot.splitRightConnections,
-                startID: snapshot.splitRightStartID,
-                endID: snapshot.splitRightEndID,
-                autoConnectEnd: autoConnect,
+                plan: snapshot.splitRightRoutingPlan,
                 snapshot: snapshot
             )
 
@@ -148,16 +135,11 @@ extension AudioEngine {
         }
 
         func renderManualGraph(inputBuffer: [[Float]]) -> ([[Float]], [UUID: Float]) {
-            let autoConnect = snapshot.manualGraphAutoConnectEnd
             return processGraph(
                 inputBuffer: inputBuffer,
                 channelCount: channelCount,
                 sampleRate: sampleRate,
-                nodes: snapshot.manualGraphNodes,
-                connections: snapshot.manualGraphConnections,
-                startID: snapshot.manualGraphStartID,
-                endID: snapshot.manualGraphEndID,
-                autoConnectEnd: autoConnect,
+                plan: snapshot.manualRoutingPlan,
                 snapshot: snapshot
             )
         }

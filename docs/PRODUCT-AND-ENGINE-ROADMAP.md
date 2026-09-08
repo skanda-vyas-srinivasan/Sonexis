@@ -165,6 +165,8 @@ Drag motion accumulates unrounded deltas, so switching Shift mid-drag does not r
 
 ### ENG-04 — Compile graphs and bound processing work · P1
 
+**Routing-plan scope implemented — 2026-09-08:** Prepare and cache immutable manual/left/right routing plans during main-thread snapshot publication. The worker reuses their ordered effect steps and input/output edges. Parameter, bypass, position-only and transient wire-ID changes reuse plans; changed routing/gains/endpoints/auto-connect settings rebuild the affected plan. The existing automatic serial-chain path stays intact. Broader buffer-allocation, lock-contention and lifetime work remains separate.
+
 **Observed:** `processGraph` rebuilds edge/traversal data each block and allocates merge buffers. Shared locks and nested Swift arrays exist in the worker processing path. Some helpers reallocate when frame length changes rather than only when capacity grows. Hardware callbacks are already lightweight and backed by C ring buffers.
 
 **Risk:** Allocation, copying, lock contention, and scheduling variability may contribute to underruns under load. This is a profiling hypothesis, not a measured finding.
@@ -459,6 +461,7 @@ Use one row per active item; extend as work begins.
 | ENG-01 | Codex | Forced dropout and shared-state double render fixed | Working tree | Transition waveform checks and offline engine/recording integration passed | Live listening; tail preservation and latency alignment remain separate |
 | UX-02 | Codex | Workspace recovery implemented | Working tree | Persistence/recovery regression tests and Debug build passed | Manual quit/relaunch, tutorial and native plugin-editor checks; first-launch redesign remains separate |
 | UX-08 | Codex | Background operation and Dock reopening implemented | Working tree | Window-controller tests and Debug build passed | Live close/reopen/quit audio check |
+| ENG-04 | Codex | Routing-plan preparation and reuse implemented | Working tree | Legacy/new sample comparison, cache tests, engine integration and Debug timing | Live complex-chain check; profile/reuse temporary audio buffers next |
 | APP-01 A | Unassigned | Deferred | — | API feasibility only | Revisit after agreed current-app fixes |
 
 Completion note template: item ID; implementation summary; changed behavior; tests/measurements; remaining limitations; revision/PR; reviewer; completion date.
@@ -627,3 +630,26 @@ Remove the canvas's application-wide window key/resign subscriptions. Popup-wind
 The app now has a single SwiftUI editor Window. A retained window controller intercepts ordinary close requests and orders the editor out instead of destroying its content and StateObjects. The existing SwiftUI window delegate receives all other callbacks through forwarding. Dock reopening brings that same window forward, deminiaturizing when necessary, even if a plugin window is visible. Explicit termination enables the normal close path and retains the existing engine shutdown/recording drain. Hiding refreshes plugin state and flushes workspace storage; it does not stop the engine or add a menu-bar item.
 
 Validation: Debug build and `sh Scripts/test-background-window.sh` passed. Tests use non-presenting AppKit test windows and verify hide versus quit, content/window identity across repeated reopening, workspace-hide notifications, minimized reopening, delegate forwarding, and repeated attachment/detachment. No live capture or real user workspace was used by these tests. Live red-close/Command-W, Dock-click, and Command-Q playback verification remains a manual check. This supersedes the earlier menu-bar and optional-close-preference proposal.
+
+### ENG-04 routing-plan implementation and measurements — 2026-09-08
+
+`GraphRoutingPlan` prepares reachability, incoming edges, automatic sink connections, and effect execution order before the processing snapshot is published. Plans store routing and effect IDs/types, not mutable DSP state or captured parameter values. One cache per manual/left/right graph compares routing-relevant fields, so parameter updates and edits to the other split lane do not recompile an unchanged plan. Existing snapshots retain their immutable plan while an updated snapshot is published under the existing snapshot lock. The worker no longer rebuilds adjacency maps, walks reachability, searches nodes, or runs a topological queue every block.
+
+The render path still uses current snapshot parameters/enabled state and the same per-node effect instances. Merge order for explicit edges, gain handling, implicit-end policy, disconnected/cyclic graph behavior, empty-canvas passthrough, and missing-endpoint passthrough are preserved. Automatic serial chains without graph routing already iterate a prepared node order and remain unchanged. Output dictionaries, merge-buffer allocations and DSP scratch allocation still exist; this is not a claim of allocation-free or lock-free processing. Retired-plan reclamation and real-time allocation profiling remain follow-up work.
+
+Validation: Debug build passed. `sh Scripts/test-compiled-graph.sh` compares 43,710 mono/stereo samples with a frozen test-only copy of the pre-change renderer at block sizes 1/17/128/1,024/31/256, including EQ/tremolo/delay state, serial and parallel routing, implicit sinks, explicit dry gains, duplicate edges, unreachable predecessors and cycles (tolerance 1e-6 for floating-point summation). It also checks missing endpoints, cache reuse/invalidation, fresh parameters/bypass and independent split plans. `sh Scripts/test-graph-transition-integration.sh` passed, covering graph edits, bypass, split/manual/automatic modes, empty/manual lane behavior, exact final-output WAV recording and single advancement of shared DSP state.
+
+Same-process Debug timing, neutral EQ chains, 128 stereo frames per block, median of five 200-block runs after warmup:
+
+| Nodes | Previous renderer | Prepared routing | Reduction |
+| --- | --- | --- | --- |
+| 4 | 151.14 microseconds/block | 133.92 microseconds/block | 11.4% |
+| 16 | 514.28 microseconds/block | 456.63 microseconds/block | 11.2% |
+| 48 | 1,546.53 microseconds/block | 1,316.50 microseconds/block | 14.9% |
+
+These timings isolate the offline renderer in a Debug build, not total app CPU, optimized Release performance, hardware latency, or worst-case scheduling. The standalone pre-change baseline was also recorded (149.45/518.10/1,554.73 microseconds for 4/16/48 nodes). Live complex-chain/plugin listening and load testing remain manual checks. The 4,096-frame playback buffer remains unchanged, following the user's latency decision.
+
+
+### Automatic routing after switching modes
+
+Fixed a pre-existing bug where Automatic → Manual → Automatic retained manual edges that overrode position-based routing, leaving newly added effects disconnected. Automatic now derives its chain solely from node positions in each lane; retained manual edges cannot override it, including in restored snapshots. Automatic → Manual still materializes the generated wires with their gains. Preset comparison follows the same rule and ignores inactive manual edges in Automatic mode. Regression coverage checks retained edges, inserted nodes, and reordered nodes; User verified the mode-switch fix in the live app and confirmed audio sounds good.

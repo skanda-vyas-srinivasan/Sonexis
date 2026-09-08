@@ -10,16 +10,11 @@ extension AudioEngine {
         snapshot: ProcessingSnapshot
     ) -> [Float] {
         let inputBuffer = deinterleavedInput(channelData: channelData, frameLength: frameLength, channelCount: channelCount)
-        let autoConnect = snapshot.manualGraphAutoConnectEnd
         let (processed, levelSnapshot) = processGraph(
             inputBuffer: inputBuffer,
             channelCount: channelCount,
             sampleRate: sampleRate,
-            nodes: snapshot.manualGraphNodes,
-            connections: snapshot.manualGraphConnections,
-            startID: snapshot.manualGraphStartID,
-            endID: snapshot.manualGraphEndID,
-            autoConnectEnd: autoConnect,
+            plan: snapshot.manualRoutingPlan,
             snapshot: snapshot
         )
         updateEffectLevelsIfNeeded(levelSnapshot)
@@ -30,68 +25,21 @@ extension AudioEngine {
         inputBuffer: [[Float]],
         channelCount: Int,
         sampleRate: Double,
-        nodes: [BeginnerNode],
-        connections: [BeginnerConnection],
-        startID: UUID?,
-        endID: UUID?,
-        autoConnectEnd: Bool = true,
+        plan: GraphRoutingPlan,
         snapshot: ProcessingSnapshot
     ) -> ([[Float]], [UUID: Float]) {
-        guard let startID, let endID else {
-            return (inputBuffer, [:])
-        }
-
-        // An empty canvas/lane stays audible without a visible bypass wire.
-        // Explicit wires still honor their gains; disconnected effects do not
-        // qualify for this fallback and continue to require manual routing.
-        if nodes.isEmpty && connections.isEmpty {
+        guard plan.mode != .passthrough, let startID = plan.startID else { return (inputBuffer, [:]) }
+        if plan.mode == .empty {
             return (snapshot.limiterEnabled ? applySoftLimiter(inputBuffer) : inputBuffer, [:])
         }
 
-        // Clear and reuse pre-allocated scratch buffers (avoids allocation)
-        for key in graphOutEdges.keys { graphOutEdges[key]?.removeAll(keepingCapacity: true) }
-        for key in graphInEdges.keys { graphInEdges[key]?.removeAll(keepingCapacity: true) }
+        // Routing was prepared with this immutable snapshot. Only sample
+        // buffers and existing DSP state change on the processing worker.
         graphOutputBuffers.removeAll(keepingCapacity: true)
-        graphIndegree.removeAll(keepingCapacity: true)
-        graphQueue.removeAll(keepingCapacity: true)
-
-        for connection in connections {
-            graphOutEdges[connection.fromNodeId, default: []].append(connection.toNodeId)
-            graphInEdges[connection.toNodeId, default: []].append((connection.fromNodeId, connection.gain))
-        }
-
-        let reachable = reachableNodes(from: startID, outEdges: graphOutEdges)
-
-        if autoConnectEnd {
-            for nodeID in reachable where nodeID != startID && nodeID != endID {
-                let outs = graphOutEdges[nodeID] ?? []
-                let hasReachableOut = outs.contains(where: { reachable.contains($0) && $0 != endID })
-                let hasEndOut = outs.contains(endID)
-                if !hasReachableOut && !hasEndOut {
-                    graphOutEdges[nodeID, default: []].append(endID)
-                    graphInEdges[endID, default: []].append((nodeID, 1.0))
-                }
-            }
-        }
-
-        for node in nodes where reachable.contains(node.id) {
-            let incoming = graphInEdges[node.id] ?? []
-            let count = incoming.filter { $0.0 != startID }.count
-            graphIndegree[node.id] = count
-            if count == 0 {
-                graphQueue.append(node.id)
-            }
-        }
-
         var levelSnapshot: [UUID: Float] = [:]
-
-        while let nodeID = graphQueue.first {
-            graphQueue.removeFirst()
-            guard let node = nodes.first(where: { $0.id == nodeID }) else { continue }
-
-            let inputs = graphInEdges[nodeID] ?? []
+        for step in plan.steps {
             let merged = mergeInputs(
-                inputs: inputs,
+                inputs: step.inputs,
                 startID: startID,
                 inputBuffer: inputBuffer,
                 outputBuffers: graphOutputBuffers,
@@ -101,36 +49,27 @@ extension AudioEngine {
 
             var processed = merged
             applyEffect(
-                node.type,
+                step.type,
                 to: &processed,
                 sampleRate: sampleRate,
                 channelCount: channelCount,
                 frameLength: inputBuffer.first?.count ?? 0,
-                nodeId: node.id,
+                nodeId: step.id,
                 levelSnapshot: &levelSnapshot,
                 snapshot: snapshot
             )
             sanitizeEffectOutput(
                 &processed,
-                effect: node.type,
-                nodeId: node.id,
+                effect: step.type,
+                nodeId: step.id,
                 frameLength: inputBuffer.first?.count ?? 0,
                 channelCount: channelCount
             )
-            graphOutputBuffers[nodeID] = processed
-
-            for next in graphOutEdges[nodeID] ?? [] {
-                guard reachable.contains(next), next != endID else { continue }
-                graphIndegree[next, default: 0] -= 1
-                if graphIndegree[next] == 0 {
-                    graphQueue.append(next)
-                }
-            }
+            graphOutputBuffers[step.id] = processed
         }
 
-        let endInputs = graphInEdges[endID] ?? []
         let mixed = mergeInputs(
-            inputs: endInputs,
+            inputs: plan.endInputs,
             startID: startID,
             inputBuffer: inputBuffer,
             outputBuffers: graphOutputBuffers,
@@ -151,22 +90,6 @@ extension AudioEngine {
                 self.effectLevels = snapshot
             }
         }
-    }
-
-    private func reachableNodes(from startID: UUID, outEdges: [UUID: [UUID]]) -> Set<UUID> {
-        var visited: Set<UUID> = [startID]
-        var queue: [UUID] = [startID]
-
-        while let current = queue.first {
-            queue.removeFirst()
-            for next in outEdges[current] ?? [] {
-                if !visited.contains(next) {
-                    visited.insert(next)
-                    queue.append(next)
-                }
-            }
-        }
-        return visited
     }
 
     private func mergeInputs(

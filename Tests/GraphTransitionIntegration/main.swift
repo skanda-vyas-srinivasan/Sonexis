@@ -73,8 +73,8 @@ expect(actual == expected, "Recorded samples differ from final transition output
 let dry = [[Float]](repeating: [Float](repeating: 0.1, count: 256), count: 2)
 func graphOutput(nodes: [BeginnerNode], connections: [BeginnerConnection]) -> [[Float]] {
     engine.processGraph(inputBuffer: dry, channelCount: 2, sampleRate: 48_000,
-        nodes: nodes, connections: connections, startID: start, endID: end,
-        autoConnectEnd: false, snapshot: engine.currentProcessingSnapshot()).0
+        plan: GraphRoutingPlan(nodes: nodes, connections: connections, startID: start, endID: end,
+            autoConnectEnd: false), snapshot: engine.currentProcessingSnapshot()).0
 }
 expect(graphOutput(nodes: [], connections: []) == dry, "Empty manual canvas muted audio")
 expect(graphOutput(nodes: [a], connections: []).flatMap { $0 }.allSatisfy { $0 == 0 }, "Disconnected effect bypassed manual routing")

@@ -130,6 +130,28 @@ moved.connections.append(BeginnerConnection(fromNodeId: moved.nodes[0].id, toNod
 expect(moved.presetComparisonData != chain.presetComparisonData, "Manual wiring edit must mark Modified")
 print("PASS: layout-only moves stay clean; automatic order and manual wiring changes mark Modified")
 
+// Returning from Manual must not let retained edges override Automatic order.
+var returnedToAutomatic = chain
+returnedToAutomatic.wiringMode = .automatic
+returnedToAutomatic.connections = [
+    BeginnerConnection(fromNodeId: chain.startNodeID, toNodeId: chain.nodes[0].id),
+    BeginnerConnection(fromNodeId: chain.nodes[0].id, toNodeId: chain.nodes[1].id),
+    BeginnerConnection(fromNodeId: chain.nodes[1].id, toNodeId: chain.endNodeID)
+]
+var cleanAutomatic = returnedToAutomatic
+cleanAutomatic.connections = []
+expect(returnedToAutomatic.presetComparisonData == cleanAutomatic.presetComparisonData,
+       "Retained manual edges must not affect Automatic preset status")
+returnedToAutomatic.nodes.append(BeginnerNode(type: .enhancer, position: CGPoint(x: 150, y: 200)))
+cleanAutomatic.nodes = returnedToAutomatic.nodes
+expect(returnedToAutomatic.presetComparisonData == cleanAutomatic.presetComparisonData,
+       "Added automatic nodes must follow position despite retained manual edges")
+var reorderedAutomatic = returnedToAutomatic
+reorderedAutomatic.nodes[2].position.x = 250
+expect(reorderedAutomatic.presetComparisonData != returnedToAutomatic.presetComparisonData,
+       "Retained manual edges must not hide an automatic order change")
+print("PASS: Automatic ignores retained manual edges after mode round trip and node insertion")
+
 let libraryDir = root.appendingPathComponent("library-actions")
 var rejectLibraryWrite = false
 let library = PresetManager(directory: libraryDir, writeData: { data, url in

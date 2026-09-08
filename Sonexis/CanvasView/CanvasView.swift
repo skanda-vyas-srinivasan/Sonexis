@@ -2894,18 +2894,7 @@ struct CanvasView: View {
         }
         nextMap[ordered[ordered.count - 1].id] = endID
 
-        if wiringMode == .automatic {
-            for connection in manualConnections {
-                if graphMode == .split, laneForConnection(connection) != lane { continue }
-                let fromIsValid = connection.fromNodeId == startID ||
-                    effectChain.contains(where: { $0.id == connection.fromNodeId })
-                let toIsValid = connection.toNodeId == endID ||
-                    effectChain.contains(where: { $0.id == connection.toNodeId })
-                guard fromIsValid, toIsValid else { continue }
-                nextMap[connection.fromNodeId] = connection.toNodeId
-            }
-        }
-
+        // Automatic routing follows node positions; manual edges never override it.
         return nextMap
     }
 
