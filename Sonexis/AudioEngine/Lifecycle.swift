@@ -6,10 +6,12 @@ extension AudioEngine {
     // MARK: - Engine Control
 
     func start() {
+        if let onPowerStart { onPowerStart(); return }
         startProcessTapBackend()
     }
 
     func stop() {
+        if let onPowerStop { onPowerStop(); return }
         stopProcessTapBackend()
     }
 

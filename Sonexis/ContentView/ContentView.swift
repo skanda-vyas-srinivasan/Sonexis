@@ -103,18 +103,17 @@ private final class AudioSettingsOutsideClickCoordinator: ObservableObject {
 
 struct ContentView: View {
     var openEditor: () -> Void = {}
-    @StateObject private var menuBar = MenuBarController()
-    @StateObject private var audioEngine = AudioEngine()
-    @StateObject private var presetManager = PresetManager()
-    @StateObject private var workspaceStore = WorkspaceStore()
+    @ObservedObject var audioEngine: AudioEngine
+    @ObservedObject var presetManager: PresetManager
+    @ObservedObject var chainWorkspace: ChainWorkspace
     @StateObject private var pluginManager = PluginManager()
     @StateObject private var tutorial = TutorialController()
     @StateObject private var audioSettingsOutsideClick = AudioSettingsOutsideClickCoordinator()
-    @State private var activeScreen: AppScreen = .home
+    @Binding var activeScreen: AppScreen
     @State private var showingSaveDialog = false
     @State private var showingLoadDialog = false
     @State private var presetNameInput = ""
-    @State private var currentPresetID: UUID?
+    @Binding var currentPresetID: UUID?
     @State private var saveStatusText: String?
     @State private var saveStatusClearTask: DispatchWorkItem?
     @State private var showSetupOverlay = false
@@ -210,6 +209,7 @@ struct ContentView: View {
                                 audioEngine: audioEngine,
                                 presetManager: presetManager,
                                 onPresetApplied: { preset in
+                                    chainWorkspace.recordUndoState()
                                     currentPresetID = preset.id
                                     skipRestoreOnEnter = true
                                     activeScreen = .beginner
@@ -217,7 +217,7 @@ struct ContentView: View {
                                 tutorial: tutorial
                             )
                         case .beginner:
-                            CanvasView(audioEngine: audioEngine, tutorial: tutorial, pluginManager: pluginManager)
+                            CanvasView(audioEngine: audioEngine, tutorial: tutorial, pluginManager: pluginManager, chainWorkspace: chainWorkspace)
                         case .home:
                             EmptyView()
                         }
@@ -246,6 +246,7 @@ struct ContentView: View {
                     ceilingEnabled: $audioEngine.processTapOutputCeilingEnabled,
                     selectedThemeID: $selectedThemeID,
                     isReadOnly: tutorial.step == .buildSettingsExplain,
+                    onBeginEdit: { chainWorkspace.recordUndoState() },
                     onPanelFrameChange: { frame in
                         audioSettingsOutsideClick.panelFrame = frame
                     }
@@ -284,31 +285,10 @@ struct ContentView: View {
             guard !hasShownSetupThisSession else { return }
             hasShownSetupThisSession = true
             restoreWorkspace()
-            menuBar.install {
-                AnyView(SonexisMenuBarPanel(
-                    audioEngine: audioEngine,
-                    presetManager: presetManager,
-                    currentPresetID: $currentPresetID,
-                    loadPreset: { preset in
-                        audioEngine.requestGraphLoad(preset.graph, mode: .audioAndVisual, reason: "menu bar preset")
-                        currentPresetID = preset.id
-                        lastGraphSnapshot = preset.graph
-                        if activeScreen != .beginner {
-                            // Mount the canvas to consume the audio-and-visual request,
-                            // without replacing it with navigation's visual-only restore.
-                            skipRestoreOnEnter = true
-                            activeScreen = .beginner
-                        }
-                        captureWorkspace()
-                    },
-                    openEditor: openEditor,
-                    close: { menuBar.close() }
-                ))
-            }
             if !audioEngine.setupReadyForCurrentBackend {
                 showSetupOverlay = true
             }
-            if !didRestoreWorkspace && !workspaceStore.recoveryRequired {
+            if !didRestoreWorkspace && chainWorkspace.issue == nil {
                 tutorial.startIfNeeded(isSetupVisible: showSetupOverlay)
             }
         }
@@ -334,13 +314,16 @@ struct ContentView: View {
             audioSettingsOutsideClick.stop()
             audioEngine.refreshPresetPluginState()
             captureWorkspace()
-            workspaceStore.flush()
+            chainWorkspace.store.flush()
+        }
+        .onChange(of: tutorial.isActive) { active in
+            chainWorkspace.suspendSaving(for: audioEngine, suspended: active)
         }
         .onChange(of: tutorial.step) { newStep in
             if newStep == .welcome || newStep == .advancedIntro {
                 // Finish the user's pending autosave before the tutorial starts
                 // changing the graph. Tutorial snapshots are never autosaved.
-                workspaceStore.flush()
+                chainWorkspace.store.flush()
                 // Save current state for restoration when tutorial ends
                 if tutorialRestoreSnapshot == nil {
                     tutorialRestoreSnapshot = audioEngine.pendingGraphLoadRequest?.snapshot
@@ -391,7 +374,7 @@ struct ContentView: View {
         }
         .onChange(of: showSetupOverlay) { isVisible in
             if !isVisible {
-                if !didRestoreWorkspace && !workspaceStore.recoveryRequired {
+                if !didRestoreWorkspace && chainWorkspace.issue == nil {
                     tutorial.startIfNeeded(isSetupVisible: false)
                 }
                 if tutorial.step == .advancedIntro {
@@ -414,12 +397,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             audioEngine.refreshPresetPluginState()
             captureWorkspace()
-            workspaceStore.flush()
+            chainWorkspace.store.flush()
         }
         .onReceive(NotificationCenter.default.publisher(for: .sonexisEditorWillHide)) { _ in
             audioEngine.refreshPresetPluginState()
             captureWorkspace()
-            workspaceStore.flush()
+            chainWorkspace.store.flush()
         }
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
@@ -438,6 +421,7 @@ struct ContentView: View {
                 presetManager: presetManager,
                 tutorialStep: tutorial.step,
                 onApply: { preset in
+                    chainWorkspace.recordUndoState()
                     audioEngine.requestGraphLoad(
                         preset.graph,
                         mode: .audioAndVisual,
@@ -467,31 +451,7 @@ struct ContentView: View {
         } message: {
             Text(presetManager.saveError ?? "")
         }
-        .alert("Workspace Recovery", isPresented: Binding(
-            get: { workspaceStore.issue != nil },
-            set: { if !$0 { workspaceStore.issue = nil } }
-        )) {
-            if workspaceStore.recoveryRequired {
-                Button("Retry Restore") {
-                    DispatchQueue.main.async { restoreWorkspace() }
-                }
-                Button("Start Fresh") {
-                    DispatchQueue.main.async {
-                        if workspaceStore.startFresh() {
-                            workspaceReady = true
-                            activeScreen = .beginner
-                            captureWorkspace()
-                        }
-                    }
-                }
-            }
-            Button("Show Recovery Files") {
-                NSWorkspace.shared.open(workspaceStore.directory)
-            }
-            Button("OK", role: .cancel) { workspaceStore.issue = nil }
-        } message: {
-            Text(workspaceStore.issue ?? "")
-        }
+
     }
 
     private func emptyWorkspaceGraph() -> GraphSnapshot {
@@ -501,32 +461,17 @@ struct ContentView: View {
     }
 
     private func restoreWorkspace() {
-        if let snapshot = workspaceStore.restore() {
-            // Restore bypass/gain preferences, never capture or recording state.
-            audioEngine.processTapInputTrimDB = snapshot.inputTrimDB
-            audioEngine.processTapOutputMakeupDB = snapshot.outputMakeupDB
-            audioEngine.processTapOutputCeilingEnabled = snapshot.outputCeilingEnabled
-            audioEngine.processingEnabled = snapshot.effectsEnabled
-            currentPresetID = presetManager.presets.contains(where: { $0.id == snapshot.presetID })
-                ? snapshot.presetID : nil
-            lastGraphSnapshot = snapshot.graph
+        if let graph = audioEngine.pendingGraphLoadRequest?.snapshot ?? audioEngine.currentGraphSnapshot {
+            lastGraphSnapshot = graph
             skipRestoreOnEnter = true
-            didRestoreWorkspace = true
-            // Keep Home visible; Canvas consumes the pending workspace when
-            // the user enters Build. Preserve audioAndVisual for that first entry.
-            audioEngine.requestGraphLoad(snapshot.graph, mode: .audioAndVisual, reason: "workspace recovery")
+            didRestoreWorkspace = chainWorkspace.didRestore || graph.nodes.count > 0
         }
         workspaceReady = true
     }
 
     private func captureWorkspace() {
-        guard workspaceReady, !tutorial.isActive, tutorialRestoreSnapshot == nil,
-              let graph = audioEngine.pendingGraphLoadRequest?.snapshot ?? audioEngine.currentGraphSnapshot else { return }
-        workspaceStore.schedule(WorkspaceSnapshot(graph: graph, presetID: currentPresetID,
-            inputTrimDB: audioEngine.processTapInputTrimDB,
-            outputMakeupDB: audioEngine.processTapOutputMakeupDB,
-            outputCeilingEnabled: audioEngine.processTapOutputCeilingEnabled,
-            effectsEnabled: audioEngine.processingEnabled))
+        guard workspaceReady, !tutorial.isActive, tutorialRestoreSnapshot == nil else { return }
+        chainWorkspace.capture()
     }
 
     private func savePresetAs() {
@@ -660,6 +605,7 @@ private struct AudioSettingsRootOverlay: View {
     @Binding var ceilingEnabled: Bool
     @Binding var selectedThemeID: String
     let isReadOnly: Bool
+    let onBeginEdit: () -> Void
     let onPanelFrameChange: (CGRect) -> Void
 
     private let topPadding: CGFloat = 122
@@ -672,7 +618,8 @@ private struct AudioSettingsRootOverlay: View {
                     makeupDB: $makeupDB,
                     ceilingEnabled: $ceilingEnabled,
                     selectedThemeID: $selectedThemeID,
-                    isReadOnly: isReadOnly
+                    isReadOnly: isReadOnly,
+                    onBeginEdit: onBeginEdit
                 )
                 .frame(width: min(640, max(620, proxy.size.width - 32)))
                 .background(

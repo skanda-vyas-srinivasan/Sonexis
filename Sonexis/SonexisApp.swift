@@ -66,7 +66,7 @@ struct SonexisApp: App {
             if ProcessInfo.processInfo.environment["SONEXIS_PROCESS_TAP_SMOKE"] == "1" {
                 EmptyView()
             } else {
-                ContentView(openEditor: {
+                ChainWorkspaceView(openEditor: {
                     NSApp.activate(ignoringOtherApps: true)
                     appDelegate.editorWindowController.reopen()
                 })

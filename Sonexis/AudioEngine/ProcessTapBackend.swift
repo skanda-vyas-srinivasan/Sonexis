@@ -34,7 +34,8 @@ extension AudioEngine {
 
         let engine = ProcessTapDSPEngine(
             configuration: .productBaseline,
-            audioProcessor: self
+            audioProcessor: self,
+            captureTarget: captureTarget
         )
         graphOutputTransition.reset() // No processing worker is running yet.
         processTapEngine = engine
@@ -44,7 +45,7 @@ extension AudioEngine {
         do {
             try engine.start()
             processTapStopInProgress = false
-            inputDeviceName = "System Audio"
+            inputDeviceName = captureTarget?.name ?? "System Audio"
             outputDeviceName = "Default Output"
             errorMessage = nil
             isRunning = true

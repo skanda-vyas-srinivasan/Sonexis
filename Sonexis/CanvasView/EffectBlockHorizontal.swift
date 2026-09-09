@@ -13,6 +13,7 @@ struct EffectBlockHorizontal: View {
     let isPluginLoading: Bool
     let onRemove: () -> Void
     let onUpdate: () -> Void
+    let onParameterEditBegan: () -> Void
     let onParameterChange: () -> Void
     let onExpanded: () -> Void
     let onCollapsed: () -> Void
@@ -160,12 +161,14 @@ struct EffectBlockHorizontal: View {
                             effectType: effect.type,
                             parameters: $effect.parameters,
                             tint: tileStyle.fill,
+                            onEditBegan: onParameterEditBegan,
                             onChange: onParameterChange
                         )
                     }
 
                     HStack(spacing: 12) {
                         Button(action: {
+                            onParameterEditBegan()
                             setEffectEnabled(!getEffectEnabled())
                         }) {
                             Label(getEffectEnabled() ? "On" : "Off", systemImage: "power")

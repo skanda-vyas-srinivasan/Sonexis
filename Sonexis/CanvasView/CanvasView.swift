@@ -27,6 +27,7 @@ struct CanvasView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
     @ObservedObject var pluginManager: PluginManager
+    var chainWorkspace: ChainWorkspace? = nil
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
     @State private var effectChain: [BeginnerNode] = []
@@ -88,6 +89,9 @@ struct CanvasView: View {
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
     private let betaUnlockPhrase = "poopymcbutt"
     private let debugGraphLifecycle = false
+
+    private var hasUndo: Bool { chainWorkspace?.canUndo ?? !undoStack.isEmpty }
+    private var hasRedo: Bool { chainWorkspace?.canRedo ?? !redoStack.isEmpty }
 
     private var activeTheme: AppTheme {
         AppTheme.theme(for: selectedThemeID)
@@ -367,13 +371,14 @@ struct CanvasView: View {
                         .background(AppColors.controlPurple.opacity(0.50))
                         .overlay(
                             RoundedRectangle(cornerRadius: 7)
-                                .stroke(undoStack.isEmpty ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
+                                .stroke(!hasUndo ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
                         )
                         .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(undoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
-                .disabled(undoStack.isEmpty || tutorial.isBuildStep)
+                .foregroundColor(!hasUndo ? AppColors.textMuted : AppColors.textSecondary)
+                .disabled(!hasUndo || tutorial.isBuildStep)
+                .help("Undo last workspace change")
 
                 Button {
                     redo()
@@ -384,13 +389,14 @@ struct CanvasView: View {
                         .background(AppColors.controlPurple.opacity(0.50))
                         .overlay(
                             RoundedRectangle(cornerRadius: 7)
-                                .stroke(redoStack.isEmpty ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
+                                .stroke(!hasRedo ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
                         )
                         .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(redoStack.isEmpty ? AppColors.textMuted : AppColors.textSecondary)
-                .disabled(redoStack.isEmpty || tutorial.isBuildStep)
+                .foregroundColor(!hasRedo ? AppColors.textMuted : AppColors.textSecondary)
+                .disabled(!hasRedo || tutorial.isBuildStep)
+                .help("Redo last workspace change")
             }
 
             Spacer()
@@ -745,6 +751,9 @@ struct CanvasView: View {
                             onUpdate: {
                                 applyChainToEngine()
                             },
+                            onParameterEditBegan: {
+                                recordUndoSnapshot()
+                            },
                             onParameterChange: {
                                 updateChainParametersOnly()
                             },
@@ -1055,6 +1064,9 @@ struct CanvasView: View {
                 .zIndex(CanvasLayerZIndex.effectTray)
 
                 VStack(spacing: 0) {
+                    if let chainWorkspace {
+                        ChainStrip(workspace: chainWorkspace).disabled(tutorial.isActive)
+                    }
                     toolbarView
 
                     Divider()
@@ -2337,6 +2349,10 @@ struct CanvasView: View {
 
     private func recordUndoSnapshot(_ snapshot: GraphSnapshot) {
         guard !isRestoringSnapshot else { return }
+        if let chainWorkspace {
+            chainWorkspace.recordUndoState(graphOverride: snapshot)
+            return
+        }
         undoStack.append(snapshot)
         if undoStack.count > 50 {
             undoStack.removeFirst()
@@ -2345,6 +2361,10 @@ struct CanvasView: View {
     }
 
     private func undo() {
+        if let chainWorkspace {
+            chainWorkspace.undo()
+            return
+        }
         guard let snapshot = undoStack.popLast() else { return }
         isRestoringSnapshot = true
         redoStack.append(currentGraphSnapshot())
@@ -2355,6 +2375,10 @@ struct CanvasView: View {
     }
 
     private func redo() {
+        if let chainWorkspace {
+            chainWorkspace.redo()
+            return
+        }
         guard let snapshot = redoStack.popLast() else { return }
         isRestoringSnapshot = true
         undoStack.append(currentGraphSnapshot())

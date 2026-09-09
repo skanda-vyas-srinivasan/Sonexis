@@ -180,3 +180,18 @@ expect(library.deletePreset(renamed), "Delete must succeed")
 expect(!library.presets.contains(where: { $0.id == first.id }), "Deleted preset must leave library")
 expect(!PresetManager(directory: libraryDir).presets.contains(where: { $0.id == first.id }), "Deletion must survive reload")
 print("PASS: rename validation/failure/identity/reload, replacement import identity, duplicate import IDs, deletion/reload")
+
+let seedDir = root.appendingPathComponent("starter-seeding")
+let seedMarker = "Sonexis.tests.starter.\(UUID().uuidString)"
+defer { UserDefaults.standard.removeObject(forKey: seedMarker) }
+let seedManager = PresetManager(directory: seedDir)
+let starterA = SavedPreset(name: "Starter A", graph: graph)
+let starterB = SavedPreset(name: "Starter B", graph: changed)
+seedManager.installStarterPresetsIfNeeded([starterA, starterB], markerKey: seedMarker)
+expect(seedManager.presets.contains(where: { $0.id == starterA.id }) &&
+       seedManager.presets.contains(where: { $0.id == starterB.id }), "First launch must seed starter presets")
+expect(seedManager.deletePreset(starterA), "Seeded presets remain editable and deletable")
+seedManager.installStarterPresetsIfNeeded([starterA, starterB], markerKey: seedMarker)
+expect(!seedManager.presets.contains(where: { $0.id == starterA.id }), "Deleted starter must not return")
+expect(seedManager.presets.filter { $0.id == starterB.id }.count == 1, "Starter seeding must not duplicate presets")
+print("PASS: starter presets seed once, remain editable, and stay deleted")

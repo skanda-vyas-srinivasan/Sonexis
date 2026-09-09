@@ -309,6 +309,7 @@ struct EffectChainSnapshot: Codable {
 // MARK: - Preset Manager
 
 class PresetManager: ObservableObject {
+    private static let starterSeedKey = "Sonexis.StarterPresets.v1Installed"
     @Published private(set) var presets: [SavedPreset] = []
     @Published var saveError: String?
 
@@ -336,10 +337,38 @@ class PresetManager: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: resolved, withIntermediateDirectories: true)
             loadPresets()
+            if let url = Bundle.main.url(forResource: "StarterPresets", withExtension: "json"),
+               let data = try? Data(contentsOf: url),
+               let starters = try? JSONDecoder().decode([SavedPreset].self, from: data) {
+                installStarterPresetsIfNeeded(starters, markerKey: Self.starterSeedKey)
+            }
         } catch {
             storageBlocked = true
             saveError = "Unable to open preset storage: \(error.localizedDescription). Existing files have not been changed."
         }
+    }
+
+    func installStarterPresetsIfNeeded(_ starters: [SavedPreset], markerKey: String) {
+        guard !storageBlocked, !UserDefaults.standard.bool(forKey: markerKey), !starters.isEmpty else { return }
+        var candidate = presets.filter { $0.name != "Skanda's Dream Space" }
+        var changed = candidate.count != presets.count
+
+        for starter in starters.reversed() {
+            if let index = candidate.firstIndex(where: { $0.id == starter.id }) {
+                let existing = candidate[index]
+                candidate[index] = SavedPreset(id: existing.id, name: starter.name,
+                    graph: starter.graph, createdDate: existing.createdDate)
+                changed = true
+            } else if !candidate.contains(where: {
+                $0.name.caseInsensitiveCompare(starter.name) == .orderedSame
+            }) {
+                candidate.insert(starter, at: 0)
+                changed = true
+            }
+        }
+
+        guard !changed || persistPresets(candidate) else { return }
+        UserDefaults.standard.set(true, forKey: markerKey)
     }
 
     @discardableResult

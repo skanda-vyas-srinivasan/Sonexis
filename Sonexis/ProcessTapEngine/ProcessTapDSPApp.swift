@@ -15,6 +15,8 @@ final class ProcessTapDSPApp {
     private let dspProcessor: DSPProcessor
     private weak var audioProcessor: ProcessTapAudioProcessor?
 
+    private let fixedSelection: ProcessTapSelection?
+    private var captureTarget: AudioCaptureTarget?
     private var tapCaptureEngine: TapCaptureEngine?
     private var audioOutputEngine: AudioOutputEngine?
     private var ringBuffer: RealtimeRingBuffer?
@@ -42,10 +44,14 @@ final class ProcessTapDSPApp {
 
     init(
         configuration: DSPConfiguration = .productBaseline,
-        audioProcessor: ProcessTapAudioProcessor? = nil
+        audioProcessor: ProcessTapAudioProcessor? = nil,
+        captureTarget: AudioCaptureTarget? = nil,
+        fixedSelection: ProcessTapSelection? = nil
     ) {
         self.dspProcessor = DSPProcessor(configuration: configuration)
         self.audioProcessor = audioProcessor
+        self.captureTarget = captureTarget
+        self.fixedSelection = fixedSelection
     }
 
     deinit {
@@ -58,6 +64,37 @@ final class ProcessTapDSPApp {
         removeSleepWakeObservers(log: false)
         removeDefaultOutputListener(log: false)
         teardownPipeline(log: false, reason: "deinit fallback")
+    }
+
+    func setCaptureTarget(_ target: AudioCaptureTarget?) throws {
+        guard target != captureTarget else { return }
+        let previous = captureTarget
+        captureTarget = target
+        guard !isStopped, !isSuspendedForSleep else { return }
+        do {
+            // Recreate the tap in its requested mode. A live description write
+            // can return success while read-back still reports the old selection.
+            try rebuildPipeline(reason: "audio source changed")
+        } catch {
+            captureTarget = previous
+            do {
+                try rebuildPipeline(reason: "restore previous audio source")
+            } catch let restoreError {
+                handleRebuildFailure(restoreError, reason: "restore audio source",
+                                     retryAttemptsRemaining: rebuildRetryLimit)
+            }
+            throw error
+        }
+    }
+
+    private func refreshCaptureProcesses() {
+        guard !isStopped, !isSuspendedForSleep else { return }
+        do {
+            try rebuildPipeline(reason: "selected app processes changed")
+        } catch {
+            handleRebuildFailure(error, reason: "selected app processes changed",
+                                 retryAttemptsRemaining: rebuildRetryLimit)
+        }
     }
 
     func start() throws {
@@ -159,11 +196,14 @@ final class ProcessTapDSPApp {
         print("Default output stream format: \(outputStreamFormat.formatSummary)")
 
         let tapEngine = TapCaptureEngine()
+        tapEngine.processSelectionDidChange = { [weak self] in self?.refreshCaptureProcesses() }
         tapCaptureEngine = tapEngine
         let tapConfiguration = try tapEngine.prepare(
             sourceDevice: defaultOutput,
             outputStreamFormat: outputStreamFormat,
-            ownProcessObjectID: ownProcessObjectID
+            ownProcessObjectID: ownProcessObjectID,
+            captureTarget: captureTarget,
+            fixedSelection: fixedSelection
         )
 
         let tapFormat = tapConfiguration.tapFormat

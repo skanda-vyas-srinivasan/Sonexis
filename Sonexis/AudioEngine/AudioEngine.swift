@@ -373,13 +373,20 @@ struct ProcessTapRuntimeSettings {
     }
 
     static let defaults = ProcessTapRuntimeSettings(
-        inputTrimDB: -12,
-        outputMakeupDB: 12,
+        inputTrimDB: -15,
+        outputMakeupDB: 15,
         outputCeilingEnabled: false
     )
 }
 
 class AudioEngine: ObservableObject {
+    // Connected by the multi-chain workspace; nil preserves standalone behavior.
+    var onPowerStart: (() -> Void)?
+    var onPowerStop: (() -> Void)?
+    var onEffectsToggle: (() -> Void)?
+    @Published var globalBypassActive = false
+    var chainDisplayName: String?
+    @Published var captureTarget = AudioCaptureTarget.restore()
     var processTapEngine: ProcessTapDSPEngine?
     var processTapStopInProgress = false
     @Published var isRunning = false
@@ -438,11 +445,13 @@ class AudioEngine: ObservableObject {
     let processTapSettingsLock = NSLock()
     var processTapRuntimeSettings = ProcessTapRuntimeSettings.defaults
 
-    init() {
-        setupNotifications()
-        refreshOutputDevices()
+    init(observeSystemLifecycle: Bool = true) {
+        if observeSystemLifecycle {
+            setupNotifications()
+            refreshOutputDevices()
+            startDeviceListMonitor()
+        }
         updateProcessingSnapshot()
-        startDeviceListMonitor()
         pluginHost.onPluginReady = { [weak self] _ in
             DispatchQueue.main.async {
                 self?.pluginStatusToken += 1
@@ -1342,6 +1351,12 @@ class AudioEngine: ObservableObject {
             self.snapshotUpdateScheduled = false
             self.updateProcessingSnapshot()
         }
+    }
+
+    /// Publish a fully configured independent processor before its worker starts.
+    func publishProcessingState() {
+        precondition(Thread.isMainThread)
+        updateProcessingSnapshot()
     }
 
     private func updateProcessingSnapshot() {

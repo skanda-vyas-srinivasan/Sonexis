@@ -64,7 +64,8 @@ struct HeaderView: View {
 
                 // FX bypass
                 Button(action: {
-                    audioEngine.processingEnabled.toggle()
+                    if let toggle = audioEngine.onEffectsToggle { toggle() }
+                    else { audioEngine.processingEnabled.toggle() }
                 }) {
                     Image(systemName: audioEngine.processingEnabled ? "slider.horizontal.3" : "slider.horizontal.3")
                         .font(.system(size: 18))
@@ -72,7 +73,8 @@ struct HeaderView: View {
                         .frame(width: 34, height: 28)
                 }
                 .buttonStyle(.plain)
-                .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
+                .disabled(audioEngine.globalBypassActive)
+                .help(audioEngine.globalBypassActive ? "Global bypass is enabled in the menu bar" : (audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects"))
 
                 Divider()
                     .frame(height: 30)
@@ -100,7 +102,7 @@ struct HeaderView: View {
                 .buttonStyle(.plain)
                 .disabled(recordDisabled)
                 .opacity(recordDisabled ? 0.4 : 1.0)
-                .help(audioEngine.recordingWarningText ?? (audioEngine.isFinalizingRecording ? "Finishing queued recording writes" : (audioEngine.isRecording ? "Stop Recording" : "Record final processed output")))
+                .help(audioEngine.recordingWarningText ?? (audioEngine.isFinalizingRecording ? "Finishing queued recording writes" : (audioEngine.isRecording ? "Stop Recording" : "Record \(audioEngine.chainDisplayName ?? "selected chain") output")))
                 .alert("Recording incomplete", isPresented: $audioEngine.recordingIssuePresented) {
                     if let url = audioEngine.lastRecordingURL {
                         Button("Show File") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -150,6 +152,11 @@ struct HeaderView: View {
                             )
                         }
                     )
+
+                if audioEngine.onPowerStart == nil {
+                    CaptureTargetMenu(audioEngine: audioEngine)
+                        .disabled(tutorial.isActive)
+                }
 
                 Spacer()
 
@@ -477,36 +484,39 @@ struct AudioSettingsFloatingStrip: View {
     @Binding var ceilingEnabled: Bool
     @Binding var selectedThemeID: String
     let isReadOnly: Bool
+    let onBeginEdit: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             AudioSettingsInspectorSlider(
-                title: "Tap In",
+                title: "Input Gain",
                 valueText: String(format: "%.0f dB", trimDB),
                 value: $trimDB,
                 range: -30...0,
                 step: 1,
-                tint: AppColors.neonCyan
+                tint: AppColors.neonCyan,
+                onBeginEdit: onBeginEdit
             )
-            .frame(width: 122)
+            .frame(width: 136)
             .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
             AudioSettingsInspectorSlider(
-                title: "Makeup",
+                title: "Output Gain",
                 valueText: String(format: "%+.0f dB", makeupDB),
                 value: $makeupDB,
                 range: -12...30,
                 step: 1,
-                tint: AppColors.neonPink
+                tint: AppColors.neonPink,
+                onBeginEdit: onBeginEdit
             )
-            .frame(width: 122)
+            .frame(width: 136)
             .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
-            CeilingToggleRow(isOn: $ceilingEnabled)
+            CeilingToggleRow(isOn: $ceilingEnabled, onBeginEdit: onBeginEdit)
                 .fixedSize(horizontal: true, vertical: false)
                 .disabled(isReadOnly)
 
@@ -520,6 +530,7 @@ struct AudioSettingsFloatingStrip: View {
             AudioSettingsGroupDivider()
 
             Button {
+                onBeginEdit()
                 trimDB = ProcessTapRuntimeSettings.defaults.inputTrimDB
                 makeupDB = ProcessTapRuntimeSettings.defaults.outputMakeupDB
                 ceilingEnabled = ProcessTapRuntimeSettings.defaults.outputCeilingEnabled
@@ -532,7 +543,7 @@ struct AudioSettingsFloatingStrip: View {
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
-            .help("Reset Tap In, Makeup, and Ceiling")
+            .help("Reset Input Gain, Output Gain, and Ceiling")
             .disabled(isReadOnly)
         }
         .padding(.horizontal, 12)
@@ -564,6 +575,7 @@ private struct AudioSettingsInspectorSlider: View {
     let range: ClosedRange<Double>
     let step: Double
     let tint: Color
+    let onBeginEdit: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -571,6 +583,8 @@ private struct AudioSettingsInspectorSlider: View {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundColor(AppColors.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
                 Spacer(minLength: 8)
 
@@ -578,6 +592,8 @@ private struct AudioSettingsInspectorSlider: View {
                     .font(AppTypography.paramValue)
                     .foregroundColor(tint)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             Slider(
@@ -588,7 +604,10 @@ private struct AudioSettingsInspectorSlider: View {
                         value = min(max(steppedValue, range.lowerBound), range.upperBound)
                     }
                 ),
-                in: range
+                in: range,
+                onEditingChanged: { editing in
+                    if editing { onBeginEdit() }
+                }
             )
             .controlSize(.small)
             .tint(tint)
@@ -598,6 +617,7 @@ private struct AudioSettingsInspectorSlider: View {
 
 private struct CeilingToggleRow: View {
     @Binding var isOn: Bool
+    let onBeginEdit: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -607,7 +627,13 @@ private struct CeilingToggleRow: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
-            Toggle("", isOn: $isOn)
+            Toggle("", isOn: Binding(
+                get: { isOn },
+                set: { newValue in
+                    onBeginEdit()
+                    isOn = newValue
+                }
+            ))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)

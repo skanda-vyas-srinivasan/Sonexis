@@ -34,11 +34,11 @@ struct HomeView: View {
 
                     Text("Click anywhere to start")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(AppColors.neonCyan)
+                        .foregroundColor(AppColors.textSecondary)
                         .offset(y: reduceMotion ? 0 : (floatPrompt ? -8 : 0))
                         .shadow(
-                            color: AppColors.neonCyan.opacity(contentPulse ? 0.54 : 0.36),
-                            radius: contentPulse ? 12 : 7
+                            color: AppColors.textPrimary.opacity(contentPulse ? 0.12 : 0.06),
+                            radius: contentPulse ? 8 : 4
                         )
                         .background(
                             GeometryReader { proxy in

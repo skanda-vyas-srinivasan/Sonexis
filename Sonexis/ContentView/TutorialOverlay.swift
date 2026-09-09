@@ -530,7 +530,7 @@ struct TutorialOverlay: View {
         case .buildSettingsExplain:
             return (
                 title: "Audio settings",
-                body: "Lower Tap In gives effects more headroom and less drive; higher Tap In hits them harder, which can add intensity but clip sooner. Lower Makeup keeps the output safer and quieter; higher Makeup brings loudness back after effects but can push the limiter. Ceiling is the safety limiter: when output gets too loud it clamps peaks, which can distort the sound, but it is a useful safety mechanism for your speakers. Theme changes the app's color scheme for a different feel and look.",
+                body: "Input Gain controls the level entering the effects: lower values create more headroom, while higher values drive effects harder. Output Gain controls the level after the effects and can restore loudness, but raising it too far can push the limiter. Ceiling is the safety limiter for high peaks. Theme changes the app's color scheme.",
                 showNext: true,
                 isBasicsComplete: false
             )

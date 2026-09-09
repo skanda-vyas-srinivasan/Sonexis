@@ -897,13 +897,27 @@ final class VST3PluginInstance: PluginInstance {
 }
 
 final class PluginHost {
+    private var editorIDs: [UUID: UUID] = [:]
     private var instances: [UUID: PluginInstance] = [:]
     private var references: [UUID: PluginReference] = [:]
     private let lock = NSLock()
     private let debugLifecycle = true
     var onPluginReady: ((UUID) -> Void)?
 
+    deinit {
+        let ids = Array(editorIDs.values)
+        DispatchQueue.main.async {
+            for id in ids { PluginEditorWindowController.shared.closeWindow(for: id) }
+        }
+    }
+
     func sync(nodes: [BeginnerNode]) {
+        let nodeIDs = Set(nodes.map(\.id))
+        let removedEditors = editorIDs.filter { !nodeIDs.contains($0.key) }
+        for (nodeID, editorID) in removedEditors {
+            editorIDs.removeValue(forKey: nodeID)
+            DispatchQueue.main.async { PluginEditorWindowController.shared.closeWindow(for: editorID) }
+        }
         lock.lock()
         defer { lock.unlock() }
         let pluginNodes = nodes.filter { $0.type == .plugin && $0.plugin != nil }
@@ -968,7 +982,9 @@ final class PluginHost {
     }
 
     func openEditor(for nodeId: UUID, fallbackView: NSView?) {
-        if PluginEditorWindowController.shared.showExistingWindow(for: nodeId) {
+        let editorID = editorIDs[nodeId] ?? UUID()
+        editorIDs[nodeId] = editorID
+        if PluginEditorWindowController.shared.showExistingWindow(for: editorID) {
             return
         }
         lock.lock()
@@ -977,27 +993,27 @@ final class PluginHost {
         guard let instance else { return }
         if let auInstance = instance as? AUPluginInstance {
             if auInstance.reference.hasCustomView == false, let fallbackView {
-                PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentView: fallbackView)
+                PluginEditorWindowController.shared.openWindow(for: editorID, title: instance.displayName, contentView: fallbackView)
                 return
             }
             auInstance.requestEditor { view, controller in
                 if let controller {
-                    PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentController: controller)
+                    PluginEditorWindowController.shared.openWindow(for: editorID, title: instance.displayName, contentController: controller)
                     return
                 }
                 if let editorView = view ?? fallbackView {
-                    PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentView: editorView)
+                    PluginEditorWindowController.shared.openWindow(for: editorID, title: instance.displayName, contentView: editorView)
                     return
                 }
                 if let fallbackView {
-                    PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentView: fallbackView)
+                    PluginEditorWindowController.shared.openWindow(for: editorID, title: instance.displayName, contentView: fallbackView)
                 }
             }
             return
         }
 
         if let editorView = instance.editorView() ?? fallbackView {
-            PluginEditorWindowController.shared.openWindow(for: nodeId, title: instance.displayName, contentView: editorView)
+            PluginEditorWindowController.shared.openWindow(for: editorID, title: instance.displayName, contentView: editorView)
         }
     }
 
@@ -1014,6 +1030,11 @@ final class PluginHost {
 final class PluginEditorWindowController: NSObject, NSWindowDelegate {
     static let shared = PluginEditorWindowController()
     private var windows: [UUID: NSWindowController] = [:]
+
+    func closeWindow(for nodeId: UUID) {
+        let controller = windows.removeValue(forKey: nodeId)
+        controller?.close()
+    }
 
     func showExistingWindow(for nodeId: UUID) -> Bool {
         if let controller = windows[nodeId], let window = controller.window {

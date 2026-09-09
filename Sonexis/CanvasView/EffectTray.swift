@@ -29,7 +29,7 @@ struct EffectTray: View {
     @State private var favoriteIDs: Set<String> = []
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
     private let expandedWidth: CGFloat = 252
-    private let collapsedWidth: CGFloat = 44
+    private let collapsedWidth: CGFloat = 28
     private var effectPanelHighlightTint: Color {
         let palette = AppTheme.theme(for: selectedThemeID).palette
         return AppTheme.theme(for: selectedThemeID) == .magenta ? palette.neonCyan : palette.neonPink
@@ -213,17 +213,20 @@ struct EffectTray: View {
             }) {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.left")
                     .font(.system(size: 12, weight: .semibold))
-                    .padding(6)
                     .foregroundColor(AppColors.textSecondary)
-                    .background(AppColors.controlPurple.opacity(0.80))
+                    .frame(width: isCollapsed ? collapsedWidth : 26, height: isCollapsed ? 44 : 26)
+                    .background(isCollapsed ? Color.clear : AppColors.controlPurple.opacity(0.80))
                     .overlay(
                         Circle()
-                            .stroke(AppColors.controlStroke.opacity(0.58), lineWidth: 1)
+                            .stroke(
+                                isCollapsed ? Color.clear : AppColors.controlStroke.opacity(0.58),
+                                lineWidth: 1
+                            )
                     )
-                    .clipShape(Capsule())
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.trailing, 6)
+            .padding(.trailing, isCollapsed ? 0 : 6)
             .frame(maxHeight: .infinity)
             .zIndex(2)
         }

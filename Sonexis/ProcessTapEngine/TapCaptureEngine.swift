@@ -24,6 +24,12 @@ struct TapCaptureConfiguration {
 }
 
 final class TapCaptureEngine {
+    var processSelectionDidChange: (() -> Void)?
+    private var captureTarget: AudioCaptureTarget?
+    private var ownProcessID: AudioObjectID = kAudioObjectUnknown
+    private var processRefreshTimer: Timer?
+    private var selectedProcessIDs: [AudioObjectID] = []
+    private var lastRefreshError: String?
     private var tapID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioDeviceID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID?
@@ -35,13 +41,22 @@ final class TapCaptureEngine {
     func prepare(
         sourceDevice defaultOutput: AudioDeviceSummary,
         outputStreamFormat: AudioStreamBasicDescription,
-        ownProcessObjectID: AudioObjectID
+        ownProcessObjectID: AudioObjectID,
+        captureTarget: AudioCaptureTarget? = nil,
+        fixedSelection: ProcessTapSelection? = nil
     ) throws -> TapCaptureConfiguration {
-        let tapDescription = CATapDescription(
-            excludingProcesses: [ownProcessObjectID],
-            deviceUID: defaultOutput.uid,
-            stream: 0
-        )
+        self.ownProcessID = ownProcessObjectID
+        self.captureTarget = captureTarget
+        let selectedIDs = try fixedSelection?.safeProcessIDs(ownProcessID: ownProcessObjectID)
+            ?? captureTarget?.processObjectIDs(excluding: ownProcessObjectID) ?? [ownProcessObjectID]
+        let isExclusive = fixedSelection?.isExclusive ?? (captureTarget == nil)
+        let tapDescription = Self.makeDescription(sourceDeviceUID: defaultOutput.uid,
+            ownProcessID: ownProcessObjectID, selectedProcesses: isExclusive ? nil : selectedIDs)
+        if fixedSelection != nil {
+            tapDescription.isExclusive = isExclusive
+            tapDescription.processes = selectedIDs
+        }
+        selectedProcessIDs = selectedIDs
         tapDescription.name = "ProcessTapDSP System Output Tap"
         tapDescription.isPrivate = true
         tapDescription.muteBehavior = CATapMuteBehavior(rawValue: 2)!
@@ -55,8 +70,9 @@ final class TapCaptureEngine {
         print("Created process tap: AudioObjectID \(tapID)")
 
         let installedTapDescription = try CoreAudioSupport.tapDescription(tapID)
-        guard installedTapDescription.isExclusive,
-              installedTapDescription.processes.contains(ownProcessObjectID) else {
+        guard installedTapDescription.isExclusive == isExclusive,
+              Set(installedTapDescription.processes) == Set(selectedIDs),
+              isExclusive || !installedTapDescription.processes.contains(ownProcessObjectID) else {
             throw PrototypeError(
                 message: "Process tap self-exclusion verification failed. Refusing to start playback to avoid recursive capture."
             )
@@ -66,7 +82,7 @@ final class TapCaptureEngine {
                 message: "Process tap source UID mismatch. Expected \(defaultOutput.uid), got \(installedTapDescription.deviceUID ?? "nil")."
             )
         }
-        print("Verified tap exclusion includes this process.")
+        print("Verified tap source selection excludes Sonexis playback.")
         print("Tap source device: \(defaultOutput)")
 
         let createdTapFormat = try CoreAudioSupport.tapFormat(tapID)
@@ -84,10 +100,49 @@ final class TapCaptureEngine {
         sourceDevice = defaultOutput
         tapFormat = createdTapFormat
 
+        processRefreshTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, fixedSelection == nil, self.captureTarget != nil else { return }
+            do {
+                let ids = try self.captureTarget?.processObjectIDs(excluding: self.ownProcessID) ?? []
+                if ids != self.selectedProcessIDs { self.processSelectionDidChange?() }
+                self.lastRefreshError = nil
+            } catch {
+                let message = String(describing: error)
+                if self.lastRefreshError != message { print("Audio source refresh failed: \(message)") }
+                self.lastRefreshError = message
+            }
+        }
+
+        if let processRefreshTimer { RunLoop.main.add(processRefreshTimer, forMode: .common) }
+
         return TapCaptureConfiguration(
             sourceDevice: defaultOutput,
             tapFormat: createdTapFormat
         )
+    }
+
+    // nil means all audio; an empty list means a selected app has no audio
+    // processes. Never turn that empty selection into a global tap.
+    static func configureSelection(_ description: CATapDescription,
+                                   selectedProcesses: [AudioObjectID]?, ownProcessID: AudioObjectID) {
+        description.isExclusive = selectedProcesses == nil
+        description.processes = selectedProcesses.map {
+            Array(Set($0.filter { $0 != ownProcessID && $0 != kAudioObjectUnknown })).sorted()
+        } ?? [ownProcessID]
+    }
+
+    static func makeDescription(sourceDeviceUID: String, ownProcessID: AudioObjectID,
+                                selectedProcesses: [AudioObjectID]?) -> CATapDescription {
+        let description: CATapDescription
+        if let selectedProcesses {
+            description = CATapDescription(processes: selectedProcesses.filter { $0 != ownProcessID },
+                                           deviceUID: sourceDeviceUID, stream: 0)
+        } else {
+            description = CATapDescription(excludingProcesses: [ownProcessID],
+                                           deviceUID: sourceDeviceUID, stream: 0)
+        }
+        configureSelection(description, selectedProcesses: selectedProcesses, ownProcessID: ownProcessID)
+        return description
     }
 
     func createIOProc(ringBuffer: RealtimeRingBuffer) throws {
@@ -154,6 +209,8 @@ final class TapCaptureEngine {
     }
 
     func destroyTap(log: Bool) {
+        processRefreshTimer?.invalidate()
+        processRefreshTimer = nil
         if tapID != kAudioObjectUnknown {
             let status = AudioHardwareDestroyProcessTap(tapID)
             if log { printCleanupResult("destroyed Process Tap", status: status) }

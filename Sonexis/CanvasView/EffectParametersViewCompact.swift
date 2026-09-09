@@ -7,6 +7,7 @@ struct EffectParametersViewCompact: View {
     let effectType: EffectType
     @Binding var parameters: NodeEffectParameters
     let tint: Color
+    let onEditBegan: () -> Void
     let onChange: () -> Void
 
     var body: some View {
@@ -29,126 +30,126 @@ struct EffectParametersViewCompact: View {
         LazyVGrid(columns: knobColumns, alignment: .center, spacing: 10) {
             switch effectType {
             case .enhancer:
-                CompactSlider(label: "Intensity", value: $parameters.enhancerAmount, defaultValue: NodeEffectParameters.defaults().enhancerAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Intensity", value: $parameters.enhancerAmount, defaultValue: NodeEffectParameters.defaults().enhancerAmount, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .nightDrive:
-                CompactSlider(label: "Intensity", value: $parameters.nightDriveIntensity, defaultValue: NodeEffectParameters.defaults().nightDriveIntensity, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Width", value: $parameters.nightDriveWidth, defaultValue: NodeEffectParameters.defaults().nightDriveWidth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Intensity", value: $parameters.nightDriveIntensity, defaultValue: NodeEffectParameters.defaults().nightDriveIntensity, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Width", value: $parameters.nightDriveWidth, defaultValue: NodeEffectParameters.defaults().nightDriveWidth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .chromePunch:
-                CompactSlider(label: "Punch", value: $parameters.chromePunchPunch, defaultValue: NodeEffectParameters.defaults().chromePunchPunch, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Body", value: $parameters.chromePunchBody, defaultValue: NodeEffectParameters.defaults().chromePunchBody, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Punch", value: $parameters.chromePunchPunch, defaultValue: NodeEffectParameters.defaults().chromePunchPunch, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Body", value: $parameters.chromePunchBody, defaultValue: NodeEffectParameters.defaults().chromePunchBody, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .midnightGlow:
-                CompactSlider(label: "Glow", value: $parameters.midnightGlowGlow, defaultValue: NodeEffectParameters.defaults().midnightGlowGlow, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Warmth", value: $parameters.midnightGlowWarmth, defaultValue: NodeEffectParameters.defaults().midnightGlowWarmth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Glow", value: $parameters.midnightGlowGlow, defaultValue: NodeEffectParameters.defaults().midnightGlowGlow, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Warmth", value: $parameters.midnightGlowWarmth, defaultValue: NodeEffectParameters.defaults().midnightGlowWarmth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .afterglow:
-                CompactSlider(label: "Air", value: $parameters.afterglowAir, defaultValue: NodeEffectParameters.defaults().afterglowAir, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Space", value: $parameters.afterglowSpace, defaultValue: NodeEffectParameters.defaults().afterglowSpace, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Air", value: $parameters.afterglowAir, defaultValue: NodeEffectParameters.defaults().afterglowAir, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Space", value: $parameters.afterglowSpace, defaultValue: NodeEffectParameters.defaults().afterglowSpace, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .bassBoost:
-                CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, defaultValue: NodeEffectParameters.defaults().bassBoostAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Amount", value: $parameters.bassBoostAmount, defaultValue: NodeEffectParameters.defaults().bassBoostAmount, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .pitchShift:
                 EmptyView()
 
             case .rubberBandPitch:
-                CompactSlider(label: "Semitones", value: $parameters.rubberBandPitchSemitones, defaultValue: NodeEffectParameters.defaults().rubberBandPitchSemitones, range: -12...12, format: .semitones, tint: tint, onChange: onChange)
+                CompactSlider(label: "Semitones", value: $parameters.rubberBandPitchSemitones, defaultValue: NodeEffectParameters.defaults().rubberBandPitchSemitones, range: -12...12, format: .semitones, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .clarity:
-                CompactSlider(label: "Amount", value: $parameters.clarityAmount, defaultValue: NodeEffectParameters.defaults().clarityAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Amount", value: $parameters.clarityAmount, defaultValue: NodeEffectParameters.defaults().clarityAmount, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .deMud:
-                CompactSlider(label: "Strength", value: $parameters.deMudStrength, defaultValue: NodeEffectParameters.defaults().deMudStrength, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Strength", value: $parameters.deMudStrength, defaultValue: NodeEffectParameters.defaults().deMudStrength, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .simpleEQ:
-                CompactSlider(label: "Bass", value: $parameters.eqBass, defaultValue: NodeEffectParameters.defaults().eqBass, range: -1...1, format: .db, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mids", value: $parameters.eqMids, defaultValue: NodeEffectParameters.defaults().eqMids, range: -1...1, format: .db, tint: tint, onChange: onChange)
-                CompactSlider(label: "Treble", value: $parameters.eqTreble, defaultValue: NodeEffectParameters.defaults().eqTreble, range: -1...1, format: .db, tint: tint, onChange: onChange)
+                CompactSlider(label: "Bass", value: $parameters.eqBass, defaultValue: NodeEffectParameters.defaults().eqBass, range: -1...1, format: .db, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mids", value: $parameters.eqMids, defaultValue: NodeEffectParameters.defaults().eqMids, range: -1...1, format: .db, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Treble", value: $parameters.eqTreble, defaultValue: NodeEffectParameters.defaults().eqTreble, range: -1...1, format: .db, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .appleThreeBandEQ:
-                CompactSlider(label: "Bass", value: $parameters.eqBass, defaultValue: NodeEffectParameters.defaults().eqBass, range: -1...1, format: .db, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mids", value: $parameters.eqMids, defaultValue: NodeEffectParameters.defaults().eqMids, range: -1...1, format: .db, tint: tint, onChange: onChange)
-                CompactSlider(label: "Treble", value: $parameters.eqTreble, defaultValue: NodeEffectParameters.defaults().eqTreble, range: -1...1, format: .db, tint: tint, onChange: onChange)
+                CompactSlider(label: "Bass", value: $parameters.eqBass, defaultValue: NodeEffectParameters.defaults().eqBass, range: -1...1, format: .db, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mids", value: $parameters.eqMids, defaultValue: NodeEffectParameters.defaults().eqMids, range: -1...1, format: .db, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Treble", value: $parameters.eqTreble, defaultValue: NodeEffectParameters.defaults().eqTreble, range: -1...1, format: .db, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .tenBandEQ:
-                CompactSlider(label: "31", value: bandBinding(0), defaultValue: NodeEffectParameters.defaults().tenBandGains[0], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "62", value: bandBinding(1), defaultValue: NodeEffectParameters.defaults().tenBandGains[1], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "125", value: bandBinding(2), defaultValue: NodeEffectParameters.defaults().tenBandGains[2], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "250", value: bandBinding(3), defaultValue: NodeEffectParameters.defaults().tenBandGains[3], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "500", value: bandBinding(4), defaultValue: NodeEffectParameters.defaults().tenBandGains[4], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "1k", value: bandBinding(5), defaultValue: NodeEffectParameters.defaults().tenBandGains[5], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "2k", value: bandBinding(6), defaultValue: NodeEffectParameters.defaults().tenBandGains[6], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "4k", value: bandBinding(7), defaultValue: NodeEffectParameters.defaults().tenBandGains[7], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "8k", value: bandBinding(8), defaultValue: NodeEffectParameters.defaults().tenBandGains[8], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "16k", value: bandBinding(9), defaultValue: NodeEffectParameters.defaults().tenBandGains[9], range: -12...12, format: .dbValue, tint: tint, onChange: onChange)
+                CompactSlider(label: "31", value: bandBinding(0), defaultValue: NodeEffectParameters.defaults().tenBandGains[0], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "62", value: bandBinding(1), defaultValue: NodeEffectParameters.defaults().tenBandGains[1], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "125", value: bandBinding(2), defaultValue: NodeEffectParameters.defaults().tenBandGains[2], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "250", value: bandBinding(3), defaultValue: NodeEffectParameters.defaults().tenBandGains[3], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "500", value: bandBinding(4), defaultValue: NodeEffectParameters.defaults().tenBandGains[4], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "1k", value: bandBinding(5), defaultValue: NodeEffectParameters.defaults().tenBandGains[5], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "2k", value: bandBinding(6), defaultValue: NodeEffectParameters.defaults().tenBandGains[6], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "4k", value: bandBinding(7), defaultValue: NodeEffectParameters.defaults().tenBandGains[7], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "8k", value: bandBinding(8), defaultValue: NodeEffectParameters.defaults().tenBandGains[8], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "16k", value: bandBinding(9), defaultValue: NodeEffectParameters.defaults().tenBandGains[9], range: -12...12, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .compressor:
-                CompactSlider(label: "Threshold", value: $parameters.compressorThresholdDB, defaultValue: NodeEffectParameters.defaults().compressorThresholdDB, range: -60...0, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "Ratio", value: $parameters.compressorRatio, defaultValue: NodeEffectParameters.defaults().compressorRatio, range: 1...20, format: .ratio, tint: tint, onChange: onChange)
-                CompactSlider(label: "Attack", value: $parameters.compressorAttackMS, defaultValue: NodeEffectParameters.defaults().compressorAttackMS, range: 0.1...200, format: .msValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "Release", value: $parameters.compressorReleaseMS, defaultValue: NodeEffectParameters.defaults().compressorReleaseMS, range: 5...2000, format: .msValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "Makeup", value: $parameters.compressorMakeupDB, defaultValue: NodeEffectParameters.defaults().compressorMakeupDB, range: -24...24, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.compressorMix, defaultValue: NodeEffectParameters.defaults().compressorMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Threshold", value: $parameters.compressorThresholdDB, defaultValue: NodeEffectParameters.defaults().compressorThresholdDB, range: -60...0, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Ratio", value: $parameters.compressorRatio, defaultValue: NodeEffectParameters.defaults().compressorRatio, range: 1...20, format: .ratio, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Attack", value: $parameters.compressorAttackMS, defaultValue: NodeEffectParameters.defaults().compressorAttackMS, range: 0.1...200, format: .msValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Release", value: $parameters.compressorReleaseMS, defaultValue: NodeEffectParameters.defaults().compressorReleaseMS, range: 5...2000, format: .msValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Makeup", value: $parameters.compressorMakeupDB, defaultValue: NodeEffectParameters.defaults().compressorMakeupDB, range: -24...24, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.compressorMix, defaultValue: NodeEffectParameters.defaults().compressorMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .reverb:
-                CompactSlider(label: "Mix", value: $parameters.reverbMix, defaultValue: NodeEffectParameters.defaults().reverbMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Size", value: $parameters.reverbSize, defaultValue: NodeEffectParameters.defaults().reverbSize, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.reverbMix, defaultValue: NodeEffectParameters.defaults().reverbMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Size", value: $parameters.reverbSize, defaultValue: NodeEffectParameters.defaults().reverbSize, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .stereoWidth:
-                CompactSlider(label: "Width", value: $parameters.stereoWidthAmount, defaultValue: NodeEffectParameters.defaults().stereoWidthAmount, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Width", value: $parameters.stereoWidthAmount, defaultValue: NodeEffectParameters.defaults().stereoWidthAmount, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .delay:
-                CompactSlider(label: "Time", value: $parameters.delayTime, defaultValue: NodeEffectParameters.defaults().delayTime, range: 0.01...2.0, format: .ms, tint: tint, onChange: onChange)
-                CompactSlider(label: "Feedback", value: $parameters.delayFeedback, defaultValue: NodeEffectParameters.defaults().delayFeedback, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.delayMix, defaultValue: NodeEffectParameters.defaults().delayMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Time", value: $parameters.delayTime, defaultValue: NodeEffectParameters.defaults().delayTime, range: 0.01...2.0, format: .ms, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Feedback", value: $parameters.delayFeedback, defaultValue: NodeEffectParameters.defaults().delayFeedback, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.delayMix, defaultValue: NodeEffectParameters.defaults().delayMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .amp:
-                CompactSlider(label: "Input", value: $parameters.ampInputGain, defaultValue: NodeEffectParameters.defaults().ampInputGain, range: -24...24, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "Drive", value: $parameters.ampDrive, defaultValue: NodeEffectParameters.defaults().ampDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Gain", value: $parameters.ampOutputGain, defaultValue: NodeEffectParameters.defaults().ampOutputGain, range: -24...24, format: .dbValue, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.ampMix, defaultValue: NodeEffectParameters.defaults().ampMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Input", value: $parameters.ampInputGain, defaultValue: NodeEffectParameters.defaults().ampInputGain, range: -24...24, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Drive", value: $parameters.ampDrive, defaultValue: NodeEffectParameters.defaults().ampDrive, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Gain", value: $parameters.ampOutputGain, defaultValue: NodeEffectParameters.defaults().ampOutputGain, range: -24...24, format: .dbValue, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.ampMix, defaultValue: NodeEffectParameters.defaults().ampMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .distortion:
-                CompactSlider(label: "Drive", value: $parameters.distortionDrive, defaultValue: NodeEffectParameters.defaults().distortionDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.distortionMix, defaultValue: NodeEffectParameters.defaults().distortionMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Drive", value: $parameters.distortionDrive, defaultValue: NodeEffectParameters.defaults().distortionDrive, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.distortionMix, defaultValue: NodeEffectParameters.defaults().distortionMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .tremolo:
-                CompactSlider(label: "Rate", value: $parameters.tremoloRate, defaultValue: NodeEffectParameters.defaults().tremoloRate, range: 0.1...20, format: .hz, tint: tint, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.tremoloDepth, defaultValue: NodeEffectParameters.defaults().tremoloDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.tremoloRate, defaultValue: NodeEffectParameters.defaults().tremoloRate, range: 0.1...20, format: .hz, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.tremoloDepth, defaultValue: NodeEffectParameters.defaults().tremoloDepth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .autoPan:
-                CompactSlider(label: "Rate", value: $parameters.autoPanRate, defaultValue: NodeEffectParameters.defaults().autoPanRate, range: 0.05...8, format: .hz, tint: tint, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.autoPanDepth, defaultValue: NodeEffectParameters.defaults().autoPanDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.autoPanRate, defaultValue: NodeEffectParameters.defaults().autoPanRate, range: 0.05...8, format: .hz, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.autoPanDepth, defaultValue: NodeEffectParameters.defaults().autoPanDepth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .chorus:
-                CompactSlider(label: "Rate", value: $parameters.chorusRate, defaultValue: NodeEffectParameters.defaults().chorusRate, range: 0.1...5, format: .hz, tint: tint, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.chorusDepth, defaultValue: NodeEffectParameters.defaults().chorusDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.chorusMix, defaultValue: NodeEffectParameters.defaults().chorusMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.chorusRate, defaultValue: NodeEffectParameters.defaults().chorusRate, range: 0.1...5, format: .hz, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.chorusDepth, defaultValue: NodeEffectParameters.defaults().chorusDepth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.chorusMix, defaultValue: NodeEffectParameters.defaults().chorusMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .phaser:
-                CompactSlider(label: "Rate", value: $parameters.phaserRate, defaultValue: NodeEffectParameters.defaults().phaserRate, range: 0.1...5, format: .hz, tint: tint, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.phaserDepth, defaultValue: NodeEffectParameters.defaults().phaserDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.phaserRate, defaultValue: NodeEffectParameters.defaults().phaserRate, range: 0.1...5, format: .hz, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.phaserDepth, defaultValue: NodeEffectParameters.defaults().phaserDepth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .flanger:
-                CompactSlider(label: "Rate", value: $parameters.flangerRate, defaultValue: NodeEffectParameters.defaults().flangerRate, range: 0.1...5, format: .hz, tint: tint, onChange: onChange)
-                CompactSlider(label: "Depth", value: $parameters.flangerDepth, defaultValue: NodeEffectParameters.defaults().flangerDepth, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Feedback", value: $parameters.flangerFeedback, defaultValue: NodeEffectParameters.defaults().flangerFeedback, range: 0...0.95, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.flangerMix, defaultValue: NodeEffectParameters.defaults().flangerMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.flangerRate, defaultValue: NodeEffectParameters.defaults().flangerRate, range: 0.1...5, format: .hz, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Depth", value: $parameters.flangerDepth, defaultValue: NodeEffectParameters.defaults().flangerDepth, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Feedback", value: $parameters.flangerFeedback, defaultValue: NodeEffectParameters.defaults().flangerFeedback, range: 0...0.95, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.flangerMix, defaultValue: NodeEffectParameters.defaults().flangerMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .bitcrusher:
-                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, defaultValue: NodeEffectParameters.defaults().bitcrusherBitDepth, range: 4...16, format: .integer, tint: tint, onChange: onChange)
-                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, defaultValue: NodeEffectParameters.defaults().bitcrusherDownsample, range: 1...20, format: .integer, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.bitcrusherMix, defaultValue: NodeEffectParameters.defaults().bitcrusherMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, defaultValue: NodeEffectParameters.defaults().bitcrusherBitDepth, range: 4...16, format: .integer, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, defaultValue: NodeEffectParameters.defaults().bitcrusherDownsample, range: 1...20, format: .integer, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.bitcrusherMix, defaultValue: NodeEffectParameters.defaults().bitcrusherMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .tapeSaturation:
-                CompactSlider(label: "Drive", value: $parameters.tapeSaturationDrive, defaultValue: NodeEffectParameters.defaults().tapeSaturationDrive, range: 0...1, format: .percent, tint: tint, onChange: onChange)
-                CompactSlider(label: "Mix", value: $parameters.tapeSaturationMix, defaultValue: NodeEffectParameters.defaults().tapeSaturationMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Drive", value: $parameters.tapeSaturationDrive, defaultValue: NodeEffectParameters.defaults().tapeSaturationDrive, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Mix", value: $parameters.tapeSaturationMix, defaultValue: NodeEffectParameters.defaults().tapeSaturationMix, range: 0...1, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .resampling:
-                CompactSlider(label: "Rate", value: $parameters.resampleRate, defaultValue: NodeEffectParameters.defaults().resampleRate, range: 0.5...2.0, format: .ratio, tint: tint, onChange: onChange)
-                CompactSlider(label: "Smooth", value: $parameters.resampleCrossfade, defaultValue: NodeEffectParameters.defaults().resampleCrossfade, range: 0.05...0.6, format: .percent, tint: tint, onChange: onChange)
+                CompactSlider(label: "Rate", value: $parameters.resampleRate, defaultValue: NodeEffectParameters.defaults().resampleRate, range: 0.5...2.0, format: .ratio, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
+                CompactSlider(label: "Smooth", value: $parameters.resampleCrossfade, defaultValue: NodeEffectParameters.defaults().resampleCrossfade, range: 0.05...0.6, format: .percent, tint: tint, onEditBegan: onEditBegan, onChange: onChange)
 
             case .plugin:
                 EmptyView()
@@ -224,6 +225,7 @@ struct CompactSlider: View {
     let range: ClosedRange<Double>
     let format: ValueFormat
     let tint: Color
+    let onEditBegan: (() -> Void)?
     let onChange: (() -> Void)?
     @State private var dragAdjustment: KnobDragAdjustment?
     @State private var isResetGesture = false
@@ -240,6 +242,7 @@ struct CompactSlider: View {
         range: ClosedRange<Double>,
         format: ValueFormat,
         tint: Color,
+        onEditBegan: (() -> Void)? = nil,
         onChange: (() -> Void)? = nil
     ) {
         self.label = label
@@ -248,6 +251,7 @@ struct CompactSlider: View {
         self.range = range
         self.format = format
         self.tint = tint
+        self.onEditBegan = onEditBegan
         self.onChange = onChange
         self._draftValue = State(initialValue: format.editText(for: value.wrappedValue))
     }
@@ -323,6 +327,7 @@ struct CompactSlider: View {
                         if dragAdjustment == nil {
                             if valueFieldFocused { commitTypedValue() }
                             knobFocused = true
+                            onEditBegan?()
                             dragAdjustment = KnobDragAdjustment(value: value)
                             isResetGesture = NSEvent.modifierFlags.contains(.option)
                             if isResetGesture { resetToDefault() }
@@ -429,6 +434,7 @@ struct CompactSlider: View {
         guard let adjusted = format.clampedValue(newValue, range: safeRange) else { return }
         draftValue = format.editText(for: adjusted)
         guard adjusted != value else { return }
+        if dragAdjustment == nil { onEditBegan?() }
         value = adjusted
         onChange?()
     }
