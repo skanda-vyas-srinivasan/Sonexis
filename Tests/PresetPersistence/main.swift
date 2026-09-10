@@ -195,3 +195,53 @@ seedManager.installStarterPresetsIfNeeded([starterA, starterB], markerKey: seedM
 expect(!seedManager.presets.contains(where: { $0.id == starterA.id }), "Deleted starter must not return")
 expect(seedManager.presets.filter { $0.id == starterB.id }.count == 1, "Starter seeding must not duplicate presets")
 print("PASS: starter presets seed once, remain editable, and stay deleted")
+
+// Audio Units can emit equivalent fullState dictionaries in different byte orders.
+let stateXMLA = Data("""
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>name</key><string>Harmony</string>
+<key>parameters</key><dict><key>pitch</key><real>7</real><key>mix</key><real>0.5</real></dict>
+<key>channels</key><array><integer>1</integer><integer>2</integer></array>
+<key>enabled</key><true/><key>blob</key><data>AQID</data>
+<key>created</key><date>2026-09-01T00:00:00Z</date>
+</dict></plist>
+""".utf8)
+let stateXMLB = Data("""
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>created</key><date>2026-09-01T00:00:00Z</date>
+<key>blob</key><data>AQID</data><key>enabled</key><true/>
+<key>channels</key><array><integer>1</integer><integer>2</integer></array>
+<key>parameters</key><dict><key>mix</key><real>0.5</real><key>pitch</key><real>7</real></dict>
+<key>name</key><string>Harmony</string>
+</dict></plist>
+""".utf8)
+var auGraph = graph
+auGraph.nodes = [BeginnerNode(type: .plugin, position: .zero)]
+auGraph.nodes[0].plugin = PluginReference(format: .au, identifier: "test.harmony", name: "Harmony", vendor: "Test", stateData: stateXMLA)
+func graphWithAUState(_ state: Data) -> GraphSnapshot {
+    var result = auGraph
+    result.nodes[0].plugin?.stateData = state
+    return result
+}
+let decodedState = try PropertyListSerialization.propertyList(from: stateXMLB, options: [], format: nil)
+let binaryState = try PropertyListSerialization.data(fromPropertyList: decodedState, format: .binary, options: 0)
+expect(stateXMLA != stateXMLB && binaryState != stateXMLA, "Fixtures use different encodings")
+expect(auGraph.presetComparisonData == graphWithAUState(stateXMLB).presetComparisonData,
+       "AU key order must not mark a freshly loaded preset Modified")
+expect(auGraph.presetComparisonData == graphWithAUState(binaryState).presetComparisonData,
+       "AU XML versus binary encoding must not mark Modified")
+expect(auGraph.nodes[0].plugin?.stateData == stateXMLA, "Comparison must not rewrite saved AU state")
+for (from, to) in [("<real>7</real>", "<real>12</real>"), ("<true/>", "<false/>"),
+                   ("<data>AQID</data>", "<data>AQIE</data>"),
+                   ("2026-09-01", "2026-09-02"),
+                   ("<integer>1</integer><integer>2</integer>", "<integer>2</integer><integer>1</integer>")] {
+    let edited = Data(String(decoding: stateXMLA, as: UTF8.self).replacingOccurrences(of: from, with: to).utf8)
+    expect(auGraph.presetComparisonData != graphWithAUState(edited).presetComparisonData,
+           "Actual AU state changes must still mark Modified: \(from)")
+}
+let opaqueA = graphWithAUState(Data([0x01, 0x02]))
+let opaqueB = graphWithAUState(Data([0x01, 0x03]))
+expect(opaqueA.presetComparisonData != opaqueB.presetComparisonData, "Opaque states keep byte-level change detection")
+print("PASS: AU state comparison ignores serialization differences and preserves real edits and original state bytes")

@@ -1,0 +1,7 @@
+Window: "Sonexis", App: Sonexis.
+1 menu Secondary Actions: Cancel
+	2 ChatGPT, ID: menuAction:
+	3 Finder, ID: menuAction:
+	4 Sonexis, ID: menuAction:
+	5 Terminal, ID: menuAction:
+	6 Xcode, ID: menuAction:

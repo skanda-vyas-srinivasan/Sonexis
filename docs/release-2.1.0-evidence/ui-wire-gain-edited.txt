@@ -1,0 +1,4 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		102 slider Value: 0.9, Secondary Actions: Increment, Decrement
+~			103 value indicator 0.9
+~		37 text Bass Boost 90%

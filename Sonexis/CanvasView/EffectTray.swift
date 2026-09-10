@@ -205,6 +205,14 @@ struct EffectTray: View {
             }
         }
         .animation(.easeInOut(duration: 0.12), value: activeTab)
+        .frame(width: isCollapsed ? collapsedWidth : expandedWidth)
+        .background(AppColors.panelPurple.opacity(0.88))
+        .overlay(
+            Rectangle()
+                .fill(AppColors.controlStroke.opacity(0.50))
+                .frame(width: 1),
+            alignment: .trailing
+        )
         .overlay(alignment: .trailing) {
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -215,14 +223,6 @@ struct EffectTray: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AppColors.textSecondary)
                     .frame(width: isCollapsed ? collapsedWidth : 26, height: isCollapsed ? 44 : 26)
-                    .background(isCollapsed ? Color.clear : AppColors.controlPurple.opacity(0.80))
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                isCollapsed ? Color.clear : AppColors.controlStroke.opacity(0.58),
-                                lineWidth: 1
-                            )
-                    )
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -230,20 +230,12 @@ struct EffectTray: View {
             .frame(maxHeight: .infinity)
             .zIndex(2)
         }
-        .frame(width: isCollapsed ? collapsedWidth : expandedWidth)
-        .background(AppColors.panelPurple.opacity(0.88))
-        .overlay(
-            Rectangle()
-                .fill(AppColors.controlStroke.opacity(0.50))
-                .frame(width: 1),
-            alignment: .trailing
-        )
         .onAppear {
             loadFavorites()
             scanPluginsIfNeeded(for: activeTab)
         }
         .onChange(of: tutorialStep) { step in
-            if step == .buildTrayTabs || step == .buildAddBass {
+            if [.buildTrayTabs, .buildAddBass, .chainsOverrides].contains(step) {
                 activeTab = .builtIn
             }
         }

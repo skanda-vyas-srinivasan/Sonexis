@@ -60,6 +60,36 @@ workspace.select(aID);workspace.store.flush()
 RunLoop.main.run(until:Date().addingTimeInterval(0.7))
 let latest = try ChainWorkspaceStore(directory:directory).load()!
 expect(latest.selectedID==aID,"Delayed tasks cannot overwrite a newer flushed selection")
+// Menu-bar actions must not replace the editor during a temporary tutorial.
+workspace.suspendSaving(for: processorA, suspended: true)
+let protectedGraph = processorA.currentGraphSnapshot!
+let protectedPresetID = workspace.chains.first(where: { $0.id == aID })!.presetID
+var practiceGraph = protectedGraph
+practiceGraph.nodes = [BeginnerNode(type: .reverb)]
+processorA.applyIndependentGraph(practiceGraph)
+workspace.setPreset(UUID(), chainID: aID)
+workspace.select(defaultID)
+workspace.add(AudioCaptureTarget(bundleID: "test.tutorial", name: "Tutorial", bundlePath: "/Tutorial.app"))
+workspace.remove(aID)
+workspace.removeAllAppChains()
+expect(workspace.selectedID == aID && workspace.chains.count == 3,
+       "Tutorial blocks chain switches, additions and removals from other entry points")
+workspace.loadPreset(SavedPreset(name: "During tutorial", graph: practiceGraph), chainID: aID)
+workspace.capture()
+workspace.store.flush()
+let duringTutorial = try ChainWorkspaceStore(directory: directory).load()!
+expect(duringTutorial.chains.first(where: { $0.id == aID })!.graph.presetComparisonData == protectedGraph.presetComparisonData,
+       "Practice edits cannot overwrite the saved chain")
+expect(duringTutorial.chains.first(where: { $0.id == aID })!.presetID == protectedPresetID,
+       "Practice preset identity cannot overwrite the saved preset association")
+processorA.applyIndependentGraph(protectedGraph)
+workspace.setPreset(protectedPresetID, chainID: aID)
+workspace.suspendSaving(for: processorA, suspended: false)
+workspace.select(bID)
+expect(workspace.selectedID == bID, "Normal selection resumes after tutorial restore")
+workspace.select(aID)
+print("PASS: tutorial isolates practice edits and blocks menu-bar chain mutations until restored")
+
 workspace.remove(bID)
 expect(workspace.chains.count==2 && workspace.runtime.processors[bID]==nil,"Remove app chain")
 workspace.remove(defaultID)
@@ -94,7 +124,7 @@ let menuTargetID = workspace.selectedID
 workspace.select(defaultID)
 let preservedDefault = workspace.selectedProcessor!
 let preservedGraph = preservedDefault.currentGraphSnapshot!.presetComparisonData
-let menuPreset = SavedPreset(name: "Menu test", graph: graph)
+let menuPreset = workspace.presets.savePreset(name: "Menu test", graph: graph)!
 workspace.togglePower()
 workspace.loadPreset(menuPreset, chainID: menuTargetID)
 expect(workspace.selectedID == defaultID, "Menu preset does not change editor selection")
@@ -105,47 +135,154 @@ expect(workspace.runtime.state == .running, "Menu preset preserves running state
 workspace.store.flush()
 let menuSaved = try ChainWorkspaceStore(directory: directory).load()!
 expect(menuSaved.chains.first(where: { $0.id == menuTargetID })?.presetID == menuPreset.id, "Menu preset persists")
+let libraryBeforeUnlink = try Data(contentsOf: directory.appendingPathComponent("presets.json"))
+let unlinkedProcessor = workspace.runtime.processors[menuTargetID]!
+let graphBeforeUnlink = unlinkedProcessor.currentGraphSnapshot!.presetComparisonData
+workspace.setPreset(nil, chainID: menuTargetID)
+expect(workspace.chains.first(where: { $0.id == menuTargetID })?.presetID == nil,
+       "Unlink removes the preset association")
+expect(workspace.runtime.processors[menuTargetID] === unlinkedProcessor
+       && unlinkedProcessor.currentGraphSnapshot!.presetComparisonData == graphBeforeUnlink
+       && workspace.runtime.state == .running,
+       "Unlink preserves the graph, settings, processor, and playback")
+expect(workspace.selectedID == defaultID && preservedDefault.currentGraphSnapshot!.presetComparisonData == preservedGraph,
+       "Unlink leaves other chains alone")
+workspace.store.flush()
+let unlinkedSaved = try ChainWorkspaceStore(directory: directory).load()!
+expect(unlinkedSaved.chains.first(where: { $0.id == menuTargetID })?.presetID == nil,
+       "The chain stays unnamed after relaunch")
+let libraryAfterUnlink = try Data(contentsOf: directory.appendingPathComponent("presets.json"))
+expect(libraryAfterUnlink == libraryBeforeUnlink, "Unlink never deletes or modifies the saved preset")
 workspace.shutdown()
 print("PASS: menu preset targets one chain without selecting it or restarting playback")
 
-let historyDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("sonexis-chain-history-\(UUID())")
-try FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
-defer { try? FileManager.default.removeItem(at: historyDirectory) }
-let history = ChainWorkspace(directory: historyDirectory, runtime: runtime())
-let historyDefaultID = history.selectedID
-history.add(appA)
-let historyAppID = history.selectedID
-expect(history.canUndo, "Adding a chain creates a workspace undo step")
-history.undo()
-expect(history.chains.count == 1 && history.selectedID == historyDefaultID && history.canRedo,
-       "Undo removes an added chain and restores selection")
-history.redo()
-expect(history.chains.contains(where: { $0.id == historyAppID }), "Redo restores the added chain")
+// The app lesson uses real workspace actions, but its temporary chain never replaces
+// the user's saved workspace. Exercise finish, early exit, and failed operations.
+let lessonDirectory = directory.appendingPathComponent("app-tutorial")
+var rejectPractice = false
+var rejectRestore = false
+let lessonRuntime = MultiChainAudioEngine(resolve: { target in
+    if (rejectPractice && target.bundleID == "test.practice") || (rejectRestore && target.bundleID == "test.original") {
+        throw PrototypeError(message: "test route unavailable")
+    }
+    return []
+}, makePipeline: { _, _ in FakePipeline() })
+let lesson = ChainWorkspace(directory: lessonDirectory, runtime: lessonRuntime)
+let originalApp = AudioCaptureTarget(bundleID: "test.original", name: "Original App", bundlePath: "/Original.app")
+let practiceApp = AudioCaptureTarget(bundleID: "test.practice", name: "Practice App", bundlePath: "/Practice.app")
+lesson.add(originalApp)
+let originalSelection = lesson.selectedID
+let originalProcessor = lesson.selectedProcessor!
+var originalLessonGraph = originalProcessor.currentGraphSnapshot!
+originalLessonGraph.nodes = [BeginnerNode(type: .clarity)]
+originalProcessor.applyIndependentGraph(originalLessonGraph)
+originalProcessor.processTapInputTrimDB = -21
+originalProcessor.processTapOutputMakeupDB = 6
+lesson.setPreset(UUID(), chainID: originalSelection)
+lesson.togglePower()
+lesson.refreshAndSave()
+lesson.store.flush()
+let originalDocument = try ChainWorkspaceStore(directory: lessonDirectory).load()!
+let encoder = JSONEncoder()
+encoder.outputFormatting = .sortedKeys
+let originalDocumentBytes = try encoder.encode(originalDocument)
 
-history.select(historyAppID)
-let historyProcessor = history.selectedProcessor!
-history.recordUndoState()
-historyProcessor.processTapInputTrimDB = -3
-history.capture()
-history.undo()
-expect(history.selectedProcessor!.processTapInputTrimDB == -15, "Undo restores chain gain settings")
-history.redo()
-expect(history.selectedProcessor!.processTapInputTrimDB == -3, "Redo restores chain gain settings")
-
-let graphBeforeEdit = history.selectedProcessor!.currentGraphSnapshot!
-var graphAfterEdit = graphBeforeEdit
-graphAfterEdit.nodes = [BeginnerNode(type: .clarity)]
-history.recordUndoState(graphOverride: graphBeforeEdit)
-history.selectedProcessor!.applyIndependentGraph(graphAfterEdit)
-history.capture()
-history.undo()
-expect(history.selectedProcessor!.currentGraphSnapshot!.nodes.isEmpty, "Undo restores a graph edit")
-history.redo()
-expect(history.selectedProcessor!.currentGraphSnapshot!.nodes.count == 1, "Redo restores a graph edit")
-
-history.remove(historyAppID)
-expect(!history.chains.contains(where: { $0.id == historyAppID }), "Close removes the app chain")
-history.undo()
-expect(history.chains.contains(where: { $0.id == historyAppID }), "Undo restores a closed app chain")
-history.shutdown()
-print("PASS: unified workspace undo covers chain lifecycle, gain settings, graphs, selection restoration, and redo")
+lesson.tutorial.startChains()
+expect(lesson.tutorial.step == .chainsIntro, "App lesson starts after capturing original work")
+lesson.tutorial.nextButtonTapped()
+rejectPractice = true
+lesson.add(practiceApp)
+expect(lesson.tutorial.step == .chainsAdd && lesson.chains.count == originalDocument.chains.count,
+       "Failed add does not advance or create a partial practice chain")
+rejectPractice = false
+lesson.add(practiceApp)
+let practiceChain = lesson.selectedID
+expect(lesson.tutorial.step == .chainsOverrides && lesson.tutorial.practiceChainID == practiceChain,
+       "Successful add enters the effect exercise")
+let defaultLessonID = lesson.chains.first(where: { $0.target == nil })!.id
+lesson.select(defaultLessonID)
+lesson.remove(originalSelection)
+lesson.removeAllAppChains()
+expect(lesson.selectedID == practiceChain && lesson.chains.count == originalDocument.chains.count + 1,
+       "Unrelated selection/removal cannot derail the exercise")
+var practiceLessonGraph = lesson.selectedProcessor!.currentGraphSnapshot!
+practiceLessonGraph.nodes = [BeginnerNode(type: .bassBoost)]
+lesson.selectedProcessor!.applyIndependentGraph(practiceLessonGraph)
+lesson.tutorial.advanceIf(.chainsOverrides)
+expect(lesson.tutorial.step == .chainsMenuBar, "Adding the effect goes directly to the menu bar")
+let practicePreset = SavedPreset(name: "Existing preset", graph: practiceLessonGraph)
+lesson.select(defaultLessonID)
+expect(lesson.selectedID == practiceChain && lesson.tutorial.step == .chainsMenuBar,
+       "The menu exercise stays on the practice app without a tab-switch detour")
+expect(lesson.selectedProcessor!.currentGraphSnapshot!.nodes.count == 1, "Practice effects remain available")
+lesson.tutorial.didOpenMenuBar(hasPresets: true) // Called only after the menu panel opens.
+lesson.loadPreset(practicePreset, chainID: originalSelection)
+expect(lesson.tutorial.step == .chainsChoosePreset, "Loading the wrong chain is blocked")
+lesson.loadPreset(practicePreset, chainID: practiceChain)
+expect(lesson.tutorial.step == .chainsDisable, "Actual preset load advances")
+lesson.toggleEffects(practiceChain)
+expect(lesson.tutorial.step == .chainsEnable && !lesson.selectedProcessor!.processingEnabled,
+       "Actual disable advances and changes the practice processor")
+lesson.toggleEffects(practiceChain)
+expect(lesson.tutorial.step == .chainsOpenEditor && lesson.selectedProcessor!.processingEnabled,
+       "Actual enable advances and restores processing")
+lesson.tutorial.didOpenEditor(chainID: practiceChain)
+expect(lesson.canSelectChain(practiceChain) && lesson.canRemoveChain(practiceChain),
+       "The practice tab and close control are enabled for the close exercise")
+expect(!lesson.canSelectChain(defaultLessonID) && !lesson.canRemoveChain(originalSelection),
+       "The close exercise cannot alter other chains")
+lesson.select(practiceChain)
+expect(lesson.tutorial.step == .chainsClose, "Clicking the tab title cannot skip closing it")
+lesson.remove(practiceChain)
+expect(lesson.tutorial.step == .chainsComplete, "Closing the practice chain completes the exercise")
+lesson.refreshAndSave()
+lesson.store.flush()
+let duringLesson = try ChainWorkspaceStore(directory: lessonDirectory).load()!
+let duringLessonBytes = try encoder.encode(duringLesson)
+expect(duringLessonBytes == originalDocumentBytes,
+       "Practice actions never overwrite original chains, selection, preset identity, or gains")
+rejectRestore = true
+lesson.tutorial.finishTutorial()
+expect(lesson.tutorial.isActive, "Failed restore leaves the lesson active so restoration can be retried")
+rejectRestore = false
+lesson.tutorial.finishTutorial()
+expect(!lesson.tutorial.isActive && lesson.selectedID == originalSelection,
+       "Finish restores original selection")
+expect(lesson.runtime.state == .running && lesson.selectedProcessor!.processTapInputTrimDB == -21
+       && lesson.selectedProcessor!.processTapOutputMakeupDB == 6,
+       "Finish restores running state and the original gains")
+expect(lesson.selectedProcessor!.currentGraphSnapshot!.presetComparisonData == originalLessonGraph.presetComparisonData,
+       "Finish restores unsaved graph edits")
+lesson.tutorial.startChains()
+lesson.tutorial.nextButtonTapped()
+lesson.add(practiceApp)
+lesson.tutorial.skipTutorial()
+expect(!lesson.tutorial.isActive && lesson.selectedID == originalSelection
+       && lesson.chains.count == originalDocument.chains.count, "Early exit removes practice work and restores original chains")
+lesson.tutorial.startChains()
+lesson.tutorial.nextButtonTapped()
+lesson.add(practiceApp)
+let continuingPractice = lesson.selectedID
+lesson.tutorial.step = .chainsClose
+lesson.remove(continuingPractice)
+rejectRestore = true
+lesson.tutorial.continueToNextLesson()
+expect(lesson.tutorial.step == .chainsComplete && lesson.tutorial.pendingNextLesson == nil,
+       "Continue must not open Manual wiring if original chains cannot be restored")
+rejectRestore = false
+lesson.tutorial.continueToNextLesson()
+expect(!lesson.tutorial.isActive && lesson.tutorial.pendingNextLesson == .manualWiring
+       && lesson.selectedID == originalSelection && lesson.chains.count == originalDocument.chains.count,
+       "Continue restores the app workspace before queuing Manual wiring")
+expect(lesson.selectedProcessor!.currentGraphSnapshot!.presetComparisonData == originalLessonGraph.presetComparisonData,
+       "The next lesson receives the original graph rather than the practice chain")
+let continuedDocument = try ChainWorkspaceStore(directory: lessonDirectory).load()!
+let continuedDocumentBytes = try encoder.encode(continuedDocument)
+expect(continuedDocumentBytes == originalDocumentBytes,
+       "Continuing preserves the saved workspace")
+lesson.tutorial.startPendingLesson()
+expect(lesson.tutorial.step == .advancedIntro && lesson.tutorial.pendingNextLesson == nil,
+       "Manual wiring starts after restoration")
+lesson.tutorial.skipTutorial()
+lesson.shutdown()
+print("PASS: real app tutorial actions, failed-operation gating, shared progress, persistence isolation, finish and early-exit restoration")

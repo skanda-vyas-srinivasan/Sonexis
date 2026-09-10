@@ -1,0 +1,10 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 100
++		98 text Connect the paths
++		99 button Skip
+~		13 text Process Tap Effects Hold Option and drag to connect:
+Start → Bass Boost
+Start → Clarity
+Bass Boost → Reverb
+Clarity → Reverb
+Reverb → End

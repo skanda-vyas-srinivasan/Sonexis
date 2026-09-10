@@ -1,0 +1,4 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		189 text Turn the effects back on
+~		130 text Auto-connect End
++		191 text Click the same sliders button again.

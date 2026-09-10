@@ -1,0 +1,92 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 103, 123
+~96 standard window Sonexis, ID: editor, Secondary Actions: Raise
+~		98 button Home
+~		99 button Description: Power, Help: Start Processing, ID: power.circle
+~		100 button Description: Edit, Help: Disable Effects, ID: slider.horizontal.3
+~		101 button (disabled) Description: Record, Help: Record Default output
+~		102 text Help: Processed output level after Sonexis effects., Value: Output -inf dB
++		103 button Description: gearshape, Help: Audio settings
++		104 text Help: Skanda's Brighten, Value: PRESET Skanda's Brighten
++		105 button Description: Save, Help: Save preset
++		106 button Description: Save options, Help: Save preset, Value: Collapsed, ID: chevron.down
++		107 button Description: Load, Help: Load preset
++		108 text Effects
++		109 scroll area
++			110 button (selected) Description: Default, Help: Default effects for apps without their own chain, Value: Chain enabled
++		111 menu button Description: Add app chain, Help: Add an app chain
++		112 image Description: Search, ID: magnifyingglass
++		113 text field (settable, string) Search
++		114 menu button Graph Mode
++		115 menu button Stereo
++		116 menu button Description: Go Down, ID: chevron.down
++		117 menu button Description: Wiring, Help: Automatic: Effects flow left-to-right by position.
++		118 menu button Description: Automatic, Help: Automatic: Effects flow left-to-right by position.
++		119 menu button Description: Go Down, Help: Automatic: Effects flow left-to-right by position., ID: chevron.down
++		120 text Auto-connect End
++		121 toggle button (disabled) Help: Automatic mode handles all connections., Value: off
+~		122 text Flow
++		123 button 20 FPS
++		124 menu button Canvas
++		125 menu button Description: Go Down, ID: chevron.down
++		126 button Built-in
++		127 button Plugins
++		128 button Favorites
++		129 image Description: Volume Highest, ID: speaker.wave.3
++		130 text Bass Boost
++		131 image waveform
++		132 image Description: Volume Higher, ID: speaker.wave.3.fill
++		133 text Start End
++		134 image Description: Flame, ID: flame.fill
++		135 text Enhancer
++		136 scroll area Secondary Actions: Scroll Up, Scroll Down
++			137 list Secondary Actions: AXScrollToTop, AXScrollToBottom
++				138 text Tone
++				139 image Description: Volume Highest, ID: speaker.wave.3
++				140 text Bass Boost
++				141 button Description: Favorite, Help: Remove favorite, ID: star.fill
++				142 image Description: Flame, ID: flame.fill
++				143 text Enhancer
++				144 button Description: Favorite, Help: Add favorite, ID: star
++				145 image Description: Sparkle, ID: sparkles
++				146 text Clarity
++				147 button Description: Favorite, Help: Add favorite, ID: star
++				148 image Description: Edit, ID: slider.horizontal.3
++				149 text Simple EQ
++				150 button Description: Favorite, Help: Add favorite, ID: star
++				151 image Description: Playlist, ID: music.note.list
++				152 text Pitch (Rubber Band)
++				153 button Description: Favorite, Help: Add favorite, ID: star
++				154 text Space
++				155 image building.columns
++				156 text Reverb
++				157 button Description: Favorite, Help: Add favorite, ID: star
++				158 image arrow.left.and.right
++				159 text Stereo Widening
++				160 button Description: Favorite, Help: Add favorite, ID: star
++				161 image arrow.3.trianglepath
++				162 text Delay
++				163 button Description: Favorite, Help: Add favorite, ID: star
++				164 text Motion
++				165 image waveform
++				166 text Tremolo
++				167 button Description: Favorite, Help: Add favorite, ID: star
++				168 image arrow.left.arrow.right
++				169 text Auto Pan
++				170 button Description: Favorite, Help: Add favorite, ID: star
++				171 image waveform.circle
++				172 text Chorus
++				173 button Description: Favorite, Help: Add favorite, ID: star
++				174 text Texture Signature
++			175 scroll bar (settable, float) 0
++				176 value indicator (settable, float) 0
++				177 increment arrow button
++				178 decrement arrow button
++				179 increment page button
++				180 decrement page button
++		181 image Description: Sparkle, ID: sparkles
++		182 text Clarity
++		183 button Description: Back, ID: chevron.left
++	184 close button
++	185 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
++	186 minimize button

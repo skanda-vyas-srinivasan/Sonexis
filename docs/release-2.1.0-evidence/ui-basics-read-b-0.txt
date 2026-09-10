@@ -1,0 +1,5 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 38
++		95 text Change the order
++		96 button Skip
++		97 text Now move Clarity to the right of Bass Boost. In Automatic mode, audio passes through the effects from left to right. Flow

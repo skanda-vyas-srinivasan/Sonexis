@@ -1,0 +1,1 @@
+PASS randomized wraparound/overflow/underflow, channels 1/2/4/8, 80,000 operations, 377027164 sample comparisons; concurrent 2,000,000-frame producer/consumer.

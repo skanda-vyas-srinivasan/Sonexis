@@ -1,0 +1,19 @@
+{"case":"starter-preset","name":"Skanda's Split Harmony","nodes":2,"peakAtMinus20DBFS":0.10127412527799606}
+{"case":"starter-preset","name":"Skanda's Punch (WARNING: LOUD)","nodes":3,"peakAtMinus20DBFS":0.2992292046546936}
+{"case":"starter-preset","name":"Skanda's Vocal Lift","nodes":3,"peakAtMinus20DBFS":0.45727777481079102}
+{"case":"starter-preset","name":"Skanda's Warmth","nodes":3,"peakAtMinus20DBFS":0.26197487115859985}
+{"case":"starter-preset","name":"Skanda's 8bit nonsense","nodes":3,"peakAtMinus20DBFS":0.17730580270290375}
+{"case":"starter-preset","name":"Skanda's Swirl","nodes":5,"peakAtMinus20DBFS":0.12948398292064667}
+PluginHost creating plugin instance: node=C2BC1AD4-C1B7-4417-A8F4-B9051F33FF03, name=AUPitch
+PluginHost creating plugin instance: node=AE1EB51B-031D-42B9-8F66-2FEC8684A1BC, name=AUPitch
+PluginHost creating plugin instance: node=6E52EAEC-BDE8-494C-926B-27C35C695965, name=AUPitch
+AU Instantiate failed for AUPitch: The operation couldn’t be completed. (OSStatus error -3000.)
+AU Instantiate failed for AUPitch: The operation couldn’t be completed. (OSStatus error -3000.)
+AU Instantiate failed for AUPitch: The operation couldn’t be completed. (OSStatus error -3000.)
+{"case":"starter-preset","name":"Skanda's Trinity Harmony","nodes":5,"peakAtMinus20DBFS":0.20038034021854401}
+PluginHost creating plugin instance: node=C2BC1AD4-C1B7-4417-A8F4-B9051F33FF03, name=AUPitch
+PluginHost creating plugin instance: node=AE1EB51B-031D-42B9-8F66-2FEC8684A1BC, name=AUPitch
+AU Instantiate failed for AUPitch: The operation couldn’t be completed. (OSStatus error -3000.)
+AU Instantiate failed for AUPitch: The operation couldn’t be completed. (OSStatus error -3000.)
+{"case":"starter-preset","name":"Skanda's Central Harmony","nodes":4,"peakAtMinus20DBFS":0.20038785040378571}
+{"case":"starter-preset","name":"Skanda's Brighten","nodes":3,"peakAtMinus20DBFS":0.21733453869819641}

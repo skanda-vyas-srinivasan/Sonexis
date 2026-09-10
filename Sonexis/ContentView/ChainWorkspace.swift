@@ -107,17 +107,17 @@ final class ChainWorkspace: ObservableObject {
     let runtime: MultiChainAudioEngine
     let presets: PresetManager
     let store: ChainWorkspaceStore
+    let tutorial = TutorialController()
+    private var tutorialObservation: AnyCancellable?
+    private var appTutorialSnapshot: ChainWorkspaceDocument?
+    private var appTutorialWasRunning = false
     @Published private(set) var selectedID: UUID
-    @Published private(set) var canUndo = false
-    @Published private(set) var canRedo = false
     @Published var issue: String?
     let didRestore: Bool
     private var observation: AnyCancellable?
     private var savingPaused = false
     private var suspendedChains = Set<UUID>()
-    private var undoHistory: [ChainWorkspaceDocument] = []
-    private var redoHistory: [ChainWorkspaceDocument] = []
-    private var isRestoringHistory = false
+    private var suspendedDefinitions: [UUID: AudioChainDefinition] = [:]
     var chains: [AudioChainDefinition] { runtime.definitions }
     var selectedProcessor: AudioEngine? { runtime.processors[selectedID] }
     var isRecording: Bool { runtime.processors.values.contains { $0.isRecording || $0.isFinalizingRecording } }
@@ -163,7 +163,71 @@ final class ChainWorkspace: ObservableObject {
         wireProcessors()
         store.onError = { [weak self] in self?.issue = $0 }
         observation = runtime.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        tutorialObservation = tutorial.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        tutorial.onBeginAppTour = { [weak self] in self?.beginAppTutorial() ?? false }
+        tutorial.onEndAppTour = { [weak self] in self?.restoreAppTutorial() ?? false }
         prepareSelectedCanvas()
+    }
+
+    private func beginAppTutorial() -> Bool {
+        guard !isRecording, !savingPaused, suspendedChains.isEmpty else {
+            issue = "Finish recording or the current tutorial before starting the app-chain lesson."
+            return false
+        }
+        refreshAndSave()
+        store.flush()
+        appTutorialSnapshot = ChainWorkspaceDocument(chains: chains, selectedID: selectedID,
+                                                     globalBypass: runtime.globallyBypassed)
+        appTutorialWasRunning = runtime.state == .running
+        return true
+    }
+
+    private func restoreAppTutorial() -> Bool {
+        guard let original = appTutorialSnapshot else { return true }
+        do {
+            try runtime.configure(original.chains)
+            runtime.setGlobalBypass(original.globalBypass)
+            wireProcessors()
+            selectedID = original.selectedID
+            prepareSelectedCanvas()
+            if appTutorialWasRunning { try runtime.start() } else { runtime.stop() }
+            appTutorialSnapshot = nil
+            capture()
+            store.flush()
+            return true
+        } catch {
+            issue = "Could not restore your chains: \(error). Your saved workspace is unchanged. Try finishing the tutorial again."
+            return false
+        }
+    }
+
+    var canAddChain: Bool {
+        !isRecording && suspendedChains.isEmpty && (!tutorial.isActive || tutorial.step == .chainsAdd)
+    }
+
+    func canSelectChain(_ id: UUID) -> Bool {
+        guard suspendedChains.isEmpty else { return false }
+        guard tutorial.isActive else { return true }
+        return [.chainsOpenEditor, .chainsClose].contains(tutorial.step) && id == tutorial.practiceChainID
+    }
+
+    func canRemoveChain(_ id: UUID) -> Bool {
+        !isRecording && suspendedChains.isEmpty && (!tutorial.isActive ||
+            (tutorial.step == .chainsClose && id == tutorial.practiceChainID))
+    }
+
+    func canToggleChain(_ id: UUID) -> Bool {
+        !suspendedChains.contains(id) && (!tutorial.isActive ||
+            ([.chainsDisable, .chainsEnable].contains(tutorial.step) && id == tutorial.practiceChainID))
+    }
+
+    func canLoadPreset(into id: UUID) -> Bool {
+        !suspendedChains.contains(id) && (!tutorial.isActive ||
+            (tutorial.step == .chainsChoosePreset && id == tutorial.practiceChainID))
+    }
+
+    func canOpenChainFromMenu(_ id: UUID) -> Bool {
+        !tutorial.isActive || (tutorial.step == .chainsOpenEditor && id == tutorial.practiceChainID)
     }
 
     static func emptyChain(target: AudioCaptureTarget?) -> AudioChainDefinition {
@@ -176,6 +240,7 @@ final class ChainWorkspace: ObservableObject {
     func name(for chain: AudioChainDefinition) -> String { chain.target?.name ?? "Default" }
 
     func select(_ id: UUID) {
+        guard canSelectChain(id) else { return }
         guard chains.contains(where: { $0.id == id }), selectedID != id else { return }
         capture()
         selectedID = id
@@ -184,10 +249,9 @@ final class ChainWorkspace: ObservableObject {
     }
 
     func add(_ target: AudioCaptureTarget) {
-        guard !isRecording else { return }
+        guard canAddChain else { return }
         if let existing = chains.first(where: { $0.target?.id == target.id }) { select(existing.id); return }
         capture()
-        recordUndoState()
         let chain = Self.emptyChain(target: target)
         do {
             try runtime.configure(chains + [chain])
@@ -195,26 +259,28 @@ final class ChainWorkspace: ObservableObject {
             selectedID = chain.id
             prepareSelectedCanvas()
             capture()
+            tutorial.didAddPracticeChain(id: chain.id, name: target.name)
         } catch { issue = "Could not add app chain: \(error)" }
     }
 
     func remove(_ id: UUID) {
+        guard canRemoveChain(id) else { return }
         guard !isRecording, let chain = chains.first(where: { $0.id == id }), chain.target != nil else { return }
         capture()
-        recordUndoState()
         do {
             try runtime.configure(chains.filter { $0.id != id })
             wireProcessors()
             if selectedID == id { selectedID = chains.first(where: { $0.target == nil })!.id }
             prepareSelectedCanvas()
             capture()
+            tutorial.advanceIf(.chainsClose)
         } catch { issue = "Could not remove app chain: \(error)" }
     }
 
     func removeAllAppChains() {
+        guard suspendedChains.isEmpty, !tutorial.isActive else { return }
         guard !isRecording, chains.contains(where: { $0.target != nil }) else { return }
         capture()
-        recordUndoState()
         do {
             try runtime.configure(chains.filter { $0.target == nil })
             wireProcessors()
@@ -225,15 +291,15 @@ final class ChainWorkspace: ObservableObject {
     }
 
     func loadPreset(_ preset: SavedPreset, chainID: UUID) {
-        guard !suspendedChains.contains(chainID) else { return }
+        guard canLoadPreset(into: chainID) else { return }
         capture()
-        recordUndoState()
         do {
             try runtime.updateGraph(preset.graph, chainID: chainID)
             runtime.setPresetID(preset.id, chainID: chainID)
             runtime.processors[chainID]?.requestGraphLoad(
                 preset.graph, mode: .visualOnly, reason: "menu bar preset")
             capture()
+            tutorial.advanceIf(.chainsChoosePreset)
         } catch { issue = "Could not load preset: \(error)" }
     }
 
@@ -243,6 +309,7 @@ final class ChainWorkspace: ObservableObject {
     }
 
     func togglePower() {
+        guard !tutorial.isActive || tutorial.step == .buildPower || tutorial.step == .advancedIntro else { return }
         if runtime.state == .running { runtime.stop() }
         else {
             capture()
@@ -251,90 +318,43 @@ final class ChainWorkspace: ObservableObject {
     }
 
     func toggleGlobalBypass() {
+        guard suspendedChains.isEmpty, !tutorial.isActive else { return }
         runtime.captureDefinitions()
-        recordUndoState()
         runtime.setGlobalBypass(!runtime.globallyBypassed)
         for processor in runtime.processors.values { processor.globalBypassActive = runtime.globallyBypassed }
         capture()
     }
 
     func toggleEffects(_ id: UUID) {
+        guard canToggleChain(id) else { return }
         guard let chain = chains.first(where: { $0.id == id }) else { return }
-        recordUndoState()
         runtime.setEffectsEnabled(!chain.effectsEnabled, chainID: id)
         capture()
+        if tutorial.step == .chainsDisable && chain.effectsEnabled { tutorial.advance() }
+        else if tutorial.step == .chainsEnable && !chain.effectsEnabled { tutorial.advance() }
     }
 
     func suspendSaving(for processor: AudioEngine, suspended: Bool) {
         guard let id = runtime.processors.first(where: { $0.value === processor })?.key else { return }
-        if suspended { suspendedChains.insert(id) } else { suspendedChains.remove(id) }
+        if suspended {
+            if !suspendedChains.contains(id) {
+                runtime.captureDefinitions(excluding: suspendedChains)
+                suspendedDefinitions[id] = chains.first { $0.id == id }
+                suspendedChains.insert(id)
+            }
+        } else {
+            suspendedChains.remove(id)
+            suspendedDefinitions.removeValue(forKey: id)
+        }
     }
 
     func capture() {
         guard !savingPaused, !chains.isEmpty else { return }
         runtime.captureDefinitions(excluding: suspendedChains)
-        store.schedule(ChainWorkspaceDocument(chains: chains, selectedID: selectedID, globalBypass: runtime.globallyBypassed))
-    }
-
-    func recordUndoState(graphOverride: GraphSnapshot? = nil, chainID: UUID? = nil) {
-        guard !isRestoringHistory, !savingPaused else { return }
-        runtime.captureDefinitions(excluding: suspendedChains)
-        var document = historyDocument()
-        if let graphOverride,
-           let index = document.chains.firstIndex(where: { $0.id == (chainID ?? selectedID) }) {
-            document.chains[index].graph = graphOverride
-        }
-        guard undoHistory.last.map({ !historyEqual($0, document) }) ?? true else { return }
-        undoHistory.append(document)
-        if undoHistory.count > 50 { undoHistory.removeFirst() }
-        redoHistory.removeAll()
-        updateHistoryAvailability()
-    }
-
-    func undo() {
-        guard let previous = undoHistory.popLast() else { return }
-        runtime.captureDefinitions(excluding: suspendedChains)
-        redoHistory.append(historyDocument())
-        restoreHistory(previous, reason: "undo")
-    }
-
-    func redo() {
-        guard let next = redoHistory.popLast() else { return }
-        runtime.captureDefinitions(excluding: suspendedChains)
-        undoHistory.append(historyDocument())
-        restoreHistory(next, reason: "redo")
-    }
-
-    private func historyDocument() -> ChainWorkspaceDocument {
-        ChainWorkspaceDocument(chains: chains, selectedID: selectedID, globalBypass: runtime.globallyBypassed)
-    }
-
-    private func historyEqual(_ lhs: ChainWorkspaceDocument, _ rhs: ChainWorkspaceDocument) -> Bool {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        return (try? encoder.encode(lhs)) == (try? encoder.encode(rhs))
-    }
-
-    private func restoreHistory(_ document: ChainWorkspaceDocument, reason: String) {
-        isRestoringHistory = true
-        do {
-            try runtime.configure(document.chains)
-            runtime.setGlobalBypass(document.globalBypass)
-            selectedID = document.chains.contains(where: { $0.id == document.selectedID })
-                ? document.selectedID : document.chains[0].id
-            wireProcessors()
-            prepareSelectedCanvas(reason: reason)
-            capture()
-        } catch {
-            issue = "Could not \(reason) workspace change: \(error)"
-        }
-        isRestoringHistory = false
-        updateHistoryAvailability()
-    }
-
-    private func updateHistoryAvailability() {
-        canUndo = !undoHistory.isEmpty
-        canRedo = !redoHistory.isEmpty
+        // Preset identity changes immediately in the live definition too. Preserve
+        // the complete original definition while a tutorial uses a practice canvas.
+        let savedChains = chains.map { suspendedDefinitions[$0.id] ?? $0 }
+        store.schedule(appTutorialSnapshot ?? ChainWorkspaceDocument(chains: savedChains, selectedID: selectedID, globalBypass: runtime.globallyBypassed))
     }
 
     func refreshAndSave() {
@@ -349,9 +369,9 @@ final class ChainWorkspace: ObservableObject {
         for processor in runtime.processors.values { processor.stopRecording(waitForWrites: true) }
     }
 
-    private func prepareSelectedCanvas(reason: String = "select independent chain") {
+    private func prepareSelectedCanvas() {
         guard let processor = selectedProcessor, let graph = processor.currentGraphSnapshot else { return }
-        processor.requestGraphLoad(graph, mode: .visualOnly, reason: reason)
+        processor.requestGraphLoad(graph, mode: .visualOnly, reason: "select independent chain")
     }
 
     private func wireProcessors() {
@@ -380,7 +400,7 @@ struct ChainWorkspaceView: View {
             if let processor = workspace.selectedProcessor {
                 let chainID = workspace.selectedID
                 ContentView(openEditor: openEditor, audioEngine: processor, presetManager: workspace.presets,
-                    chainWorkspace: workspace, activeScreen: $activeScreen,
+                    chainWorkspace: workspace, tutorial: workspace.tutorial, activeScreen: $activeScreen,
                     currentPresetID: Binding(get: { workspace.chains.first(where: { $0.id == chainID })?.presetID },
                         set: { workspace.setPreset($0, chainID: chainID) }))
                     .id(chainID)
@@ -389,9 +409,14 @@ struct ChainWorkspaceView: View {
             }
         }
         .onAppear {
+            menuBar.onOpen = {
+                workspace.tutorial.didOpenMenuBar(hasPresets: !workspace.presets.presets.isEmpty)
+            }
             menuBar.install {
                 AnyView(ChainMenuBarPanel(workspace: workspace, openChain: { id in
+                    guard workspace.canOpenChainFromMenu(id) else { return }
                     workspace.select(id)
+                    workspace.tutorial.didOpenEditor(chainID: id)
                     activeScreen = .beginner
                     menuBar.close()
                     openEditor()
@@ -421,7 +446,7 @@ struct ChainStrip: View {
     @State private var hoveredID: UUID?
 
     private var canCloseApps: Bool {
-        !workspace.isRecording && workspace.chains.contains { $0.target != nil }
+        !workspace.isRecording && !workspace.tutorial.isActive && workspace.chains.contains { $0.target != nil }
     }
 
     var body: some View {
@@ -437,7 +462,9 @@ struct ChainStrip: View {
                 ForEach(apps.filter { app in !workspace.chains.contains { $0.target?.id == app.id } }) { app in
                     Button(app.name) { workspace.add(app) }
                 }
-                if apps.isEmpty { Text("Open an app to add its chain") }
+                if apps.allSatisfy({ app in workspace.chains.contains { $0.target?.id == app.id } }) {
+                    Text("Open another app to add its chain")
+                }
             } label: {
                 Image(systemName: "plus").font(.system(size: 12, weight: .medium))
                     .foregroundStyle(AppColors.textSecondary).frame(width: 40, height: 40)
@@ -446,11 +473,13 @@ struct ChainStrip: View {
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .accessibilityLabel("Add app chain")
             .help("Add an app chain")
+            .tutorialTarget(.addAppChain)
             .padding(.trailing, 4)
-            .disabled(workspace.isRecording)
+            .disabled(!workspace.canAddChain)
         }
         .foregroundStyle(AppColors.textPrimary)
         .frame(height: 40)
+        .tutorialTarget(.chainTabs)
         .background(AppColors.panelPurple)
         .overlay(alignment: .bottom) {
             Rectangle().fill(AppColors.controlStrokeSoft).frame(height: 1)
@@ -474,6 +503,8 @@ struct ChainStrip: View {
     private func tab(_ chain: AudioChainDefinition) -> some View {
         let selected = workspace.selectedID == chain.id
         let enabled = chain.effectsEnabled && !workspace.runtime.globallyBypassed
+        let isCloseTutorialTarget = workspace.tutorial.step == .chainsClose &&
+            workspace.tutorial.practiceChainID == chain.id
         return HStack(spacing: 0) {
             Button { workspace.select(chain.id) } label: {
                 HStack(spacing: 7) {
@@ -498,20 +529,26 @@ struct ChainStrip: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(!workspace.canSelectChain(chain.id))
             .accessibilityAddTraits(selected ? .isSelected : [])
             .accessibilityValue(enabled ? "Chain enabled" : "Chain disabled")
             .help(chain.target == nil ? "Default effects for apps without their own chain" : "Edit \(workspace.name(for: chain)); other chains keep running")
             if chain.target != nil {
                 Button { removing = chain } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(AppColors.textMuted)
+                        .foregroundStyle(isCloseTutorialTarget ? AppColors.neonCyan : AppColors.textMuted)
                         .frame(width: 24, height: 40).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 4)
-                .disabled(workspace.isRecording)
+                .disabled(!workspace.canRemoveChain(chain.id))
                 .accessibilityLabel("Close \(workspace.name(for: chain)) chain")
                 .help("Close app chain")
+            }
+        }
+        .background {
+            if isCloseTutorialTarget {
+                Color.clear.tutorialTarget(.practiceChainTab)
             }
         }
         .background(selected ? AppColors.controlPurpleRaised.opacity(0.42) :
@@ -530,8 +567,9 @@ struct ChainStrip: View {
         .onHover { hoveredID = $0 ? chain.id : (hoveredID == chain.id ? nil : hoveredID) }
         .contextMenu {
             Button(chain.effectsEnabled ? "Disable Chain" : "Enable Chain") { workspace.toggleEffects(chain.id) }
+                .disabled(!workspace.canToggleChain(chain.id))
             if chain.target != nil {
-                Button("Close Tab", role: .destructive) { removing = chain }.disabled(workspace.isRecording)
+                Button("Close Tab", role: .destructive) { removing = chain }.disabled(!workspace.canRemoveChain(chain.id))
             }
             Divider()
             Button("Close All App Tabs", role: .destructive) { removingAll = true }.disabled(!canCloseApps)
@@ -563,7 +601,16 @@ struct ChainMenuBarPanel: View {
                     Image(systemName: workspace.runtime.state == .running ? "power.circle.fill" : "power.circle")
                         .font(.system(size: 24)).foregroundStyle(workspace.runtime.state == .running ? palette.success : palette.textMuted)
                 }.help("Start or stop all chains")
+                .disabled(workspace.tutorial.isActive)
             }
+            if let instruction = workspace.tutorial.menuInstruction {
+                Text(instruction)
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ScrollViewReader { scroll in
             ScrollView {
                 VStack(spacing: 1) {
                     ForEach(workspace.chains) { chain in
@@ -595,24 +642,41 @@ struct ChainMenuBarPanel: View {
                                     hoveredChainID = hovering ? chain.id : nil
                                 }
                                 .help("Open \(workspace.name(for: chain)) chain")
+                                .disabled(!workspace.canOpenChainFromMenu(chain.id))
+                                .menuBarTutorialHighlight(
+                                    workspace.tutorial.step == .chainsOpenEditor &&
+                                    workspace.tutorial.practiceChainID == chain.id
+                                )
                                 Button { workspace.toggleEffects(chain.id) } label: {
                                     Image(systemName: "slider.horizontal.3")
                                         .foregroundStyle(chain.effectsEnabled && !workspace.runtime.globallyBypassed ? palette.neonPink : palette.textMuted)
                                         .frame(width: 24, height: 24)
                                         .contentShape(Rectangle())
                                 }
+                                .disabled(!workspace.canToggleChain(chain.id))
+                                .menuBarTutorialHighlight(
+                                    [.chainsDisable, .chainsEnable].contains(workspace.tutorial.step) &&
+                                    workspace.tutorial.practiceChainID == chain.id
+                                )
                                 .help(chain.effectsEnabled ? "Disable Chain" : "Enable Chain")
                                 .accessibilityLabel(chain.effectsEnabled ? "Disable \(workspace.name(for: chain)) chain" : "Enable \(workspace.name(for: chain)) chain")
                             }
                             ChainPresetMenu(workspace: workspace, presets: workspace.presets, chain: chain)
                         }
                         .padding(10)
+                        .id(chain.id)
                         .overlay(alignment: .bottom) {
                             Rectangle().fill(palette.controlStrokeSoft).frame(height: 1)
                         }
                     }
                 }
             }.frame(height: min(CGFloat(workspace.chains.count) * 88, 264))
+                .onAppear {
+                    if workspace.tutorial.isActive, let id = workspace.tutorial.practiceChainID {
+                        scroll.scrollTo(id, anchor: .center)
+                    }
+                }
+            }
             Menu {
                 ForEach(availableApps) { app in
                     Button { workspace.add(app) } label: {
@@ -627,16 +691,10 @@ struct ChainMenuBarPanel: View {
                     Text("Open another app to add it")
                 }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus")
-                    Text("Add App Chain")
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(palette.textMuted)
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 32)
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.textSecondary)
+                    .frame(width: 248, height: 32)
                 .background(
                     isAddChainHovered ? palette.controlPurpleRaised : palette.controlPurple,
                     in: RoundedRectangle(cornerRadius: 6)
@@ -657,10 +715,15 @@ struct ChainMenuBarPanel: View {
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
-            .disabled(workspace.isRecording)
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(!workspace.canAddChain)
             .help(workspace.isRecording ? "Stop recording before adding a chain" : "Add a running app")
             Rectangle().fill(palette.controlStrokeSoft).frame(height: 1)
             HStack {
+                if workspace.tutorial.isActive && workspace.tutorial.isAppChainTour {
+                    Button("Exit tutorial") { workspace.tutorial.skipTutorial(); close() }
+                        .foregroundStyle(palette.textSecondary)
+                }
                 Spacer()
                 Button {
                     close()
@@ -697,6 +760,9 @@ private struct ChainPresetMenu: View {
     let chain: AudioChainDefinition
 
     private var preset: SavedPreset? { presets.presets.first { $0.id == chain.presetID } }
+    private var isTutorialTarget: Bool {
+        workspace.tutorial.step == .chainsChoosePreset && workspace.tutorial.practiceChainID == chain.id
+    }
 
     var body: some View {
         Menu {
@@ -719,13 +785,28 @@ private struct ChainPresetMenu: View {
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .medium))
                     .foregroundStyle(AppColors.neonPink)
             }
-            .foregroundStyle(preset == nil ? AppColors.textMuted : AppColors.textPrimary)
+            .foregroundStyle(preset == nil && !isTutorialTarget ? AppColors.textMuted : AppColors.textPrimary)
             .padding(.horizontal, 10).frame(height: 30)
             .background(AppColors.controlPurple, in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppColors.controlStrokeSoft, lineWidth: 1))
         }
         .buttonStyle(.plain).menuIndicator(.hidden)
+        .disabled(!workspace.canLoadPreset(into: chain.id))
+        .menuBarTutorialHighlight(isTutorialTarget)
         .accessibilityLabel("Preset for \(workspace.name(for: chain))")
         .help("Load a preset into \(workspace.name(for: chain))")
+    }
+}
+
+private extension View {
+    func menuBarTutorialHighlight(_ isHighlighted: Bool) -> some View {
+        overlay {
+            if isHighlighted {
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(AppColors.neonCyan.opacity(0.8), lineWidth: 1.25)
+                    .padding(-3)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }

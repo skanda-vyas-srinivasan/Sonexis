@@ -3,10 +3,12 @@ import SwiftUI
 struct HomeView: View {
     let onBuildFromScratch: (CGPoint) -> Void
     let onStartBasicsTutorial: () -> Void
+    let onStartChainsTutorial: () -> Void
     let onStartAdvancedTutorial: () -> Void
     let allowBuild: Bool
     let basicsCompleted: Bool
     let advancedCompleted: Bool
+    let chainsCompleted: Bool
     @State private var isVisible = false
     @AppStorage("homeHasAppeared") private var homeHasAppeared = false
     @State private var floatPrompt = false
@@ -130,7 +132,12 @@ struct HomeView: View {
                         action: onStartBasicsTutorial
                     )
                     tutorialMenuButton(
-                        title: "Advanced tutorial",
+                        title: "App chains & menu bar",
+                        isComplete: chainsCompleted,
+                        action: onStartChainsTutorial
+                    )
+                    tutorialMenuButton(
+                        title: "Manual wiring",
                         isComplete: advancedCompleted,
                         action: onStartAdvancedTutorial
                     )

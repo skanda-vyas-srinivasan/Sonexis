@@ -1,0 +1,6 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 95-96
++		98 text Open settings
++		99 button Skip
+~		20 button Description: gearshape, Help: Audio settings
++		100 text Click the gear to view your audio settings. No changes needed.

@@ -1,0 +1,16 @@
+{
+  "time": "2026-09-10T01:36:48.106691",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.2\nBuildVersion:\t\t25F84\n",
+  "hardware": "sysctl: sysctl fmt -1 1024 1: Operation not permitted\n",
+  "revision": "451f5baf66dce0bbfb6c87b35e154fdef92a5359\n",
+  "status": " M Scripts/render-app-icon.swift\n M Sonexis.xcodeproj/project.pbxproj\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_128x128.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_128x128@2x.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_16x16.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_16x16@2x.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_256x256.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_256x256@2x.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_32x32.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_32x32@2x.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_512x512.png\n M Sonexis/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png\n M Sonexis/Assets.xcassets/DockMark.imageset/dock.png\n M Sonexis/Assets.xcassets/SonexisMark.imageset/Contents.json\n D Sonexis/Assets.xcassets/SonexisMark.imageset/mark.svg\n M Sonexis/CanvasView/CanvasView.swift\n M Sonexis/CanvasView/EffectBlockHorizontal.swift\n M Sonexis/CanvasView/EffectParametersViewCompact.swift\n M Sonexis/CanvasView/EffectTray.swift\n M Sonexis/ContentView/ChainWorkspace.swift\n M Sonexis/ContentView/ContentView.swift\n M Sonexis/ContentView/HeaderView.swift\n M Sonexis/ContentView/HomeView.swift\n M Sonexis/ContentView/TutorialController.swift\n M Sonexis/ContentView/TutorialOverlay.swift\n M Sonexis/ContentView/TutorialTypes.swift\n M Sonexis/Info.plist\n M Sonexis/MenuBarController.swift\n M Sonexis/Models/GraphModels.swift\n M Tests/ChainWorkspace/main.swift\n M Tests/PresetPersistence/main.swift\n M docs/PRODUCT-AND-ENGINE-ROADMAP.md\n?? Branding/\n?? Scripts/DMG-README.md\n?? Scripts/build-sonexis-dmg.sh\n?? Scripts/make-sonexis-dmg.sh\n?? Scripts/render-dmg-background.swift\n?? Scripts/test-tutorial.sh\n?? Sonexis/Assets.xcassets/SonexisMark.imageset/mark@1x.png\n?? Sonexis/Assets.xcassets/SonexisMark.imageset/mark@2x.png\n?? Sonexis/Assets.xcassets/SonexisMark.imageset/mark@3x.png\n?? Tests/Tutorial/\n?? docs/RELEASE-2.1.0-ROADMAP.md\n?? docs/release-2.1.0-evidence/\n",
+  "xcode": "Xcode 26.6\nBuild version 17F113\n",
+  "tracked_diff_sha256": "5818cfe9916b4e2e421b077ec34eb7c0c2a55ba02e2cc62993c92c1a90d1eff6",
+  "hardware_verified_unsandboxed": {
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "logicalCPUs": 10
+  }
+}

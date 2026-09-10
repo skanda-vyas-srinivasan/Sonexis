@@ -1,0 +1,4 @@
+Window: "Sonexis", App: Sonexis.
+1 menu Secondary Actions: Cancel
+	2 Automatic, ID: menuAction:
+	3 Manual, ID: menuAction:

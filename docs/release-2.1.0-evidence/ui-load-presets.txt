@@ -1,0 +1,30 @@
+The following is a diff from the previous accessibility tree for Window: "" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 1-12, 14-16, 19-35, 42-89, 96-106
++96 sheet Secondary Actions: Raise
++	97 container
++		98 text Load preset
++		99 button Import
++		100 image Description: Search, ID: magnifyingglass
++		101 text field (settable, string) Search presets
++		102 scroll area Secondary Actions: Scroll Up, Scroll Down
++			103 list Secondary Actions: AXScrollToTop, AXScrollToBottom
++				104 button Description: Load hj, Help: hj — Click to load; right-click for Rename, Export, or Delete
++				105 button Description: Load u, Help: u — Click to load; right-click for Rename, Export, or Delete
++				106 button Description: Load hah, Help: hah — Click to load; right-click for Rename, Export, or Delete
++				107 button Description: Load MightBeTooMuch, Help: MightBeTooMuch — Click to load; right-click for Rename, Export, or Delete
++				108 button Description: Load k, Help: k — Click to load; right-click for Rename, Export, or Delete
++				109 button Description: Load j, Help: j — Click to load; right-click for Rename, Export, or Delete
++				110 button Description: Load ua, Help: ua — Click to load; right-click for Rename, Export, or Delete
++				111 button Description: Load Skanda's Split Harmony, Help: Skanda's Split Harmony — Click to load; right-click for Rename, Export, or Delete
++				112 button Description: Load Skanda's Punch (WARNING: LOUD), Help: Skanda's Punch (WARNING: LOUD) — Click to load; right-click for Rename, Export, or Delete
++				113 button Description: Load Skanda's Vocal Lift, Help: Skanda's Vocal Lift — Click to load; right-click for Rename, Export, or Delete
++				114 button Description: Load Skanda's Warmth, Help: Skanda's Warmth — Click to load; right-click for Rename, Export, or Delete
++				115 button Description: Load Skanda's 8bit nonsense, Help: Skanda's 8bit nonsense — Click to load; right-click for Rename, Export, or Delete
++			116 scroll bar (settable, float) 0
++				117 value indicator (settable, float) 0
++				118 increment arrow button
++				119 decrement arrow button
++				120 increment page button
++				121 decrement page button
++		122 button Cancel
+The focused UI element is 101 text field (settable, string) Search presets

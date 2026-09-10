@@ -1,0 +1,3 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		151 text Output Gain
+~		153 text Controls how loud the audio is after your effects. It can bring the level back up if the effects leave it too quiet.

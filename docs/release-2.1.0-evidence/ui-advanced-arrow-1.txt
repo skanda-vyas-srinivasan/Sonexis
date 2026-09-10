@@ -1,0 +1,6 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		31 menu button (disabled) Canvas
+~		32 menu button (disabled) Description: Go Down, ID: chevron.down
++		98 text Add Reverb
++		99 button Skip
++		100 text Drag Reverb onto the canvas. We’ll send both effects into it.

@@ -1,0 +1,26 @@
+[
+  {
+    "case": "malformed-bitcrusherBitDepth",
+    "exit": -5
+  },
+  {
+    "case": "malformed-bitcrusherDownsample",
+    "exit": -5
+  },
+  {
+    "case": "ceiling",
+    "exit": 0
+  },
+  {
+    "case": "edits",
+    "exit": 0
+  },
+  {
+    "case": "sweep",
+    "exit": 0
+  },
+  {
+    "case": "performance",
+    "exit": 0
+  }
+]

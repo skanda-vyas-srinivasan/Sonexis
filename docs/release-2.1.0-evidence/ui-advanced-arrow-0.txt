@@ -1,0 +1,8 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 17, 22
+~		13 text Process Tap Effects
++		98 text Clear the wires
++		99 button Skip
++		100 text Open the Canvas menu and choose Reset Wiring. The effects stay on the canvas.
+~		31 menu button Canvas
+~		32 menu button Description: Go Down, ID: chevron.down

@@ -1,0 +1,5 @@
+Normal Debug app, PID 58276, bundle com.sonexis.app.
+Action: Home > Tutorial > App chains & menu bar; add Terminal practice chain; navigate with Right through menu-bar cards; close Terminal using X and confirm; on App chains complete click Continue.
+Result: UI accessibility request timed out, repeat get_app_state timed out. Main-thread samples show synchronous AudioDeviceStart reached through ContentView.ensureTutorialEngineRunningIfPossible and MultiChainAudioEngine.start.
+This happened after standalone live-audio probes had stalled in CoreAudio. Earlier Advanced tutorial starts had succeeded. The cause of the HAL service stall is not established.
+User JSON files were byte-identical to the baseline after the hang.

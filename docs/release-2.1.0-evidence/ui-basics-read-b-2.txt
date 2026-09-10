@@ -1,0 +1,4 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 98
+~		95 text Adjust the effect
+~		36 text Auto-connect End Drag the Amount knob up or down to change how much bass is added.

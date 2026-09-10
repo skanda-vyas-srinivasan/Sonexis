@@ -23,11 +23,12 @@ private struct CanvasFramePreferenceKey: PreferenceKey {
     }
 }
 
-struct CanvasView: View {
+struct CanvasView<SettingsOverlay: View>: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
     @ObservedObject var pluginManager: PluginManager
     var chainWorkspace: ChainWorkspace? = nil
+    @ViewBuilder var settingsOverlay: () -> SettingsOverlay
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
     @State private var effectChain: [BeginnerNode] = []
@@ -67,9 +68,6 @@ struct CanvasView: View {
     @State private var nodeScale: CGFloat = 1.0
     @State private var nodeStartScale: CGFloat = 1.0
     @State private var customContextMenu: CustomContextMenu?
-    @State private var undoStack: [GraphSnapshot] = []
-    @State private var redoStack: [GraphSnapshot] = []
-    @State private var dragUndoSnapshot: GraphSnapshot?
     @State private var isRestoringSnapshot = false
     @State private var isCanvasHovering = false
     @State private var isOptionHeld = false
@@ -90,8 +88,6 @@ struct CanvasView: View {
     private let betaUnlockPhrase = "poopymcbutt"
     private let debugGraphLifecycle = false
 
-    private var hasUndo: Bool { chainWorkspace?.canUndo ?? !undoStack.isEmpty }
-    private var hasRedo: Bool { chainWorkspace?.canRedo ?? !redoStack.isEmpty }
 
     private var activeTheme: AppTheme {
         AppTheme.theme(for: selectedThemeID)
@@ -358,46 +354,9 @@ struct CanvasView: View {
                         .stroke(arrowFps == 0 ? AppColors.controlStroke.opacity(0.50) : AppColors.neonCyan.opacity(0.42), lineWidth: 1)
                 )
                 .cornerRadius(8)
-                .disabled(tutorial.isBuildStep)
+                .disabled(tutorial.isBuildStep && tutorial.step != .buildFlow)
             }
-
-            HStack(spacing: 6) {
-                Button {
-                    undo()
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 24)
-                        .background(AppColors.controlPurple.opacity(0.50))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(!hasUndo ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
-                        )
-                        .cornerRadius(7)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(!hasUndo ? AppColors.textMuted : AppColors.textSecondary)
-                .disabled(!hasUndo || tutorial.isBuildStep)
-                .help("Undo last workspace change")
-
-                Button {
-                    redo()
-                } label: {
-                    Image(systemName: "arrow.uturn.forward")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 24)
-                        .background(AppColors.controlPurple.opacity(0.50))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(!hasRedo ? AppColors.controlStrokeSoft.opacity(0.42) : AppColors.controlStroke.opacity(0.72), lineWidth: 1)
-                        )
-                        .cornerRadius(7)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(!hasRedo ? AppColors.textMuted : AppColors.textSecondary)
-                .disabled(!hasRedo || tutorial.isBuildStep)
-                .help("Redo last workspace change")
-            }
+            .tutorialTarget(.flow)
 
             Spacer()
 
@@ -488,7 +447,8 @@ struct CanvasView: View {
                             DragGesture()
                                 .onChanged { value in
                                     // Allow lasso selection during connection steps for better UX
-                                    let allowLassoDuringTutorial = tutorial.step == .buildConnect ||
+                                    let allowLassoDuringTutorial = tutorial.step == .buildSelection ||
+                                                                   tutorial.step == .buildConnect ||
                                                                    tutorial.step == .buildParallelConnect ||
                                                                    tutorial.step == .buildDualMonoConnect
                                     guard !tutorial.isBuildStep || allowLassoDuringTutorial else { return }
@@ -501,7 +461,8 @@ struct CanvasView: View {
                                     lassoCurrent = value.location
                                 }
                                 .onEnded { _ in
-                                    let allowLassoDuringTutorial = tutorial.step == .buildConnect ||
+                                    let allowLassoDuringTutorial = tutorial.step == .buildSelection ||
+                                                                   tutorial.step == .buildConnect ||
                                                                    tutorial.step == .buildParallelConnect ||
                                                                    tutorial.step == .buildDualMonoConnect
                                     guard !tutorial.isBuildStep || allowLassoDuringTutorial else {
@@ -583,6 +544,7 @@ struct CanvasView: View {
                             value: binding
                         ) {
                             selectedWireID = nil
+                            tutorial.didFinishWireGain()
                         }
                         .position(midpoint)
                         .zIndex(5)
@@ -751,11 +713,9 @@ struct CanvasView: View {
                             onUpdate: {
                                 applyChainToEngine()
                             },
-                            onParameterEditBegan: {
-                                recordUndoSnapshot()
-                            },
                             onParameterChange: {
                                 updateChainParametersOnly()
+                                if effectValue.type == .bassBoost { tutorial.advanceIf(.buildEffectControls) }
                             },
                             onExpanded: {
                                 setControlPanelLift(for: effectValue, in: geometry.size)
@@ -826,7 +786,8 @@ struct CanvasView: View {
                                     } else if activeConnectionFromID == nil {
                                         // Only allow move mode if not dragging a connection
                                         // Allow node movement during reorder and connection steps
-                                        let allowMoveDuringTutorial = tutorial.step == .buildAutoReorder ||
+                                        let allowMoveDuringTutorial = tutorial.step == .buildSelection ||
+                                                                      tutorial.step == .buildAutoReorder ||
                                                                       tutorial.step == .buildConnect ||
                                                                       tutorial.step == .buildParallelConnect ||
                                                                       tutorial.step == .buildDualMonoConnect
@@ -839,9 +800,6 @@ struct CanvasView: View {
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
                                             draggingNodeID = effectValue.id
-                                            if dragUndoSnapshot == nil {
-                                                dragUndoSnapshot = currentGraphSnapshot()
-                                            }
                                             dragStartPosition = nodePosition(effectValue, in: geometry.size)
                                             if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
                                                 selectedNodeIDs = [effectValue.id]
@@ -887,7 +845,8 @@ struct CanvasView: View {
                                         finalizeConnection(from: effectValue.id, dropPoint: dropPoint)
                                     } else {
                                         // Allow node movement during reorder and connection steps
-                                        let allowMoveDuringTutorial = tutorial.step == .buildAutoReorder ||
+                                        let allowMoveDuringTutorial = tutorial.step == .buildSelection ||
+                                                                      tutorial.step == .buildAutoReorder ||
                                                                       tutorial.step == .buildConnect ||
                                                                       tutorial.step == .buildParallelConnect ||
                                                                       tutorial.step == .buildDualMonoConnect
@@ -906,10 +865,6 @@ struct CanvasView: View {
                                         // Finalize move
                                         draggingNodeID = nil
                                         selectionDragStartPositions.removeAll()
-                                        if let snapshot = dragUndoSnapshot {
-                                            recordUndoSnapshot(snapshot)
-                                        }
-                                        dragUndoSnapshot = nil
                                         applyChainToEngine()
                                         if tutorial.step == .buildAutoReorder {
                                             maybeAdvanceAutoReorderTutorial()
@@ -985,11 +940,12 @@ struct CanvasView: View {
                             TutorialStep.buildAddBass,
                             .buildAutoAddClarity,
                             .buildParallelAddReverb,
-                            .buildDualMonoAdd
+                            .buildDualMonoAdd,
+                            .chainsOverrides
                         ].contains(stepAtDrop) {
                             return
                         }
-                        if stepAtDrop == .buildAddBass && newNode.type != .bassBoost {
+                        if [.buildAddBass, .chainsOverrides].contains(stepAtDrop) && newNode.type != .bassBoost {
                             return
                         }
                         if stepAtDrop == .buildAutoAddClarity && newNode.type != .clarity {
@@ -1007,7 +963,6 @@ struct CanvasView: View {
                             return
                         }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            recordUndoSnapshot()
                             var node = newNode
                             node.accentIndex = nextAccentIndex
                             nextAccentIndex = (nextAccentIndex + 1) % accentPalette.count
@@ -1015,7 +970,7 @@ struct CanvasView: View {
                             triggerDropAnimation(for: node.id)
                             applyChainToEngine()
                             switch stepAtDrop {
-                            case .buildAddBass, .buildAutoAddClarity, .buildParallelAddReverb:
+                            case .buildAddBass, .buildAutoAddClarity, .buildParallelAddReverb, .chainsOverrides:
                                 tutorial.advance()
                             case .buildDualMonoAdd:
                                 maybeAdvanceDualMonoTutorial()
@@ -1065,7 +1020,7 @@ struct CanvasView: View {
 
                 VStack(spacing: 0) {
                     if let chainWorkspace {
-                        ChainStrip(workspace: chainWorkspace).disabled(tutorial.isActive)
+                        ChainStrip(workspace: chainWorkspace).disabled(tutorial.isActive && !tutorial.isAppChainTour)
                     }
                     toolbarView
 
@@ -1073,6 +1028,9 @@ struct CanvasView: View {
                         .background(AppColors.gridLines)
 
                     canvasView
+                        // Attach settings to the drawing area so both toolbar rows
+                        // remain visible and opening the panel never resizes the canvas.
+                        .overlay(alignment: .topLeading, content: settingsOverlay)
                         .background(
                             GeometryReader { proxy in
                                 Color.clear.preference(
@@ -1114,6 +1072,10 @@ struct CanvasView: View {
             }
             if step != .buildRightClick && step != .buildActionMenu {
                 customContextMenu = nil
+            }
+            if step != .buildWireLevels {
+                selectedWireID = nil
+                selectedAutoWire = nil
             }
             if step == .buildWiringManual && wiringMode == .manual {
                 tutorial.advance()
@@ -1225,13 +1187,14 @@ struct CanvasView: View {
 
         let size = canvasSize
         let centerY = max(size.height * 0.5, 120)
+        let verticalOffset = min(120, max(80, size.height * 0.2))
         let bassPosition = clamp(
-            CGPoint(x: max(size.width * 0.42, 220), y: centerY),
+            CGPoint(x: max(size.width * 0.42, 220), y: centerY - verticalOffset),
             to: size,
             lane: nil
         )
         let clarityPosition = clamp(
-            CGPoint(x: max(size.width * 0.58, 360), y: centerY),
+            CGPoint(x: max(size.width * 0.58, 360), y: centerY + verticalOffset),
             to: size,
             lane: nil
         )
@@ -1251,8 +1214,6 @@ struct CanvasView: View {
         activeConnectionPoint = .zero
         lassoStart = nil
         lassoCurrent = nil
-        undoStack.removeAll()
-        redoStack.removeAll()
 
         effectChain = [
             BeginnerNode(type: .bassBoost, position: bassPosition, lane: .left, accentIndex: 0),
@@ -1345,7 +1306,6 @@ struct CanvasView: View {
 
 
     private func removeEffect(id: UUID) {
-        recordUndoSnapshot()
         effectChain.removeAll { $0.id == id }
         manualConnections.removeAll { $0.fromNodeId == id || $0.toNodeId == id }
         autoGainOverrides = autoGainOverrides.filter { $0.key.from != id && $0.key.to != id }
@@ -1356,7 +1316,6 @@ struct CanvasView: View {
     }
 
     private func duplicateEffect(id: UUID) {
-        recordUndoSnapshot()
         guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
         let source = effectChain[index]
         var clone = BeginnerNode(
@@ -1377,7 +1336,6 @@ struct CanvasView: View {
         let sources = effectChain.filter { ids.contains($0.id) }
         guard !sources.isEmpty else { return }
 
-        recordUndoSnapshot()
         let clones = sources.map { source in
             var clone = BeginnerNode(
                 type: source.type,
@@ -1398,14 +1356,12 @@ struct CanvasView: View {
     }
 
     private func resetEffectParameters(id: UUID) {
-        recordUndoSnapshot()
         guard let index = effectChain.firstIndex(where: { $0.id == id }) else { return }
         effectChain[index].parameters = NodeEffectParameters.defaults()
         updateChainParametersOnly()
     }
 
     private func removeEffects(ids: Set<UUID>) {
-        recordUndoSnapshot()
         effectChain.removeAll { ids.contains($0.id) }
         manualConnections.removeAll { ids.contains($0.fromNodeId) || ids.contains($0.toNodeId) }
         autoGainOverrides = autoGainOverrides.filter { !ids.contains($0.key.from) && !ids.contains($0.key.to) }
@@ -1416,7 +1372,6 @@ struct CanvasView: View {
     }
 
     private func deleteWiresForSelected() {
-        recordUndoSnapshot()
         manualConnections.removeAll { selectedNodeIDs.contains($0.fromNodeId) || selectedNodeIDs.contains($0.toNodeId) }
         normalizeAllOutgoingGains()
         applyChainToEngine()
@@ -1850,7 +1805,6 @@ struct CanvasView: View {
 
     private func changeGraphMode(to mode: GraphMode) {
         guard graphMode != mode else { return }
-        recordUndoSnapshot()
         if mode == .split {
             // Enter Dual Mono with an empty workspace instead of assigning
             // the stereo chain to channels based on canvas positions.
@@ -1861,7 +1815,6 @@ struct CanvasView: View {
 
     private func changeWiringMode(to mode: WiringMode) {
         guard wiringMode != mode else { return }
-        recordUndoSnapshot()
         if mode == .manual {
             // Materialize the currently generated edges, including gain overrides
             // and both split lanes, before leaving Automatic.
@@ -2026,7 +1979,7 @@ struct CanvasView: View {
     }
 
     private func handleRightClick(at point: CGPoint, in size: CGSize) {
-        if tutorial.isBuildStep && tutorial.step != .buildRightClick && tutorial.step != .buildCloseContextMenu {
+        if tutorial.isBuildStep && ![.buildRightClick, .buildCloseContextMenu, .buildSelection, .buildWireLevels].contains(tutorial.step) {
             return
         }
         // Check nodes
@@ -2035,6 +1988,7 @@ struct CanvasView: View {
             let pos = displayNodePosition(node, in: size)
             return hypot(point.x - pos.x, point.y - pos.y) <= nodeRadius
         }) {
+            if tutorial.step == .buildWireLevels { return }
             if tutorial.step == .buildRightClick && hitNode.type != .bassBoost {
                 return
             }
@@ -2249,14 +2203,12 @@ struct CanvasView: View {
     }
 
     private func removeWires(for nodeID: UUID) {
-        recordUndoSnapshot()
         manualConnections.removeAll { $0.fromNodeId == nodeID || $0.toNodeId == nodeID }
         normalizeOutgoingGains(from: nodeID)
         applyChainToEngine()
     }
 
     private func deleteManualConnection(_ id: UUID) {
-        recordUndoSnapshot()
         if let connection = manualConnections.first(where: { $0.id == id }) {
             manualConnections.removeAll { $0.id == id }
             normalizeOutgoingGains(from: connection.fromNodeId)
@@ -2268,16 +2220,6 @@ struct CanvasView: View {
         if event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers?.lowercased() == "a" {
             selectedNodeIDs = Set(effectChain.map { $0.id })
-            return
-        }
-
-        if event.modifierFlags.contains(.command),
-           event.charactersIgnoringModifiers?.lowercased() == "z" {
-            if event.modifierFlags.contains(.shift) {
-                redo()
-            } else {
-                undo()
-            }
             return
         }
 
@@ -2311,7 +2253,6 @@ struct CanvasView: View {
     private func clearCanvas() {
         guard canUseClearCanvasAction else { return }
 
-        recordUndoSnapshot()
         clearGraphContents()
         applyChainToEngine()
         tutorial.advanceIf(.buildClearCanvasForDualMono)
@@ -2334,58 +2275,12 @@ struct CanvasView: View {
     private func resetWiring() {
         guard canUseResetWiringAction else { return }
 
-        recordUndoSnapshot()
         manualConnections.removeAll()
         autoGainOverrides.removeAll()
         selectedWireID = nil
         selectedAutoWire = nil
         applyChainToEngine()
         tutorial.advanceIf(.buildResetWiringForParallel)
-    }
-
-    private func recordUndoSnapshot() {
-        recordUndoSnapshot(currentGraphSnapshot())
-    }
-
-    private func recordUndoSnapshot(_ snapshot: GraphSnapshot) {
-        guard !isRestoringSnapshot else { return }
-        if let chainWorkspace {
-            chainWorkspace.recordUndoState(graphOverride: snapshot)
-            return
-        }
-        undoStack.append(snapshot)
-        if undoStack.count > 50 {
-            undoStack.removeFirst()
-        }
-        redoStack.removeAll()
-    }
-
-    private func undo() {
-        if let chainWorkspace {
-            chainWorkspace.undo()
-            return
-        }
-        guard let snapshot = undoStack.popLast() else { return }
-        isRestoringSnapshot = true
-        redoStack.append(currentGraphSnapshot())
-        applyGraphSnapshot(snapshot, reason: "undo")
-        DispatchQueue.main.async {
-            isRestoringSnapshot = false
-        }
-    }
-
-    private func redo() {
-        if let chainWorkspace {
-            chainWorkspace.redo()
-            return
-        }
-        guard let snapshot = redoStack.popLast() else { return }
-        isRestoringSnapshot = true
-        undoStack.append(currentGraphSnapshot())
-        applyGraphSnapshot(snapshot, reason: "redo")
-        DispatchQueue.main.async {
-            isRestoringSnapshot = false
-        }
     }
 
     private func normalizeAllOutgoingGains() {
@@ -2415,8 +2310,10 @@ struct CanvasView: View {
         return Binding(
             get: { manualConnections[index].gain },
             set: { newValue in
+                let previous = manualConnections[index].gain
                 manualConnections[index].gain = min(max(newValue, 0), 1)
                 applyChainToEngine()
+                if manualConnections[index].gain != previous { tutorial.didAdjustWireGain() }
             }
         )
     }
@@ -2663,7 +2560,6 @@ struct CanvasView: View {
     }
 
     private func finalizeConnection(from fromID: UUID, dropPoint: CGPoint) {
-        recordUndoSnapshot()
 
         defer {
             activeConnectionFromID = nil

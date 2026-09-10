@@ -1,0 +1,6 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
++		189 text Close an app chain
++		190 button Skip
+~			120 button Description: Close Terminal chain, Help: Close app chain, ID: xmark
++		191 text Close the Terminal tab with ×, then confirm. The app will use Default again.
+~		130 text Auto-connect End

@@ -1,0 +1,13 @@
+{
+  "name": "Audit malformed parameter",
+  "graph": {
+    "nodes": [
+      {
+        "type": "Bitcrusher",
+        "parameters": {
+          "bitcrusherDownsample": 1e+100
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+{"case":"pitch-continuity","firstNonzeroFrame":1,"longestSilenceFrames":1,"semitones":0,"zeroFramesAfterTwoSeconds":13}
+{"case":"pitch-continuity","firstNonzeroFrame":24237,"longestSilenceFrames":24237,"semitones":7,"zeroFramesAfterTwoSeconds":0}
+{"case":"pitch-continuity","firstNonzeroFrame":24577,"longestSilenceFrames":24577,"semitones":-7,"zeroFramesAfterTwoSeconds":0}

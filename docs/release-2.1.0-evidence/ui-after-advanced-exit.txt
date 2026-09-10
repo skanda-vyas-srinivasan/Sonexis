@@ -1,0 +1,78 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 13, 36-41
+~		3 button Home
+~		4 button Description: Power, Help: Start Processing, ID: power.circle
+~		5 button Description: Edit, Help: Disable Effects, ID: slider.horizontal.3
+~		8 button Description: gearshape, Help: Audio settings
+~		9 text Help: Skanda's Brighten, Value: PRESET Skanda's Brighten
+~		10 button Description: Save, Help: Save preset
+~		11 button Description: Save options, Help: Save preset, Value: Collapsed, ID: chevron.down
+~		12 button Description: Load, Help: Load preset
++		96 text Effects
+~			15 button (selected) Description: Default, Help: Default effects for apps without their own chain, Value: Chain enabled
+~		16 menu button Description: Add app chain, Help: Add an app chain
+~		21 menu button Graph Mode
+~		22 menu button Stereo
+~		23 menu button Description: Go Down, ID: chevron.down
+~		24 menu button Description: Wiring, Help: Automatic: Effects flow left-to-right by position.
+~		25 menu button Description: Automatic, Help: Automatic: Effects flow left-to-right by position.
+~		26 menu button Description: Go Down, Help: Automatic: Effects flow left-to-right by position., ID: chevron.down
+~		28 toggle button (disabled) Help: Automatic mode handles all connections., Value: off
+~		30 button 20 FPS
+~		31 menu button Canvas
+~		32 menu button Description: Go Down, ID: chevron.down
+~		97 image Description: Volume Highest, ID: speaker.wave.3
+~		98 text Bass Boost
++		99 image waveform
++		100 image Description: Volume Higher, ID: speaker.wave.3.fill
++		101 text Start End
++		102 image Description: Flame, ID: flame.fill
++		103 text Enhancer
++		42 scroll area Secondary Actions: Scroll Up, Scroll Down
++			43 list Secondary Actions: AXScrollToTop, AXScrollToBottom
++				44 text Tone
++				45 image Description: Volume Highest, ID: speaker.wave.3
++				46 text Bass Boost
++				47 button Description: Favorite, Help: Remove favorite, ID: star.fill
++				48 image Description: Flame, ID: flame.fill
++				49 text Enhancer
++				50 button Description: Favorite, Help: Add favorite, ID: star
++				51 image Description: Sparkle, ID: sparkles
++				52 text Clarity
++				53 button Description: Favorite, Help: Add favorite, ID: star
++				54 image Description: Edit, ID: slider.horizontal.3
++				55 text Simple EQ
++				56 button Description: Favorite, Help: Add favorite, ID: star
++				57 image Description: Playlist, ID: music.note.list
++				58 text Pitch (Rubber Band)
++				59 button Description: Favorite, Help: Add favorite, ID: star
++				60 text Space
++				61 image building.columns
++				62 text Reverb
++				63 button Description: Favorite, Help: Add favorite, ID: star
++				64 image arrow.left.and.right
++				65 text Stereo Widening
++				66 button Description: Favorite, Help: Add favorite, ID: star
++				67 image arrow.3.trianglepath
++				68 text Delay
++				69 button Description: Favorite, Help: Add favorite, ID: star
++				70 text Motion
++				71 image waveform
++				72 text Tremolo
++				73 button Description: Favorite, Help: Add favorite, ID: star
++				74 image arrow.left.arrow.right
++				75 text Auto Pan
++				76 button Description: Favorite, Help: Add favorite, ID: star
++				77 image waveform.circle
++				78 text Chorus
++				79 button Description: Favorite, Help: Add favorite, ID: star
++				80 text Texture Signature
++			81 scroll bar (settable, float) 0
++				82 value indicator (settable, float) 0
++				83 increment arrow button
++				84 decrement arrow button
++				85 increment page button
++				86 decrement page button
++		104 image Description: Sparkle, ID: sparkles
++		105 text Clarity
++		106 button Description: Back, ID: chevron.left

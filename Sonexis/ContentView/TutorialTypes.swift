@@ -1,6 +1,15 @@
 import SwiftUI
 
 enum TutorialTarget: Hashable {
+    case chainTabs
+    case practiceChainTab
+    case addAppChain
+    case chainBypass
+    case inputGain
+    case outputGain
+    case ceiling
+    case settingsStrip
+    case flow
     case buildButton
     case presetsButton
     case backButton
@@ -52,6 +61,27 @@ enum TutorialStep: Equatable {
     case buildOutput
     case buildSettings
     case buildSettingsExplain
+    case buildOutputGain
+    case buildCeiling
+    case buildSettingsSummary
+    case buildLibrary
+    case buildPresetLibrary
+    case buildBypass
+    case buildDisconnected
+    case buildFlow
+    case buildWireLevels
+    case buildSelection
+    case chainsIntro
+    case chainsAdd
+    case chainsOverrides
+    case chainsClose
+    case chainsMenuBar
+    case chainsBackground
+    case chainsComplete
+    case chainsChoosePreset
+    case chainsDisable
+    case chainsEnable
+    case chainsOpenEditor
     case buildAddBass
     case buildAutoExplain
     case buildAutoAddClarity
@@ -83,4 +113,29 @@ enum TutorialStep: Equatable {
     case advancedIntro
     case advancedComplete
     case buildFinish
+}
+
+extension TutorialStep {
+    // Settings is intentionally an explanation; all other live lesson steps
+    // require the corresponding action. Introductions and endings are navigation.
+    var allowsNextButton: Bool {
+        isAudioSettingsExplanation || [.welcome, .advancedIntro, .chainsIntro, .advancedComplete].contains(self)
+    }
+
+    var isAudioSettingsExplanation: Bool {
+        [.buildSettingsExplain, .buildOutputGain, .buildCeiling, .buildSettingsSummary].contains(self)
+    }
+
+    var showsAudioSettings: Bool {
+        self == .buildSettings || isAudioSettingsExplanation
+    }
+}
+
+extension View {
+    func tutorialTarget(_ target: TutorialTarget) -> some View {
+        background(GeometryReader { proxy in
+            Color.clear.preference(key: TutorialTargetPreferenceKey.self,
+                                   value: [target: proxy.frame(in: .global)])
+        })
+    }
 }

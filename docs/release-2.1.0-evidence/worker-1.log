@@ -1,0 +1,1 @@
+WORKER pitchNodes=1 durationSeconds=8.533333333333333 outputUnderflowFrames=0 underflowTicks=0 inputDroppedFrames=0 outputDroppedFrames=0 clockLateTicksOver5ms=0 maxClockLateMS=2.218805

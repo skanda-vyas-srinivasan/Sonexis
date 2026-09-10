@@ -1,0 +1,15 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		8 button Description: gearshape.fill, Help: Close audio settings
++		106 text Input Gain -15 dB Output Gain +15 dB Ceiling
++		107 toggle button Help: Enable output ceiling, Value: off
++		108 text Theme
++		109 slider Value: -15, Secondary Actions: Increment, Decrement
++			110 value indicator -15
++		111 slider Value: 15, Secondary Actions: Increment, Decrement
++			112 value indicator 15
++		113 button Black
++		114 button Classic
++		115 button Magenta
++		116 button Gold
++		117 button Description: arrow.counterclockwise, Help: Reset Input Gain, Output Gain, and Ceiling
++		118 button Description: Back, ID: chevron.left

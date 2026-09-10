@@ -1,0 +1,3 @@
+2026-09-10 01:57:24.584 live-audit[59354:3244630] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+Error: AudioQueueStart failed (-66680)
+Swift/ErrorType.swift:254: Fatal error: Error raised at top level: Generated tone process missing from HAL

@@ -1,0 +1,5 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 191
+~			119 button (selected) Description: Terminal, Help: Edit Terminal; other chains keep running, Value: Chain enabled
+~		189 text Return to the canvas
+~		130 text Auto-connect End Click Terminal’s name in the menu-bar panel to open its canvas.

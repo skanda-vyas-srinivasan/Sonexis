@@ -1,0 +1,4 @@
+DSP fault guarded: Bass Boost node=10463ACC-8103-484A-8459-117310F3E479, repaired=2048, limited=0, count=1
+{"case":"ceiling-and-nonfinite","ceiling":false,"nonfinite":0,"peak":1.7615621089935303,"recoveredNonzero":true}
+DSP fault guarded: Bass Boost node=1179C3F5-E8FE-48F1-8577-3BC10D505666, repaired=2048, limited=0, count=1
+{"case":"ceiling-and-nonfinite","ceiling":true,"nonfinite":0,"peak":0.94993364810943604,"recoveredNonzero":true}

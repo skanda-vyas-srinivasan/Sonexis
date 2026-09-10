@@ -7,6 +7,7 @@ struct HeaderView: View {
     let onSave: () -> Void
     let onLoad: () -> Void
     let onSaveAs: () -> Void
+    let onUnlinkPreset: () -> Void
     let hasCurrentPreset: Bool
     let presetDisplayName: String?
     let isPresetModified: Bool
@@ -29,7 +30,7 @@ struct HeaderView: View {
                             audioEngine.stop()
                         } else {
                             audioEngine.start()
-                            tutorial.advanceIf(.buildPower)
+                            if audioEngine.isRunning { tutorial.advanceIf(.buildPower) }
                         }
                     }) {
                         Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
@@ -39,8 +40,14 @@ struct HeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(powerLockedByTutorial)
+                    .onChange(of: tutorial.step) { step in
+                        if step == .buildPower && audioEngine.isRunning { tutorial.advanceIf(.buildPower) }
+                    }
+                    .onChange(of: audioEngine.isRunning) { running in
+                        if running { tutorial.advanceIf(.buildPower) }
+                    }
                     .opacity(powerLockedByTutorial ? 0.45 : 1)
-                    .help(powerLockedByTutorial ? "Power turns on later in the tutorial" : (audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText))
+                    .help(powerLockedByTutorial ? "Power is controlled by this tutorial" : (audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText))
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(
@@ -73,7 +80,8 @@ struct HeaderView: View {
                         .frame(width: 34, height: 28)
                 }
                 .buttonStyle(.plain)
-                .disabled(audioEngine.globalBypassActive)
+                .disabled(audioEngine.globalBypassActive || tutorial.isActive)
+                .tutorialTarget(.chainBypass)
                 .help(audioEngine.globalBypassActive ? "Global bypass is enabled in the menu bar" : (audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects"))
 
                 Divider()
@@ -143,6 +151,7 @@ struct HeaderView: View {
                     .background(AppColors.controlStrokeSoft.opacity(0.65))
 
                 AudioSettingsButton(isPresented: $showingAudioSettings)
+                    .disabled(tutorial.isActive && tutorial.step != .buildSettings)
                     .frame(width: 34, height: 28)
                     .background(
                         GeometryReader { proxy in
@@ -157,8 +166,6 @@ struct HeaderView: View {
                     CaptureTargetMenu(audioEngine: audioEngine)
                         .disabled(tutorial.isActive)
                 }
-
-                Spacer()
 
                 if let warning = audioEngine.processTapWarningText {
                     HStack(spacing: 6) {
@@ -206,7 +213,10 @@ struct HeaderView: View {
                     }
                 }
 
-                // A fixed-height identity block beside the actions keeps the canvas stable.
+                Spacer(minLength: 16)
+
+                // Keep preset identity beside Save/Load, sized to its text.
+                // Only height is fixed; Modified does not steal a fixed name allowance.
                 HStack(spacing: 10) {
                     ZStack(alignment: .leading) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -214,7 +224,6 @@ struct HeaderView: View {
                                 .font(.system(size: 9, weight: .semibold))
                                 .tracking(1)
                                 .foregroundColor(AppColors.textMuted)
-                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .frame(height: 12)
                                 .accessibilityHidden(presetDisplayName == nil)
 
@@ -231,14 +240,21 @@ struct HeaderView: View {
                                         .fixedSize(horizontal: true, vertical: false)
                                 }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                             .frame(height: 18)
                             .accessibilityHidden(presetDisplayName == nil && saveStatusText == nil)
                         }
                         .id(presetDisplayName)
                         .transition(.opacity)
                     }
-                    .frame(width: 130, height: 32, alignment: .leading)
+                    .frame(height: 32, alignment: .leading)
+                    .layoutPriority(1)
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        if hasCurrentPreset {
+                            Button("Unlink preset", action: onUnlinkPreset)
+                                .disabled(tutorial.isActive)
+                        }
+                    }
                     .animation(.easeOut(duration: 0.22), value: presetDisplayName)
                     .help([presetDisplayName, isPresetModified ? "Unsaved changes" : nil, saveStatusText]
                         .compactMap { $0 }.joined(separator: " — "))
@@ -478,13 +494,12 @@ private struct AudioSettingsButton: View {
     }
 }
 
-struct AudioSettingsFloatingStrip: View {
+struct AudioSettingsToolbarStrip: View {
     @Binding var trimDB: Double
     @Binding var makeupDB: Double
     @Binding var ceilingEnabled: Bool
     @Binding var selectedThemeID: String
     let isReadOnly: Bool
-    let onBeginEdit: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -494,10 +509,10 @@ struct AudioSettingsFloatingStrip: View {
                 value: $trimDB,
                 range: -30...0,
                 step: 1,
-                tint: AppColors.neonCyan,
-                onBeginEdit: onBeginEdit
+                tint: AppColors.neonCyan
             )
             .frame(width: 136)
+            .tutorialTarget(.inputGain)
             .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
@@ -508,15 +523,16 @@ struct AudioSettingsFloatingStrip: View {
                 value: $makeupDB,
                 range: -12...30,
                 step: 1,
-                tint: AppColors.neonPink,
-                onBeginEdit: onBeginEdit
+                tint: AppColors.neonPink
             )
             .frame(width: 136)
+            .tutorialTarget(.outputGain)
             .disabled(isReadOnly)
 
             AudioSettingsGroupDivider()
 
-            CeilingToggleRow(isOn: $ceilingEnabled, onBeginEdit: onBeginEdit)
+            CeilingToggleRow(isOn: $ceilingEnabled)
+                .tutorialTarget(.ceiling)
                 .fixedSize(horizontal: true, vertical: false)
                 .disabled(isReadOnly)
 
@@ -530,7 +546,6 @@ struct AudioSettingsFloatingStrip: View {
             AudioSettingsGroupDivider()
 
             Button {
-                onBeginEdit()
                 trimDB = ProcessTapRuntimeSettings.defaults.inputTrimDB
                 makeupDB = ProcessTapRuntimeSettings.defaults.outputMakeupDB
                 ceilingEnabled = ProcessTapRuntimeSettings.defaults.outputCeilingEnabled
@@ -546,17 +561,16 @@ struct AudioSettingsFloatingStrip: View {
             .help("Reset Input Gain, Output Gain, and Ceiling")
             .disabled(isReadOnly)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(
-            Rectangle()
-                .fill(AppColors.panelPurple)
-        )
-        .overlay(
-            Rectangle()
-                .stroke(AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
-        )
-        .shadow(color: AppColors.deepBlack.opacity(0.30), radius: 8, x: 0, y: 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.panelPurple)
+        .overlay(alignment: .bottom) {
+            AppColors.controlStrokeSoft.opacity(0.58)
+                .frame(height: 1)
+                .allowsHitTesting(false)
+        }
+        .tutorialTarget(.settingsStrip)
     }
 }
 
@@ -575,7 +589,6 @@ private struct AudioSettingsInspectorSlider: View {
     let range: ClosedRange<Double>
     let step: Double
     let tint: Color
-    let onBeginEdit: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -604,10 +617,7 @@ private struct AudioSettingsInspectorSlider: View {
                         value = min(max(steppedValue, range.lowerBound), range.upperBound)
                     }
                 ),
-                in: range,
-                onEditingChanged: { editing in
-                    if editing { onBeginEdit() }
-                }
+                in: range
             )
             .controlSize(.small)
             .tint(tint)
@@ -617,7 +627,6 @@ private struct AudioSettingsInspectorSlider: View {
 
 private struct CeilingToggleRow: View {
     @Binding var isOn: Bool
-    let onBeginEdit: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -627,13 +636,7 @@ private struct CeilingToggleRow: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
-            Toggle("", isOn: Binding(
-                get: { isOn },
-                set: { newValue in
-                    onBeginEdit()
-                    isOn = newValue
-                }
-            ))
+            Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)

@@ -1,0 +1,7 @@
+LONGRUN blocksPerChain=100 maxRSS=15204352 nonfinite=0 silentChainLeakedSamples=0 peak=0.1187757
+LONGRUN blocksPerChain=1000 maxRSS=16498688 nonfinite=0 silentChainLeakedSamples=0 peak=0.1187757
+LONGRUN blocksPerChain=5000 maxRSS=16564224 nonfinite=0 silentChainLeakedSamples=0 peak=0.1187757
+LONGRUN blocksPerChain=10000 maxRSS=16613376 nonfinite=0 silentChainLeakedSamples=0 peak=0.1187757
+LONGRUN completed 40,960,000 audio frames across four independent processors with identical node UUIDs; wallSeconds=3.420305084
+        3.74 real         2.63 user         0.04 sys
+time: sysctl kern.clockrate: Operation not permitted

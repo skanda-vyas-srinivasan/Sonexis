@@ -13,7 +13,6 @@ struct EffectBlockHorizontal: View {
     let isPluginLoading: Bool
     let onRemove: () -> Void
     let onUpdate: () -> Void
-    let onParameterEditBegan: () -> Void
     let onParameterChange: () -> Void
     let onExpanded: () -> Void
     let onCollapsed: () -> Void
@@ -161,14 +160,12 @@ struct EffectBlockHorizontal: View {
                             effectType: effect.type,
                             parameters: $effect.parameters,
                             tint: tileStyle.fill,
-                            onEditBegan: onParameterEditBegan,
                             onChange: onParameterChange
                         )
                     }
 
                     HStack(spacing: 12) {
                         Button(action: {
-                            onParameterEditBegan()
                             setEffectEnabled(!getEffectEnabled())
                         }) {
                             Label(getEffectEnabled() ? "On" : "Off", systemImage: "power")
@@ -190,6 +187,11 @@ struct EffectBlockHorizontal: View {
                 .sonexisFloatingPanel(tint: tileStyle.fill, cornerRadius: 8, glowOpacity: 0)
                 .foregroundColor(AppColors.textPrimary)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
+                .background {
+                    if effect.type == .bassBoost {
+                        Color.clear.tutorialTarget(.buildEffectControls)
+                    }
+                }
                 .scaleEffect(overlayScale, anchor: .top)
                 .offset(y: 138)
                 .transition(.move(edge: .top).combined(with: .opacity))

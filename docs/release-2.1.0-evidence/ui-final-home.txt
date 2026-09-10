@@ -1,0 +1,16 @@
+Window: "Sonexis", App: Sonexis.
+0 standard window Sonexis, ID: editor, Secondary Actions: Raise
+	1 container
+		2 button Tutorial
+		3 text Sonexis Click anywhere to start Made by Skanda Vyas Srinivasan
+	4 close button
+	5 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	6 minimize button
+7 menu bar
+	8 Sonexis
+	9 Edit
+	10 View
+	11 Window
+	12 Help
+
+The focused UI element is 0 standard window Sonexis, ID: editor, Secondary Actions: Raise

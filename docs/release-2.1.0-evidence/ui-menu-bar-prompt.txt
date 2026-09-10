@@ -1,0 +1,4 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
++		189 text Open the menu bar
++		190 button Skip
++		191 text Click the S in your Mac’s menu bar.

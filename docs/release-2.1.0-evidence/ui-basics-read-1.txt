@@ -1,0 +1,84 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 2
+~		13 button (disabled) Home
+~		14 text Turn on Sonexis
+~		15 button Skip
++		16 button Description: Power, Help: Start Processing, ID: power.circle
++		17 button (disabled) Description: Edit, Help: Disable Effects, ID: slider.horizontal.3
++		18 button (disabled) Description: Record, Help: Record Default output
++		19 text Help: Processed output level after Sonexis effects., Value: Output Press the power button to start Sonexis. Play some audio in the background so you can hear the effects as you try them. -inf dB
++		20 button (disabled) Description: gearshape, Help: Audio settings
++		21 button (disabled) Description: Save, Help: Save as preset
++		22 button (disabled) Description: Save options, Help: Save as preset, Value: Collapsed, ID: chevron.down
++		23 button (disabled) Description: Load, Help: Load preset
++		24 text Effects
++		25 scroll area
++			26 button (selected, disabled) Description: Default, Help: Default effects for apps without their own chain, Value: Chain enabled
++		27 menu button (disabled) Description: Add app chain, Help: Add an app chain
++		28 image Description: Search, ID: magnifyingglass
++		29 text field (settable, string) Search
++		30 menu button (disabled) Graph Mode
++		31 menu button (disabled) Stereo
++		32 menu button (disabled) Description: Go Down, ID: chevron.down
++		33 menu button (disabled) Description: Wiring, Help: Automatic: Effects flow left-to-right by position.
++		34 menu button (disabled) Description: Automatic, Help: Automatic: Effects flow left-to-right by position.
++		35 menu button (disabled) Description: Go Down, Help: Automatic: Effects flow left-to-right by position., ID: chevron.down
++		36 text Auto-connect End
++		37 toggle button (disabled) Help: Automatic mode handles all connections., Value: off
++		38 text Flow
++		39 button (disabled) 20 FPS
++		40 menu button (disabled) Canvas
++		41 menu button (disabled) Description: Go Down, ID: chevron.down
++		42 button Built-in
++		43 button Plugins
++		44 button Favorites
++		45 button Description: Back, ID: chevron.left
++		46 image waveform
++		47 image Description: Waveform, ID: waveform.path
++		48 image Description: Volume Higher, ID: speaker.wave.3.fill
++		49 text Drop effects here Start End
++		50 scroll area Secondary Actions: Scroll Up, Scroll Down
++			51 list Secondary Actions: AXScrollToTop, AXScrollToBottom
++				52 text Tone
++				53 image Description: Volume Highest, ID: speaker.wave.3
++				54 text Bass Boost
++				55 button Description: Favorite, Help: Remove favorite, ID: star.fill
++				56 image Description: Flame, ID: flame.fill
++				57 text Enhancer
++				58 button Description: Favorite, Help: Add favorite, ID: star
++				59 image Description: Sparkle, ID: sparkles
++				60 text Clarity
++				61 button Description: Favorite, Help: Add favorite, ID: star
++				62 image Description: Edit, ID: slider.horizontal.3
++				63 text Simple EQ
++				64 button Description: Favorite, Help: Add favorite, ID: star
++				65 image Description: Playlist, ID: music.note.list
++				66 text Pitch (Rubber Band)
++				67 button Description: Favorite, Help: Add favorite, ID: star
++				68 text Space
++				69 image building.columns
++				70 text Reverb
++				71 button Description: Favorite, Help: Add favorite, ID: star
++				72 image arrow.left.and.right
++				73 text Stereo Widening
++				74 button Description: Favorite, Help: Add favorite, ID: star
++				75 image arrow.3.trianglepath
++				76 text Delay
++				77 button Description: Favorite, Help: Add favorite, ID: star
++				78 text Motion
++				79 image waveform
++				80 text Tremolo
++				81 button Description: Favorite, Help: Add favorite, ID: star
++				82 image arrow.left.arrow.right
++				83 text Auto Pan
++				84 button Description: Favorite, Help: Add favorite, ID: star
++				85 image waveform.circle
++				86 text Chorus
++				87 button Description: Favorite, Help: Add favorite, ID: star
++				88 text Texture Signature
++			89 scroll bar (settable, float) 0
++				90 value indicator (settable, float) 0
++				91 increment arrow button
++				92 decrement arrow button
++				93 increment page button
++				94 decrement page button

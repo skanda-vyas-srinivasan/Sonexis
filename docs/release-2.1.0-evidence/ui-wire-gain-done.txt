@@ -1,0 +1,9 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 29, 101-104
+~		13 text Process Tap Effects
++		98 text Clear the canvas
++		99 button Skip
++		100 text Open the Canvas menu and choose Clear Canvas. Next, we’ll put different effects on the left and right audio channels. Flow
+~		31 menu button Canvas
+~		32 menu button Description: Go Down, ID: chevron.down
+~		37 text Bass Boost

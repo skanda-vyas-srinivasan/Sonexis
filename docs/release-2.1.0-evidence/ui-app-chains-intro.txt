@@ -1,0 +1,91 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		187 button (disabled) Home
++		188 button (disabled) Description: Power, Help: Power is controlled by this tutorial, ID: power.circle
+~		189 button (disabled) Description: Edit, Help: Disable Effects, ID: slider.horizontal.3
+~		190 button (disabled) Description: Record, Help: Record Default output
+~		191 text Help: Processed output level after Sonexis effects., Value: Output -inf dB
++		192 button (disabled) Description: gearshape, Help: Audio settings
++		193 text Help: Skanda's Brighten, Value: PRESET Skanda's Brighten
++		194 button (disabled) Description: Save, Help: Save preset
++		195 button (disabled) Description: Save options, Help: Save preset, Value: Collapsed, ID: chevron.down
++		196 button (disabled) Description: Load, Help: Load preset
++		197 text Effects
++		198 scroll area
++			199 button (selected, disabled) Description: Default, Help: Default effects for apps without their own chain, Value: Chain enabled
++		200 menu button (disabled) Description: Add app chain, Help: Add an app chain
++		201 image Description: Search, ID: magnifyingglass
++		202 text field (settable, string) Search
++		203 menu button (disabled) Graph Mode
++		204 menu button (disabled) Stereo
++		205 menu button (disabled) Description: Go Down, ID: chevron.down
++		206 menu button (disabled) Description: Wiring, Help: Automatic: Effects flow left-to-right by position.
++		207 menu button (disabled) Description: Automatic, Help: Automatic: Effects flow left-to-right by position.
++		208 menu button (disabled) Description: Go Down, Help: Automatic: Effects flow left-to-right by position., ID: chevron.down
++		209 text Auto-connect End
++		210 toggle button (disabled) Help: Automatic mode handles all connections., Value: off
++		211 text Flow
++		212 button (disabled) 20 FPS
++		213 menu button (disabled) Canvas
++		214 menu button (disabled) Description: Go Down, ID: chevron.down
++		215 text App audio chains
++		216 button Skip
++		217 button Built-in
++		218 button Plugins
++		219 button Favorites
++		220 text In this tutorial, you’ll learn how to create audio chains for specific apps.
++		221 image Description: Volume Highest, ID: speaker.wave.3
++		222 text Bass Boost
++		223 image waveform
++		224 image Description: Volume Higher, ID: speaker.wave.3.fill
++		225 text Start End
++		226 image Description: Flame, ID: flame.fill
++		227 text Enhancer
++		228 scroll area Secondary Actions: Scroll Up, Scroll Down
++			229 list Secondary Actions: AXScrollToTop, AXScrollToBottom
++				230 text Tone
++				231 image Description: Volume Highest, ID: speaker.wave.3
++				232 text Bass Boost
++				233 button Description: Favorite, Help: Remove favorite, ID: star.fill
++				234 image Description: Flame, ID: flame.fill
++				235 text Enhancer
++				236 button Description: Favorite, Help: Add favorite, ID: star
++				237 image Description: Sparkle, ID: sparkles
++				238 text Clarity
++				239 button Description: Favorite, Help: Add favorite, ID: star
++				240 image Description: Edit, ID: slider.horizontal.3
++				241 text Simple EQ
++				242 button Description: Favorite, Help: Add favorite, ID: star
++				243 image Description: Playlist, ID: music.note.list
++				244 text Pitch (Rubber Band)
++				245 button Description: Favorite, Help: Add favorite, ID: star
++				246 text Space
++				247 image building.columns
++				248 text Reverb
++				249 button Description: Favorite, Help: Add favorite, ID: star
++				250 image arrow.left.and.right
++				251 text Stereo Widening
++				252 button Description: Favorite, Help: Add favorite, ID: star
++				253 image arrow.3.trianglepath
++				254 text Delay
++				255 button Description: Favorite, Help: Add favorite, ID: star
++				256 text Motion
++				257 image waveform
++				258 text Tremolo
++				259 button Description: Favorite, Help: Add favorite, ID: star
++				260 image arrow.left.arrow.right
++				261 text Auto Pan
++				262 button Description: Favorite, Help: Add favorite, ID: star
++				263 image waveform.circle
++				264 text Chorus
++				265 button Description: Favorite, Help: Add favorite, ID: star
++				266 text Texture Signature
++			267 scroll bar (settable, float) 0
++				268 value indicator (settable, float) 0
++				269 increment arrow button
++				270 decrement arrow button
++				271 increment page button
++				272 decrement page button
++		273 button Next
++		274 image Description: Sparkle, ID: sparkles
++		275 text Clarity
++		276 button Description: Back, ID: chevron.left

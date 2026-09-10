@@ -1,0 +1,3 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		151 text Ceiling
+~		153 text Limits peaks at the output.

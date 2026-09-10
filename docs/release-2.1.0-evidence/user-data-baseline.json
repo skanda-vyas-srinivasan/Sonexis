@@ -1,0 +1,11 @@
+{
+  "backupPath": "/var/folders/08/5_z36dsd6qjcd2ck3nmfxyxh0000gn/T/sonexis-release-audit-backup-m9b9cogf",
+  "sha256": {
+    "workspace.json": "9098f072a3250e4f0981d1880f04b9635bb36c05371a5d93c8bbeb7eee7fc319",
+    "presets.backup.json": "3eef6f7c88939cc1ee6246190f45a2cfd7787396a3a9ea17811388e958aa0349",
+    "workspace.backup.json": "07ab1005b1838f0b73da6c0493d6cb046822bcef80558b2e475a71d7d5c0efa8",
+    "presets.json": "d6fa61ecc12bd8940627fd9112c29da9eba3c4bd0faa4684caafe0e9144f0688",
+    "chains.backup.json": "a7454dc4c5df53eb7e482c79b9aec7148929f7dd8d7cd6ef7a12a0c630de02db",
+    "chains.json": "e0ebf49fa6139589b85a56a5aaa5901f77fbfdb6aa2e534aa81b42b5f3afbb86"
+  }
+}

@@ -1,0 +1,60 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 50-94
+~		20 button (disabled) Description: gearshape.fill, Help: Close audio settings
++		98 text Input Gain -15 dB Output Gain +15 dB Ceiling
++		99 toggle button (disabled) Help: Enable output ceiling, Value: off
++		100 text Theme
++		101 slider (disabled) Value: -15, Secondary Actions: Increment, Decrement
++			102 value indicator -15
++		103 slider (disabled) Value: 15, Secondary Actions: Increment, Decrement
++			104 value indicator 15
++		105 button (disabled) Description: arrow.counterclockwise, Help: Reset Input Gain, Output Gain, and Ceiling
++		106 scroll area Secondary Actions: Scroll Up, Scroll Down
++			107 list Secondary Actions: AXScrollToTop, AXScrollToBottom
++				108 text Tone
++				109 image Description: Volume Highest, ID: speaker.wave.3
++				110 text Bass Boost
++				111 button Description: Favorite, Help: Remove favorite, ID: star.fill
++				112 image Description: Flame, ID: flame.fill
++				113 text Enhancer
++				114 button Description: Favorite, Help: Add favorite, ID: star
++				115 image Description: Sparkle, ID: sparkles
++				116 text Clarity
++				117 button Description: Favorite, Help: Add favorite, ID: star
++				118 image Description: Edit, ID: slider.horizontal.3
++				119 text Simple EQ
++				120 button Description: Favorite, Help: Add favorite, ID: star
++				121 image Description: Playlist, ID: music.note.list
++				122 text Pitch (Rubber Band)
++				123 button Description: Favorite, Help: Add favorite, ID: star
++				124 text Space
++				125 image building.columns
++				126 text Reverb
++				127 button Description: Favorite, Help: Add favorite, ID: star
++				128 image arrow.left.and.right
++				129 text Stereo Widening
++				130 button Description: Favorite, Help: Add favorite, ID: star
++				131 image arrow.3.trianglepath
++				132 text Delay
++				133 button Description: Favorite, Help: Add favorite, ID: star
++				134 text Motion
++				135 image waveform
++				136 text Tremolo
++				137 button Description: Favorite, Help: Add favorite, ID: star
++				138 image arrow.left.arrow.right
++				139 text Auto Pan
++				140 button Description: Favorite, Help: Add favorite, ID: star
++				141 image waveform.circle
++				142 text Chorus
++				143 button Description: Favorite, Help: Add favorite, ID: star
++				144 text Texture Signature
++			145 scroll bar (settable, float) 0
++				146 value indicator (settable, float) 0
++				147 increment arrow button
++				148 decrement arrow button
++				149 increment page button
++				150 decrement page button
++		151 text Input Gain
++		152 button Skip
++		153 text Controls how loud the audio is before it enters your effects. Lowering it gives effects room to boost the sound.
++		154 button Next

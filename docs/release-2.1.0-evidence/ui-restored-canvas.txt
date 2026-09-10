@@ -1,0 +1,4 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 107-118
+~		8 button Description: gearshape, Help: Audio settings
++		106 button Description: Back, ID: chevron.left

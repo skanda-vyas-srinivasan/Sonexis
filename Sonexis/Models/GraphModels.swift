@@ -661,6 +661,10 @@ extension GraphSnapshot {
             var result = node
             result.position = .zero
             result.accentIndex = 0
+            if var plugin = result.plugin, plugin.format == .au, let state = plugin.stateData {
+                plugin.stateData = AudioUnitStateComparison.data(for: state)
+                result.plugin = plugin
+            }
             if graphMode == .single { result.lane = .left }
             return result
         }
@@ -670,6 +674,43 @@ extension GraphSnapshot {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         return try? encoder.encode(content)
+    }
+}
+
+/// AU fullState is a property list. Its binary object/key ordering can change
+/// on every read even when every setting is identical. Normalize only the
+/// comparison copy; the original plugin state remains intact for saving/loading.
+private enum AudioUnitStateComparison {
+    static func data(for state: Data) -> Data {
+        guard let plist = try? PropertyListSerialization.propertyList(from: state, options: [], format: nil),
+              let value = try? canonicalValue(plist),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else {
+            // Preserve byte comparison for opaque or unsupported states.
+            return state
+        }
+        return data
+    }
+
+    private static func canonicalValue(_ value: Any) throws -> Any {
+        // Tag each type so data/date values cannot collide with ordinary strings
+        // or dictionaries. Dictionary keys are sorted by the final JSON encoder;
+        // array order and all actual parameter values remain significant.
+        switch value {
+        case let dictionary as [String: Any]:
+            return ["dictionary", try dictionary.mapValues { try canonicalValue($0) }] as [Any]
+        case let array as [Any]:
+            return ["array", try array.map { try canonicalValue($0) }] as [Any]
+        case let data as Data:
+            return ["data", data.base64EncodedString()]
+        case let date as Date:
+            return ["date", date.timeIntervalSinceReferenceDate] as [Any]
+        case let string as String:
+            return ["string", string]
+        case let number as NSNumber:
+            return ["number", number] as [Any]
+        default:
+            throw CocoaError(.propertyListReadCorrupt)
+        }
     }
 }
 

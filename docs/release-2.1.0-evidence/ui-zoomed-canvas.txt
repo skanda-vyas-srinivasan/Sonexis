@@ -1,0 +1,5 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 181-183
++		187 image Description: Sparkle, ID: sparkles
++		188 text Clarity
++		189 button Description: Back, ID: chevron.left

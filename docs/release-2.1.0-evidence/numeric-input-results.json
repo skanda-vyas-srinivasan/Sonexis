@@ -1,0 +1,57 @@
+[
+  {
+    "effect": "Delay",
+    "parameter": "delayTime",
+    "exit": 0
+  },
+  {
+    "effect": "Delay",
+    "parameter": "delayFeedback",
+    "exit": 0
+  },
+  {
+    "effect": "Chorus",
+    "parameter": "chorusRate",
+    "exit": 0
+  },
+  {
+    "effect": "Chorus",
+    "parameter": "chorusDepth",
+    "exit": 0
+  },
+  {
+    "effect": "Flanger",
+    "parameter": "flangerRate",
+    "exit": 0
+  },
+  {
+    "effect": "Phaser",
+    "parameter": "phaserRate",
+    "exit": 0
+  },
+  {
+    "effect": "Bass Boost",
+    "parameter": "bassBoostAmount",
+    "exit": 0
+  },
+  {
+    "effect": "Reverb",
+    "parameter": "reverbSize",
+    "exit": 0
+  },
+  {
+    "effect": "Amp",
+    "parameter": "ampInputGain",
+    "exit": 0
+  },
+  {
+    "effect": "Simple EQ",
+    "parameter": "eqBass",
+    "exit": 0
+  },
+  {
+    "effect": "Tremolo",
+    "parameter": "tremoloRate",
+    "exit": 0
+  }
+]

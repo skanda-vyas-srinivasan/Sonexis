@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Owns only the status item and floating panel; audio remains editor-owned.
 final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
+    var onOpen: (() -> Void)?
     private var statusItem: NSStatusItem?
     private var panel: MenuBarFloatingPanel?
     private var localMonitor: Any?
@@ -56,6 +57,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             return
         }
         panel.makeKeyAndOrderFront(nil)
+        onOpen?()
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self else { return event }
             if event.window !== self.panel && event.window !== self.statusItem?.button?.window {

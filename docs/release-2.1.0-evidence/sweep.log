@@ -1,0 +1,120 @@
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Bass Boost","frames":21188,"nonfinite":0,"peak":0.96721750497817993,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Bass Boost","frames":21188,"nonfinite":0,"peak":0.96726435422897339,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Bass Boost","frames":21188,"nonfinite":0,"peak":0.96748876571655273,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Bass Boost","frames":21188,"nonfinite":0,"peak":0.96721750497817993,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Bass Boost","frames":21188,"nonfinite":0,"peak":0.96726435422897339,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Bass Boost","frames":21188,"nonfinite":0,"peak":0.99173206090927124,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Clarity","frames":21188,"nonfinite":0,"peak":0.80084478855133057,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Clarity","frames":21188,"nonfinite":0,"peak":0.80086100101470947,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Clarity","frames":21188,"nonfinite":0,"peak":0.80092626810073853,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Clarity","frames":21188,"nonfinite":0,"peak":0.80084478855133057,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Clarity","frames":21188,"nonfinite":0,"peak":0.80086100101470947,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Clarity","frames":21188,"nonfinite":0,"peak":0.80092644691467285,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Reverb","frames":21188,"nonfinite":0,"peak":0.79565834999084473,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Reverb","frames":21188,"nonfinite":0,"peak":0.7956966757774353,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Reverb","frames":21188,"nonfinite":0,"peak":0.79586046934127808,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Reverb","frames":21188,"nonfinite":0,"peak":0.79565834999084473,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Reverb","frames":21188,"nonfinite":0,"peak":0.7956966757774353,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Reverb","frames":21188,"nonfinite":0,"peak":0.79586046934127808,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Stereo Widening","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Stereo Widening","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Stereo Widening","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":96000}
+{"aboveFullScale":1531,"case":"effect-sweep","channels":2,"effect":"Stereo Widening","frames":21188,"nonfinite":0,"peak":1.0397837162017822,"sampleRate":44100}
+{"aboveFullScale":1503,"case":"effect-sweep","channels":2,"effect":"Stereo Widening","frames":21188,"nonfinite":0,"peak":1.0399363040924072,"sampleRate":48000}
+{"aboveFullScale":1352,"case":"effect-sweep","channels":2,"effect":"Stereo Widening","frames":21188,"nonfinite":0,"peak":1.0399311780929565,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Pitch (Rubber Band)","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Pitch (Rubber Band)","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Pitch (Rubber Band)","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Pitch (Rubber Band)","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Pitch (Rubber Band)","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Pitch (Rubber Band)","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Simple EQ","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Simple EQ","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Simple EQ","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Simple EQ","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Simple EQ","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Simple EQ","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Delay","frames":21188,"nonfinite":0,"peak":0.79565829038619995,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Delay","frames":21188,"nonfinite":0,"peak":0.7956966757774353,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Delay","frames":21188,"nonfinite":0,"peak":0.79586046934127808,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Delay","frames":21188,"nonfinite":0,"peak":0.79565829038619995,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Delay","frames":21188,"nonfinite":0,"peak":0.7956966757774353,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Delay","frames":21188,"nonfinite":0,"peak":0.79586046934127808,"sampleRate":96000}
+{"aboveFullScale":18525,"case":"effect-sweep","channels":1,"effect":"Amp","frames":21188,"nonfinite":0,"peak":5.0481476783752441,"sampleRate":44100}
+{"aboveFullScale":18497,"case":"effect-sweep","channels":1,"effect":"Amp","frames":21188,"nonfinite":0,"peak":5.0481405258178711,"sampleRate":48000}
+{"aboveFullScale":18301,"case":"effect-sweep","channels":1,"effect":"Amp","frames":21188,"nonfinite":0,"peak":5.0480489730834961,"sampleRate":96000}
+{"aboveFullScale":37224,"case":"effect-sweep","channels":2,"effect":"Amp","frames":21188,"nonfinite":0,"peak":5.0481476783752441,"sampleRate":44100}
+{"aboveFullScale":37218,"case":"effect-sweep","channels":2,"effect":"Amp","frames":21188,"nonfinite":0,"peak":5.0481405258178711,"sampleRate":48000}
+{"aboveFullScale":37006,"case":"effect-sweep","channels":2,"effect":"Amp","frames":21188,"nonfinite":0,"peak":5.0480489730834961,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Tremolo","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Tremolo","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Tremolo","frames":21188,"nonfinite":0,"peak":0.7998778223991394,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Tremolo","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Tremolo","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Tremolo","frames":21188,"nonfinite":0,"peak":0.79995632171630859,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Auto Pan","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Auto Pan","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Auto Pan","frames":21188,"nonfinite":0,"peak":0.80000001192092896,"sampleRate":96000}
+{"aboveFullScale":1729,"case":"effect-sweep","channels":2,"effect":"Auto Pan","frames":21188,"nonfinite":0,"peak":1.0781257152557373,"sampleRate":44100}
+{"aboveFullScale":1443,"case":"effect-sweep","channels":2,"effect":"Auto Pan","frames":21188,"nonfinite":0,"peak":1.0695366859436035,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Auto Pan","frames":21188,"nonfinite":0,"peak":0.97523802518844604,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Chorus","frames":21188,"nonfinite":0,"peak":0.7999732494354248,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Chorus","frames":21188,"nonfinite":0,"peak":0.79976236820220947,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Chorus","frames":21188,"nonfinite":0,"peak":0.79985743761062622,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Chorus","frames":21188,"nonfinite":0,"peak":0.7999732494354248,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Chorus","frames":21188,"nonfinite":0,"peak":0.79976236820220947,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Chorus","frames":21188,"nonfinite":0,"peak":0.79985743761062622,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Phaser","frames":21188,"nonfinite":0,"peak":0.78945702314376831,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Phaser","frames":21188,"nonfinite":0,"peak":0.78953677415847778,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Phaser","frames":21188,"nonfinite":0,"peak":0.79003220796585083,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Phaser","frames":21188,"nonfinite":0,"peak":0.78945702314376831,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Phaser","frames":21188,"nonfinite":0,"peak":0.78953677415847778,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Phaser","frames":21188,"nonfinite":0,"peak":0.79003220796585083,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Flanger","frames":21188,"nonfinite":0,"peak":0.905295729637146,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Flanger","frames":21188,"nonfinite":0,"peak":0.90545362234115601,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Flanger","frames":21188,"nonfinite":0,"peak":0.9060283899307251,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Flanger","frames":21188,"nonfinite":0,"peak":0.905295729637146,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Flanger","frames":21188,"nonfinite":0,"peak":0.90545362234115601,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Flanger","frames":21188,"nonfinite":0,"peak":0.9060283899307251,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Bitcrusher","frames":21188,"nonfinite":0,"peak":0.80956757068634033,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Bitcrusher","frames":21188,"nonfinite":0,"peak":0.80956774950027466,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":1,"effect":"Bitcrusher","frames":21188,"nonfinite":0,"peak":0.80956721305847168,"sampleRate":96000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Bitcrusher","frames":21188,"nonfinite":0,"peak":0.80956763029098511,"sampleRate":44100}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Bitcrusher","frames":21188,"nonfinite":0,"peak":0.80956774950027466,"sampleRate":48000}
+{"aboveFullScale":0,"case":"effect-sweep","channels":2,"effect":"Bitcrusher","frames":21188,"nonfinite":0,"peak":0.80956739187240601,"sampleRate":96000}
+{"aboveFullScale":9688,"case":"effect-sweep","channels":1,"effect":"Tape Saturation","frames":21188,"nonfinite":0,"peak":1.3396873474121094,"sampleRate":44100}
+{"aboveFullScale":9657,"case":"effect-sweep","channels":1,"effect":"Tape Saturation","frames":21188,"nonfinite":0,"peak":1.339686393737793,"sampleRate":48000}
+{"aboveFullScale":9321,"case":"effect-sweep","channels":1,"effect":"Tape Saturation","frames":21188,"nonfinite":0,"peak":1.3396748304367065,"sampleRate":96000}
+{"aboveFullScale":19679,"case":"effect-sweep","channels":2,"effect":"Tape Saturation","frames":21188,"nonfinite":0,"peak":1.3396873474121094,"sampleRate":44100}
+{"aboveFullScale":19682,"case":"effect-sweep","channels":2,"effect":"Tape Saturation","frames":21188,"nonfinite":0,"peak":1.339686393737793,"sampleRate":48000}
+{"aboveFullScale":19300,"case":"effect-sweep","channels":2,"effect":"Tape Saturation","frames":21188,"nonfinite":0,"peak":1.3396748304367065,"sampleRate":96000}
+{"aboveFullScale":8791,"case":"effect-sweep","channels":1,"effect":"Enhancer","frames":21188,"nonfinite":0,"peak":1.276019811630249,"sampleRate":44100}
+{"aboveFullScale":8761,"case":"effect-sweep","channels":1,"effect":"Enhancer","frames":21188,"nonfinite":0,"peak":1.276032567024231,"sampleRate":48000}
+{"aboveFullScale":8307,"case":"effect-sweep","channels":1,"effect":"Enhancer","frames":21188,"nonfinite":0,"peak":1.2760833501815796,"sampleRate":96000}
+{"aboveFullScale":17896,"case":"effect-sweep","channels":2,"effect":"Enhancer","frames":21188,"nonfinite":0,"peak":1.2760344743728638,"sampleRate":44100}
+{"aboveFullScale":17888,"case":"effect-sweep","channels":2,"effect":"Enhancer","frames":21188,"nonfinite":0,"peak":1.276032567024231,"sampleRate":48000}
+{"aboveFullScale":17390,"case":"effect-sweep","channels":2,"effect":"Enhancer","frames":21188,"nonfinite":0,"peak":1.2762235403060913,"sampleRate":96000}
+{"aboveFullScale":12555,"case":"effect-sweep","channels":1,"effect":"Night Drive","frames":21188,"nonfinite":0,"peak":1.6818280220031738,"sampleRate":44100}
+{"aboveFullScale":12524,"case":"effect-sweep","channels":1,"effect":"Night Drive","frames":21188,"nonfinite":0,"peak":1.6816941499710083,"sampleRate":48000}
+{"aboveFullScale":12083,"case":"effect-sweep","channels":1,"effect":"Night Drive","frames":21188,"nonfinite":0,"peak":1.6814820766448975,"sampleRate":96000}
+{"aboveFullScale":29301,"case":"effect-sweep","channels":2,"effect":"Night Drive","frames":21188,"nonfinite":0,"peak":2.7417159080505371,"sampleRate":44100}
+{"aboveFullScale":29242,"case":"effect-sweep","channels":2,"effect":"Night Drive","frames":21188,"nonfinite":0,"peak":2.7418341636657715,"sampleRate":48000}
+{"aboveFullScale":28347,"case":"effect-sweep","channels":2,"effect":"Night Drive","frames":21188,"nonfinite":0,"peak":2.7415752410888672,"sampleRate":96000}
+{"aboveFullScale":13563,"case":"effect-sweep","channels":1,"effect":"Chrome Punch","frames":21188,"nonfinite":0,"peak":1.7148054838180542,"sampleRate":44100}
+{"aboveFullScale":13410,"case":"effect-sweep","channels":1,"effect":"Chrome Punch","frames":21188,"nonfinite":0,"peak":1.70361328125,"sampleRate":48000}
+{"aboveFullScale":12202,"case":"effect-sweep","channels":1,"effect":"Chrome Punch","frames":21188,"nonfinite":0,"peak":1.6519081592559814,"sampleRate":96000}
+{"aboveFullScale":25103,"case":"effect-sweep","channels":2,"effect":"Chrome Punch","frames":21188,"nonfinite":0,"peak":1.7159658670425415,"sampleRate":44100}
+{"aboveFullScale":24897,"case":"effect-sweep","channels":2,"effect":"Chrome Punch","frames":21188,"nonfinite":0,"peak":1.7015851736068726,"sampleRate":48000}
+{"aboveFullScale":23062,"case":"effect-sweep","channels":2,"effect":"Chrome Punch","frames":21188,"nonfinite":0,"peak":1.6321685314178467,"sampleRate":96000}
+{"aboveFullScale":15594,"case":"effect-sweep","channels":1,"effect":"Midnight Glow","frames":21188,"nonfinite":0,"peak":2.4142744541168213,"sampleRate":44100}
+{"aboveFullScale":15564,"case":"effect-sweep","channels":1,"effect":"Midnight Glow","frames":21188,"nonfinite":0,"peak":2.4143304824829102,"sampleRate":48000}
+{"aboveFullScale":15195,"case":"effect-sweep","channels":1,"effect":"Midnight Glow","frames":21188,"nonfinite":0,"peak":2.4146254062652588,"sampleRate":96000}
+{"aboveFullScale":31345,"case":"effect-sweep","channels":2,"effect":"Midnight Glow","frames":21188,"nonfinite":0,"peak":2.479062557220459,"sampleRate":44100}
+{"aboveFullScale":31303,"case":"effect-sweep","channels":2,"effect":"Midnight Glow","frames":21188,"nonfinite":0,"peak":2.4790592193603516,"sampleRate":48000}
+{"aboveFullScale":30548,"case":"effect-sweep","channels":2,"effect":"Midnight Glow","frames":21188,"nonfinite":0,"peak":2.4793334007263184,"sampleRate":96000}
+{"aboveFullScale":13006,"case":"effect-sweep","channels":1,"effect":"Afterglow","frames":21188,"nonfinite":0,"peak":2.0658750534057617,"sampleRate":44100}
+{"aboveFullScale":12846,"case":"effect-sweep","channels":1,"effect":"Afterglow","frames":21188,"nonfinite":0,"peak":2.0604403018951416,"sampleRate":48000}
+{"aboveFullScale":12037,"case":"effect-sweep","channels":1,"effect":"Afterglow","frames":21188,"nonfinite":0,"peak":2.0419034957885742,"sampleRate":96000}
+{"aboveFullScale":21140,"case":"effect-sweep","channels":2,"effect":"Afterglow","frames":21188,"nonfinite":0,"peak":2.5235970020294189,"sampleRate":44100}
+{"aboveFullScale":21728,"case":"effect-sweep","channels":2,"effect":"Afterglow","frames":21188,"nonfinite":0,"peak":2.5752601623535156,"sampleRate":48000}
+{"aboveFullScale":24625,"case":"effect-sweep","channels":2,"effect":"Afterglow","frames":21188,"nonfinite":0,"peak":2.6017143726348877,"sampleRate":96000}

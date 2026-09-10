@@ -1,0 +1,3 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		189 text Load from the menu bar
+~		191 text Choose a preset under Terminal in the menu-bar panel.

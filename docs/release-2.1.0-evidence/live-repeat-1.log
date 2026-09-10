@@ -1,0 +1,24 @@
+2026-09-10 02:01:14.828 live-audit[59443:3247408] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+AUDIT SOURCE resolved PID=59446 object=108
+Installed sleep/wake observers.
+
+Rebuilding audio pipeline: initial start
+Route diagnostics (before rebuild):
+  Current default output: MacBook Pro Speakers [AudioObjectID 71, UID BuiltInSpeakerDevice]
+  Tap source device:      none
+  Playback output device: none
+Excluding this process from the tap: AudioObjectID 109
+Current default output device: MacBook Pro Speakers [AudioObjectID 71, UID BuiltInSpeakerDevice]
+Using output stream index 0 of 1
+Default output stream format: sampleRate=48000.0, channels=2, bytesPerFrame=8, bitsPerChannel=32, flags=0x9, interleaved
+Created process tap: AudioObjectID 110
+Verified tap source selection excludes Sonexis playback.
+Tap source device: MacBook Pro Speakers [AudioObjectID 71, UID BuiltInSpeakerDevice]
+Tap format: sampleRate=48000.0, channels=2, bytesPerFrame=8, bitsPerChannel=32, flags=0x9, interleaved
+Created private aggregate device: AudioDeviceID 111
+Created realtime ring buffer: 96000 frames, 2 channels
+Playback reservoir target: 4096 frames
+Created raw capture ring buffer for Sonexis DSP worker.
+Initial gain: 1.0; hardcoded target gain: 1.0
+DSP processor: Sonexis effect graph DSP
+Startup preroll target: 4096 frames

@@ -1,0 +1,5 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 3, 16
+~		13 text Start
+~		15 text Click anywhere to start. Sonexis Click anywhere to start Made by Skanda Vyas Srinivasan
+The focused UI element is 0 standard window Sonexis, ID: editor, Secondary Actions: Raise

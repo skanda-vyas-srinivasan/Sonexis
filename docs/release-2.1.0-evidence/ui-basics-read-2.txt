@@ -1,0 +1,7 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 14-15
+~		16 button (disabled) Description: Power, Help: Power is controlled by this tutorial, ID: power.circle
+~		19 text Help: Processed output level after Sonexis effects., Value: Output -inf dB
++		95 text Add an effect
++		96 button Skip
++		97 text Drag Bass Boost onto the canvas.
