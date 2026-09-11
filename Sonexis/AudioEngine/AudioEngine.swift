@@ -385,7 +385,6 @@ class AudioEngine: ObservableObject {
     var onPowerStop: (() -> Void)?
     var onEffectsToggle: (() -> Void)?
     @Published var globalBypassActive = false
-    var chainDisplayName: String?
     @Published var captureTarget = AudioCaptureTarget.restore()
     var processTapEngine: ProcessTapDSPEngine?
     var processTapStopInProgress = false
@@ -396,13 +395,16 @@ class AudioEngine: ObservableObject {
     @Published var outputDeviceName: String = "Searching..."
     @Published var signalFlowToken: Int = 0
     @Published var betaRecordingUnlocked = false
-    @Published var isRecording = false
-    @Published var isFinalizingRecording = false
-    @Published var recordingWarningText: String?
-    @Published var recordingIssuePresented = false
-    @Published var lastRecordingURL: URL?
-    private var recordingSessionID: UUID?
-    private var recordingSession: AudioRecordingSession?
+    private let recordingSinkLock = NSLock()
+    private var _recordingSink: ((UnsafePointer<Float>, Int, Int, Double) -> Void)?
+    /// Set by MultiChainAudioEngine while a combined recording is active; called
+    /// unconditionally from the audio worker thread on every processed buffer.
+    /// Read and written across threads, so access is guarded like the old
+    /// per-chain recording session lookup was.
+    var recordingSink: ((UnsafePointer<Float>, Int, Int, Double) -> Void)? {
+        get { recordingSinkLock.lock(); defer { recordingSinkLock.unlock() }; return _recordingSink }
+        set { recordingSinkLock.lock(); _recordingSink = newValue; recordingSinkLock.unlock() }
+    }
     @Published var pluginStatusToken: Int = 0
     @Published var outputMeterLevel: Float = 0
     @Published var outputMeterPeakDBFS: Float = -96
@@ -433,9 +435,7 @@ class AudioEngine: ObservableObject {
     @Published var processTapTrimmedInputPeakDBFS: Float = -96
     @Published var processTapWarningText: String?
 
-    private let recordingLock = NSLock()
-    private var recordingSampleRate: Double = 44100
-    private var recordingChannelCount: AVAudioChannelCount = 2
+    private let tapFormatLock = NSLock()
     private var tapFrameLength: Int = 0
     private var tapChannelCount: Int = 0
     private var tapSampleRate: Double = 0
@@ -1630,15 +1630,8 @@ class AudioEngine: ObservableObject {
         pendingResetsLock.unlock()
     }
 
-    func updateRecordingFormat(sampleRate: Double, channelCount: AVAudioChannelCount) {
-        recordingLock.lock()
-        recordingSampleRate = sampleRate
-        recordingChannelCount = channelCount
-        recordingLock.unlock()
-    }
-
     func updateTapFormat(frameLength: Int, channelCount: Int, sampleRate: Double) {
-        recordingLock.lock()
+        tapFormatLock.lock()
         if tapChannelCount == channelCount, tapSampleRate == sampleRate {
             tapFrameLength = max(tapFrameLength, frameLength)
         } else {
@@ -1646,85 +1639,24 @@ class AudioEngine: ObservableObject {
         }
         tapChannelCount = channelCount
         tapSampleRate = sampleRate
-        recordingSampleRate = sampleRate
-        recordingChannelCount = AVAudioChannelCount(channelCount)
-        recordingLock.unlock()
+        tapFormatLock.unlock()
     }
 
-    func startRecording(url: URL) {
-        guard !isRecording, !isFinalizingRecording else { return }
-        recordingLock.lock()
-        let sampleRate = recordingSampleRate
-        let channels = recordingChannelCount
-        let capacity = tapFrameLength
-        recordingLock.unlock()
-        guard capacity > 0 else {
-            errorMessage = "Recording is not ready yet. Start audio first."
-            return
-        }
-        let id = UUID()
-        do {
-            let session = try AudioRecordingSession(url: url, sampleRate: sampleRate,
-                channels: channels, frameCapacity: max(capacity, 1_024)) { [weak self] message in
-                DispatchQueue.main.async {
-                    guard let self, self.recordingSessionID == id else { return }
-                    self.recordingWarningText = message
-                    self.recordingLock.lock()
-                    let session = self.recordingSession
-                    self.recordingLock.unlock()
-                    if session?.mustStop == true { self.stopRecording() }
-                }
-            }
-            recordingSessionID = id
-            recordingWarningText = nil
-            recordingIssuePresented = false
-            lastRecordingURL = nil
-            recordingLock.lock()
-            recordingSession = session
-            recordingLock.unlock()
-            isRecording = true
-        } catch {
-            errorMessage = "Recording failed: \(error.localizedDescription)"
-        }
+    /// Snapshot of the most recently processed buffer's format, if any buffer
+    /// has been processed yet. Used by MultiChainAudioEngine to size a combined
+    /// recording session without waiting on a specific chain's next callback.
+    func currentTapFormat() -> (frames: Int, channels: Int, sampleRate: Double)? {
+        tapFormatLock.lock()
+        defer { tapFormatLock.unlock() }
+        guard tapFrameLength > 0 else { return nil }
+        return (tapFrameLength, tapChannelCount, tapSampleRate)
     }
 
-    func stopRecording(waitForWrites: Bool = false) {
-        recordingLock.lock()
-        let session = recordingSession
-        // Keep the session until completion so termination can drain a recording
-        // whose normal asynchronous stop is already in progress.
-        recordingLock.unlock()
-        guard let session else { return }
-        if !isFinalizingRecording {
-            isRecording = false
-            isFinalizingRecording = true
-            let id = recordingSessionID
-            session.stop { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self, self.recordingSessionID == id else { return }
-                    self.recordingLock.lock()
-                    self.recordingSession = nil
-                    self.recordingLock.unlock()
-                    self.isFinalizingRecording = false
-                    self.lastRecordingURL = result.url
-                    if let error = result.error {
-                        self.recordingWarningText = error
-                    } else if result.droppedFrames > 0 {
-                        self.recordingWarningText = "Recording finished with \(result.droppedFrames) missing frames. The saved file contains gaps."
-                    }
-                    self.recordingIssuePresented = self.recordingWarningText != nil
-                }
-            }
-        }
-        if waitForWrites { session.waitForWrites() }
-    }
-
+    /// Final post-processing tap into the exact buffer this chain sends to the
+    /// output device. Cheap no-op when nothing is recording.
     func recordFinalOutput(_ output: UnsafePointer<Float>, frameCount: Int,
                            channelCount: Int, sampleRate: Double) {
-        recordingLock.lock()
-        let session = recordingSession
-        recordingLock.unlock()
-        session?.append(output, frames: frameCount, channels: channelCount, sampleRate: sampleRate)
+        recordingSink?(output, frameCount, channelCount, sampleRate)
     }
 
     deinit {

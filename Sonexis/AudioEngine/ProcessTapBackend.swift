@@ -67,7 +67,6 @@ extension AudioEngine {
         completion: (() -> Void)? = nil
     ) {
         guard let engine = processTapEngine else {
-            stopRecording()
             completion?()
             return
         }
@@ -78,7 +77,6 @@ extension AudioEngine {
         }
 
         processTapStopInProgress = true
-        stopRecording()
         scheduleSnapshotUpdate()
         engine.stop(reason: reason) { [weak self] in
             DispatchQueue.main.async {
@@ -101,7 +99,6 @@ extension AudioEngine {
     }
 
     func stopProcessTapBackendImmediately(reason: String = "Sonexis terminate") {
-        stopRecording(waitForWrites: true)
         guard let engine = processTapEngine else { return }
 
         processTapEngine = nil

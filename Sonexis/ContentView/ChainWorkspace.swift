@@ -120,7 +120,7 @@ final class ChainWorkspace: ObservableObject {
     private var suspendedDefinitions: [UUID: AudioChainDefinition] = [:]
     var chains: [AudioChainDefinition] { runtime.definitions }
     var selectedProcessor: AudioEngine? { runtime.processors[selectedID] }
-    var isRecording: Bool { runtime.processors.values.contains { $0.isRecording || $0.isFinalizingRecording } }
+    var isRecording: Bool { runtime.isRecording || runtime.isFinalizingRecording }
 
     init(directory: URL? = nil, runtime: MultiChainAudioEngine = MultiChainAudioEngine()) {
         self.runtime = runtime
@@ -406,7 +406,7 @@ final class ChainWorkspace: ObservableObject {
         refreshAndSave()
         store.flush()
         runtime.stop()
-        for processor in runtime.processors.values { processor.stopRecording(waitForWrites: true) }
+        runtime.stopRecording(waitForWrites: true)
     }
 
     private func prepareSelectedCanvas() {
@@ -417,7 +417,6 @@ final class ChainWorkspace: ObservableObject {
     private func wireProcessors() {
         for chain in chains {
             guard let processor = runtime.processors[chain.id] else { continue }
-            processor.chainDisplayName = name(for: chain)
             processor.globalBypassActive = runtime.globallyBypassed
             processor.onPowerStart = { [weak self] in
                 guard let self, self.runtime.state != .running, !self.runtime.isTransitioning else { return }
@@ -567,7 +566,7 @@ struct ChainStrip: View {
                     }
                     Text(workspace.name(for: chain)).lineLimit(1).truncationMode(.tail)
                         .frame(maxWidth: 160)
-                    if workspace.runtime.processors[chain.id]?.isRecording == true {
+                    if workspace.runtime.isRecording {
                         Image(systemName: "circle.fill").font(.system(size: 6)).foregroundStyle(AppColors.error)
                     } else if let target = chain.target, !apps.contains(where: { $0.id == target.id }) {
                         Image(systemName: "moon").font(.system(size: 10)).foregroundStyle(AppColors.textMuted)

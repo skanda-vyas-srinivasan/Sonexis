@@ -160,6 +160,9 @@ let library = PresetManager(directory: libraryDir, writeData: { data, url in
 })
 let first = library.savePreset(name: "First", graph: graph)!
 let second = library.savePreset(name: "Second", graph: changed)!
+expect(library.savePreset(name: "  second  ", graph: graph) == nil,
+       "Save As must reject duplicate names case-insensitively after trimming")
+expect(library.presets.count == 2, "Rejected duplicate Save As must not mutate the library")
 expect(!library.renamePreset(id: first.id, name: "  "), "Blank rename must fail")
 expect(!library.renamePreset(id: first.id, name: "SECOND"), "Duplicate rename must fail case-insensitively")
 rejectLibraryWrite = true
@@ -174,7 +177,10 @@ expect(PresetManager(directory: libraryDir).presets.contains(where: { $0.id == f
 expect(library.addPreset(SavedPreset(name: "Renamed", graph: changed), overwriteExistingNamed: "Renamed"), "Replacement import must succeed")
 expect(library.presets.first?.id == first.id, "Replacement import must retain active preset identity")
 expect(library.presets.first?.graph.presetComparisonData == changed.presetComparisonData, "Replacement must store imported graph")
-expect(library.addPreset(second), "Import with duplicate ID must create separate preset")
+expect(!library.addPreset(SavedPreset(name: "  RENAMED ", graph: graph)),
+       "Direct import must reject duplicate names instead of relying on its caller")
+let reusedID = SavedPreset(id: second.id, name: "Third", graph: graph, createdDate: second.createdDate)
+expect(library.addPreset(reusedID), "Import with a duplicate ID and unique name must succeed")
 expect(Set(library.presets.map(\.id)).count == library.presets.count, "Import IDs must remain unique")
 expect(library.deletePreset(renamed), "Delete must succeed")
 expect(!library.presets.contains(where: { $0.id == first.id }), "Deleted preset must leave library")

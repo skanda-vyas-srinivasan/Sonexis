@@ -113,6 +113,7 @@ struct ContentView: View {
     @State private var showingSaveDialog = false
     @State private var showingLoadDialog = false
     @State private var presetNameInput = ""
+    @State private var presetNameError: String?
     @Binding var currentPresetID: UUID?
     @State private var saveStatusText: String?
     @State private var saveStatusClearTask: DispatchWorkItem?
@@ -202,6 +203,7 @@ struct ContentView: View {
                     if activeScreen == .beginner {
                         HeaderView(
                             audioEngine: audioEngine,
+                            runtime: chainWorkspace.runtime,
                             tutorial: tutorial,
                             onSave: {
                                 saveCurrentPreset(overwrite: true)
@@ -211,6 +213,7 @@ struct ContentView: View {
                             },
                             onSaveAs: {
                                 presetNameInput = ""
+                                presetNameError = nil
                                 showingSaveDialog = true
                             },
                             onUnlinkPreset: {
@@ -464,14 +467,18 @@ struct ContentView: View {
         .sheet(isPresented: $showingSaveDialog) {
             SavePresetDialog(
                 presetName: $presetNameInput,
-                errorMessage: presetManager.saveError,
+                errorMessage: presetNameError,
                 onSave: {
                     savePresetAs()
                 },
                 onCancel: {
+                    presetNameError = nil
                     showingSaveDialog = false
                 }
             )
+        }
+        .onChange(of: presetNameInput) { _ in
+            presetNameError = nil
         }
         .sheet(isPresented: $showingLoadDialog) {
             LoadPresetDialog(
@@ -539,9 +546,14 @@ struct ContentView: View {
             return
         }
         guard let preset = presetManager.savePreset(name: presetNameInput, graph: graph) else {
+            // Keep validation/storage feedback inside Save Preset so the name
+            // can be corrected without opening a second modal dialog.
+            presetNameError = presetManager.saveError ?? "The preset could not be saved."
+            presetManager.saveError = nil
             showSaveStatus("Not saved — try again")
             return
         }
+        presetNameError = nil
         showingSaveDialog = false
         currentPresetID = preset.id
         showSaveStatus("Saved at \(formattedTime())")
@@ -667,6 +679,7 @@ struct ContentView: View {
             // Update succeeded.
         } else {
             presetNameInput = ""
+            presetNameError = nil
             showingSaveDialog = true
         }
     }

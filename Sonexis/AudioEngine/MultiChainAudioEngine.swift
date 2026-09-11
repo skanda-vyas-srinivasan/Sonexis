@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import CoreAudio
 import Foundation
@@ -71,6 +72,38 @@ private final class AudioPipelineSession {
     }
 }
 
+/// Owns one chain's recording ring and reports an incompatible live format only
+/// once. Audio callbacks remain limited to validation plus the lock-free write.
+private final class CombinedRecordingInput {
+    let ring: RealtimeRingBuffer
+    let expectedChannels: Int
+    let expectedSampleRate: Double
+    private let issueLock = NSLock()
+    private var didReportFormatIssue = false
+
+    init(ring: RealtimeRingBuffer, channels: Int, sampleRate: Double) {
+        self.ring = ring
+        expectedChannels = channels
+        expectedSampleRate = sampleRate
+    }
+
+    func append(_ samples: UnsafePointer<Float>, frames: Int, channels: Int,
+                sampleRate: Double) -> String? {
+        guard frames > 0 else { return nil }
+        guard channels == expectedChannels, sampleRate == expectedSampleRate else {
+            issueLock.lock()
+            let shouldReport = !didReportFormatIssue
+            didReportFormatIssue = true
+            issueLock.unlock()
+            return shouldReport
+                ? "Recording stopped because one chain's audio format changed. Start a new recording."
+                : nil
+        }
+        _ = ring.writeInterleaved(samples, frames: UInt32(frames))
+        return nil
+    }
+}
+
 /// Graphs and UI state belong to the main thread. HAL ownership belongs to one
 /// serial queue; UI cancellation never tears down a pipeline concurrently.
 final class MultiChainAudioEngine: ObservableObject {
@@ -86,6 +119,30 @@ final class MultiChainAudioEngine: ObservableObject {
     private var processTimer: Timer?
     @Published private(set) var globallyBypassed = false
     var onConfigurationRestored: (() -> Void)?
+
+    // MARK: - Combined recording
+    // One recording session captures the mixed, post-processing output of
+    // every chain at once rather than a single selected chain.
+    @Published private(set) var isRecording = false
+    @Published private(set) var isFinalizingRecording = false
+    @Published var recordingWarningText: String?
+    @Published var recordingIssuePresented = false
+    @Published private(set) var lastRecordingURL: URL?
+    private var combinedRecordingSessionID: UUID?
+    private var combinedRecordingSession: AudioRecordingSession?
+    // Guards recordingInputs structure only: mutated on main (attach/detach) and
+    // iterated on mixerQueue. Each ring's own audio data is still handed off
+    // lock-free via its SPSC write/read calls.
+    private let recordingRingsLock = NSLock()
+    private var recordingInputs: [UUID: CombinedRecordingInput] = [:]
+    private var recordingMixScratch: [Float] = []
+    private var recordingChainScratch: [Float] = []
+    private var recordingChunkFrames: Int = 0
+    private var recordingChannelCount: Int = 0
+    private var recordingSampleRate: Double = 0
+    private let recordingPrerollChunks = 12
+    private var mixerTimer: DispatchSourceTimer?
+    private let mixerQueue = DispatchQueue(label: "Sonexis.CombinedRecordingMixer", qos: .userInitiated)
     private let resolve: Resolver
     private let makePipeline: PipelineFactory
     private let lifecycleQueue: DispatchQueue
@@ -112,8 +169,10 @@ final class MultiChainAudioEngine: ObservableObject {
             processor.isRunning = false
             processor.isPowerTransitioning = false
             processor.resetOutputMeter()
+            if isRecording { detachRecording(chainID: id) }
         }
         var nextProcessors: [UUID: AudioEngine] = [:]
+        var recordingAttachFailed = false
         for chain in next {
             let processor = existing[chain.id] ?? AudioEngine(observeSystemLifecycle: false)
             processor.applyIndependentGraph(chain.graph)
@@ -123,9 +182,17 @@ final class MultiChainAudioEngine: ObservableObject {
             processor.processingEnabled = chain.effectsEnabled && !globallyBypassed
             processor.publishProcessingState()
             nextProcessors[chain.id] = processor
+            if isRecording && !attachRecording(to: processor, chainID: chain.id) {
+                recordingAttachFailed = true
+            }
         }
         processors = nextProcessors
         definitions = next
+        if recordingAttachFailed && isRecording {
+            recordingWarningText = "Recording stopped because an input buffer could not be prepared for a new chain."
+            recordingIssuePresented = true
+            stopRecording()
+        }
     }
 
     func configure(_ next: [AudioChainDefinition], rollbackOnAudioFailure: Bool = true,
@@ -196,7 +263,7 @@ final class MultiChainAudioEngine: ObservableObject {
         precondition(Thread.isMainThread)
         processTimer?.invalidate()
         processTimer = nil
-        for processor in processors.values { processor.stopRecording() }
+        stopRecording()
         if let request {
             request.cancel()
             setState(.stopping)
@@ -357,10 +424,213 @@ final class MultiChainAudioEngine: ObservableObject {
         processTimer?.invalidate()
         timeoutWork?.cancel()
         request?.cancel()
+        mixerTimer?.cancel()
         let session = session
         lifecycleQueue.async { session.stop() }
     }
 
+}
+
+extension MultiChainAudioEngine {
+    /// Starts one recording that captures the mixed, post-processing output of
+    /// every currently running chain. Chains added or removed while recording
+    /// is in progress are attached to or dropped from the mix automatically.
+    func startRecording(url: URL) {
+        precondition(Thread.isMainThread)
+        guard !isRecording, !isFinalizingRecording else { return }
+        let formats = processors.values.compactMap { $0.currentTapFormat() }
+        guard formats.count == processors.count, let format = formats.first else {
+            recordingWarningText = "Recording is not ready yet. Start audio first."
+            recordingIssuePresented = true
+            return
+        }
+        guard formats.allSatisfy({ $0.channels == format.channels && abs($0.sampleRate - format.sampleRate) < 0.5 }) else {
+            recordingWarningText = "Recording could not start because the active chains use different audio formats."
+            recordingIssuePresented = true
+            return
+        }
+        let chunkFrames = max(formats.map(\.frames).max() ?? format.frames, 256)
+        let channels = format.channels
+        let sampleRate = format.sampleRate
+        let id = UUID()
+        do {
+            let session = try AudioRecordingSession(url: url, sampleRate: sampleRate,
+                channels: AVAudioChannelCount(channels), frameCapacity: chunkFrames) { [weak self] message in
+                DispatchQueue.main.async {
+                    guard let self, self.combinedRecordingSessionID == id else { return }
+                    self.recordingWarningText = message
+                    if self.combinedRecordingSession?.mustStop == true { self.stopRecording() }
+                }
+            }
+            combinedRecordingSessionID = id
+            combinedRecordingSession = session
+            recordingWarningText = nil
+            recordingIssuePresented = false
+            lastRecordingURL = nil
+            recordingChunkFrames = chunkFrames
+            recordingChannelCount = channels
+            recordingSampleRate = sampleRate
+            recordingMixScratch = [Float](repeating: 0, count: chunkFrames * channels)
+            recordingChainScratch = [Float](repeating: 0, count: chunkFrames * channels)
+            for (chainID, processor) in processors {
+                guard attachRecording(to: processor, chainID: chainID) else {
+                    for attachedID in currentRecordingInputIDs() { detachRecording(chainID: attachedID) }
+                    combinedRecordingSession = nil
+                    session.stop { _ in }
+                    recordingWarningText = "Recording could not allocate an input buffer for every active chain."
+                    recordingIssuePresented = true
+                    return
+                }
+            }
+            isRecording = true
+            startMixerTimer()
+        } catch {
+            recordingWarningText = "Recording failed: \(error.localizedDescription)"
+            recordingIssuePresented = true
+        }
+    }
+
+    func stopRecording(waitForWrites: Bool = false) {
+        precondition(Thread.isMainThread)
+        guard let session = combinedRecordingSession else { return }
+        if !isFinalizingRecording {
+            isRecording = false
+            isFinalizingRecording = true
+            stopMixerTimer()
+            for chainID in currentRecordingInputIDs() { processors[chainID]?.recordingSink = nil }
+            // DispatchSource cancellation does not wait for an event handler that
+            // is already running. Drain the serial mixer queue before finalizing.
+            mixerQueue.sync {
+                while self.canMixRecordingChunk() { self.mixTick() }
+            }
+            recordingRingsLock.lock()
+            let finishedInputs = Array(recordingInputs.values)
+            recordingInputs.removeAll()
+            recordingRingsLock.unlock()
+            // A process tap is allowed to be idle when its app is silent. The
+            // mixer substitutes silence for that input, so ring underflow is
+            // not missing final-output audio. Overflow is the only transport
+            // condition that means samples were actually discarded.
+            let transportLoss = finishedInputs.reduce(into: UInt64(0)) { total, input in
+                total += input.ring.droppedFrames
+            }
+            let id = combinedRecordingSessionID
+            session.stop { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self, self.combinedRecordingSessionID == id else { return }
+                    self.combinedRecordingSession = nil
+                    self.isFinalizingRecording = false
+                    self.lastRecordingURL = result.url
+                    if let error = result.error {
+                        self.recordingWarningText = error
+                    } else if result.droppedFrames > 0 || transportLoss > 0 {
+                        let missingFrames = UInt64(max(result.droppedFrames, 0)) + transportLoss
+                        self.recordingWarningText = "Recording finished with \(missingFrames) missing frames. The saved file contains gaps."
+                    }
+                    self.recordingIssuePresented = self.recordingWarningText != nil
+                }
+            }
+        }
+        if waitForWrites { session.waitForWrites() }
+    }
+
+    @discardableResult
+    private func attachRecording(to processor: AudioEngine, chainID: UUID) -> Bool {
+        precondition(Thread.isMainThread)
+        guard recordingChannelCount > 0, recordingSampleRate > 0, recordingChunkFrames > 0 else { return false }
+        recordingRingsLock.lock()
+        let alreadyAttached = recordingInputs[chainID] != nil
+        recordingRingsLock.unlock()
+        guard !alreadyAttached else { return true }
+        let expectedChannels = recordingChannelCount
+        let expectedSampleRate = recordingSampleRate
+        let capacityFrames = max(UInt32(recordingSampleRate * 1.5), UInt32(recordingChunkFrames * recordingPrerollChunks * 2))
+        guard let ring = try? RealtimeRingBuffer(capacityFrames: capacityFrames, channels: UInt32(expectedChannels)) else { return false }
+        ring.setTargetFillFrames(UInt32(recordingChunkFrames * recordingPrerollChunks))
+        let input = CombinedRecordingInput(ring: ring, channels: expectedChannels, sampleRate: expectedSampleRate)
+        recordingRingsLock.lock()
+        recordingInputs[chainID] = input
+        recordingRingsLock.unlock()
+        processor.recordingSink = { [weak self, weak input] samples, frames, channels, sampleRate in
+            guard let input else { return }
+            if let issue = input.append(samples, frames: frames, channels: channels, sampleRate: sampleRate) {
+                DispatchQueue.main.async {
+                    guard let self, self.isRecording else { return }
+                    self.recordingWarningText = issue
+                    self.stopRecording()
+                }
+            }
+        }
+        return true
+    }
+
+    private func detachRecording(chainID: UUID) {
+        precondition(Thread.isMainThread)
+        processors[chainID]?.recordingSink = nil
+        recordingRingsLock.lock()
+        recordingInputs[chainID] = nil
+        recordingRingsLock.unlock()
+    }
+
+    private func currentRecordingInputIDs() -> [UUID] {
+        recordingRingsLock.lock()
+        defer { recordingRingsLock.unlock() }
+        return Array(recordingInputs.keys)
+    }
+
+    private func startMixerTimer() {
+        let interval = Double(recordingChunkFrames) / recordingSampleRate
+        let timer = DispatchSource.makeTimerSource(queue: mixerQueue)
+        // The wall clock owns recording duration. Individual process taps may
+        // legitimately stop producing callbacks while their app is silent.
+        // Keep a short jitter buffer so callbacks from independently scheduled taps
+        // land before their shared wall-clock mix slot.
+        timer.schedule(deadline: .now() + interval * Double(recordingPrerollChunks),
+            repeating: interval, leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in self?.mixTick() }
+        timer.resume()
+        mixerTimer = timer
+    }
+
+    private func stopMixerTimer() {
+        mixerTimer?.cancel()
+        mixerTimer = nil
+    }
+
+    private func canMixRecordingChunk() -> Bool {
+        recordingRingsLock.lock()
+        let inputs = Array(recordingInputs.values)
+        recordingRingsLock.unlock()
+        let participatingInputs = inputs.filter { $0.ring.writtenFrames > 0 }
+        return !participatingInputs.isEmpty && participatingInputs.allSatisfy {
+            $0.ring.fillFrames >= UInt32(recordingChunkFrames)
+        }
+    }
+
+    /// Runs on mixerQueue only. Sums one aligned block from every chain that has
+    /// produced enough frames. An idle chain contributes silence; it must not
+    /// stall the recording clock or cause another chain's ring to overflow.
+    private func mixTick() {
+        let chunkFrames = recordingChunkFrames
+        let channels = recordingChannelCount
+        guard chunkFrames > 0, channels > 0, recordingMixScratch.count == chunkFrames * channels else { return }
+        recordingRingsLock.lock()
+        let inputs = Array(recordingInputs.values)
+        recordingRingsLock.unlock()
+        guard !inputs.isEmpty else { return }
+        recordingMixScratch.withUnsafeMutableBufferPointer { mix in
+            mix.baseAddress?.update(repeating: 0, count: mix.count)
+            for input in inputs where input.ring.fillFrames >= UInt32(chunkFrames) {
+                recordingChainScratch.withUnsafeMutableBufferPointer { chainBuffer in
+                    _ = input.ring.readInterleaved(chainBuffer.baseAddress!, frames: UInt32(chunkFrames))
+                    for i in 0..<mix.count { mix[i] += chainBuffer[i] }
+                }
+            }
+        }
+        recordingMixScratch.withUnsafeBufferPointer { mix in
+            combinedRecordingSession?.append(mix.baseAddress!, frames: chunkFrames, channels: channels, sampleRate: recordingSampleRate)
+        }
+    }
 }
 
 extension GraphSnapshot {

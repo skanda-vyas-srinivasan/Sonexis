@@ -373,7 +373,16 @@ class PresetManager: ObservableObject {
 
     @discardableResult
     func savePreset(name: String, graph: GraphSnapshot) -> SavedPreset? {
-        let preset = SavedPreset(name: name, graph: graph)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            saveError = "Enter a preset name."
+            return nil
+        }
+        guard !presets.contains(where: { namesMatch($0.name, trimmed) }) else {
+            saveError = "A preset with that name already exists. Choose a different name."
+            return nil
+        }
+        let preset = SavedPreset(name: trimmed, graph: graph)
         return persistPresets([preset] + presets) ? preset : nil
     }
 
@@ -405,7 +414,7 @@ class PresetManager: ObservableObject {
             saveError = "This preset no longer exists."
             return false
         }
-        guard !presets.contains(where: { $0.id != id && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+        guard !presets.contains(where: { $0.id != id && namesMatch($0.name, trimmed) }) else {
             saveError = "A preset with that name already exists. Choose a different name."
             return false
         }
@@ -419,18 +428,33 @@ class PresetManager: ObservableObject {
     @discardableResult
     func addPreset(_ preset: SavedPreset, overwriteExistingNamed name: String? = nil) -> Bool {
         var candidate = presets
-        var finalPreset = preset
-        if let name, let existing = candidate.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
-            candidate.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        let trimmed = preset.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            saveError = "Enter a preset name."
+            return false
+        }
+        var finalPreset = SavedPreset(id: preset.id, name: trimmed,
+            graph: preset.graph, createdDate: preset.createdDate)
+        if let name, let existing = candidate.first(where: { namesMatch($0.name, name) }) {
+            candidate.removeAll { namesMatch($0.name, name) }
             // Retain library identity so replacing an active preset does not orphan it.
-            finalPreset = SavedPreset(id: existing.id, name: preset.name,
+            finalPreset = SavedPreset(id: existing.id, name: trimmed,
                 graph: preset.graph, createdDate: existing.createdDate)
+        }
+        guard !candidate.contains(where: { namesMatch($0.name, finalPreset.name) }) else {
+            saveError = "A preset with that name already exists. Choose a different name."
+            return false
         }
         if candidate.contains(where: { $0.id == finalPreset.id }) {
             finalPreset = SavedPreset(id: UUID(), name: finalPreset.name, graph: finalPreset.graph, createdDate: finalPreset.createdDate)
         }
         candidate.insert(finalPreset, at: 0)
         return persistPresets(candidate)
+    }
+
+    private func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
     private func persistPresets(_ candidate: [SavedPreset]) -> Bool {

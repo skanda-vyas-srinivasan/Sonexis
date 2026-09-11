@@ -115,9 +115,14 @@ struct PresetView: View {
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(AppColors.neonCyan)
-                    TextField("Search presets...", text: $searchText)
+                    TextField(
+                        "",
+                        text: $searchText,
+                        prompt: Text("Search presets...").foregroundStyle(Color.white.opacity(0.72))
+                    )
                         .textFieldStyle(.plain)
-                        .foregroundColor(AppColors.textPrimary)
+                        .foregroundStyle(Color.white)
+                        .tint(Color.white)
                 }
                 .padding(10)
                 .background(AppColors.midPurple)
@@ -254,7 +259,7 @@ struct PresetView: View {
         do {
             let data = try encodePresetExportData(preset)
             exportDocument = PresetExportDocument(data: data)
-            exportFilename = "\(preset.name).sonexis"
+            exportFilename = preset.name
             showExportPicker = true
         } catch {
             presentFileError(message: "Export failed: \(error.localizedDescription)")

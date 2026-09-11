@@ -1,4 +1,3 @@
-import AVFoundation
 @testable import Sonexis
 
 func expect(_ value: @autoclosure () -> Bool, _ message: String) {
@@ -23,12 +22,10 @@ func render(_ frames: Int = 256) -> [Float] {
     return output
 }
 _ = render()
-let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-defer { try? FileManager.default.removeItem(at: root) }
-let url = root.appendingPathComponent("edits.wav")
-engine.startRecording(url: url)
-expect(engine.isRecording, "Recording did not start")
+var captured: [Float] = []
+engine.recordingSink = { samples, frames, channels, _ in
+    captured.append(contentsOf: UnsafeBufferPointer(start: samples, count: frames * channels))
+}
 var expected: [Float] = []
 func checkAudio() {
     let output = render()
@@ -55,18 +52,8 @@ engine.updateEffectGraphSplit(leftNodes: [], leftConnections: [BeginnerConnectio
     rightNodes: [], rightConnections: [BeginnerConnection(fromNodeId: rightStart, toNodeId: rightEnd)], rightStartID: rightStart, rightEndID: rightEnd)
 publish(); checkAudio()
 engine.updateEffectChain([]); publish(); checkAudio()
-engine.stopRecording()
-let deadline = Date().addingTimeInterval(5)
-while engine.isFinalizingRecording && Date() < deadline { publish() }
-expect(!engine.isFinalizingRecording && engine.recordingWarningText == nil, "Recording did not finalize cleanly")
-let file = try AVAudioFile(forReading: url)
-let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
-try file.read(into: buffer)
-var actual: [Float] = []
-for frame in 0..<Int(buffer.frameLength) {
-    for channel in 0..<2 { actual.append(buffer.floatChannelData![channel][frame]) }
-}
-expect(actual == expected, "Recorded samples differ from final transition output")
+engine.recordingSink = nil
+expect(captured == expected, "Final-output recording tap differs from transition output")
 
 // An unwired empty lane passes through, but adding a disconnected effect must
 // not silently bypass manual routing. Explicit dry wires retain their gain.
@@ -98,4 +85,4 @@ let after = engine.tremoloPhaseByNode[tremolo.id]!
 expect(abs(after - before - increment) < 0.000001, "Mode switch advanced shared tremolo twice")
 engine.updateEffectChain([tremolo]); publish(); _ = render()
 expect(abs(engine.tremoloPhaseByNode[tremolo.id]! - after - increment) < 0.000001, "Reverse switch advanced shared tremolo twice")
-print("PASS: real engine add/remove/reorder/rewire, bypass, split/manual/automatic, exact final-output WAV, single stateful render per block")
+print("PASS: real engine add/remove/reorder/rewire, bypass, split/manual/automatic, exact final-output tap, single stateful render per block")

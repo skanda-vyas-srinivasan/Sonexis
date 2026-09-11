@@ -3,6 +3,7 @@ import AppKit
 
 struct HeaderView<SettingsOverlay: View>: View {
     @ObservedObject var audioEngine: AudioEngine
+    @ObservedObject var runtime: MultiChainAudioEngine
     @ObservedObject var tutorial: TutorialController
     let onSave: () -> Void
     let onLoad: () -> Void
@@ -91,35 +92,29 @@ struct HeaderView<SettingsOverlay: View>: View {
                     .frame(height: 30)
                     .background(AppColors.controlStrokeSoft.opacity(0.65))
 
-                let recordDisabled = (!audioEngine.isRunning && !audioEngine.isRecording) || audioEngine.isFinalizingRecording || tutorial.isActive
+                let recordDisabled = (!audioEngine.isRunning && !runtime.isRecording) || runtime.isFinalizingRecording || tutorial.isActive
                 Button(action: {
-                    if audioEngine.isRecording {
-                        audioEngine.stopRecording()
+                    if runtime.isRecording {
+                        runtime.stopRecording()
                     } else if let url = promptForRecordingURL() {
-                        audioEngine.startRecording(url: url)
+                        runtime.startRecording(url: url)
                     }
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: audioEngine.recordingWarningText == nil ? "circle.fill" : "exclamationmark.triangle.fill")
+                        Image(systemName: runtime.recordingWarningText == nil ? "circle.fill" : "exclamationmark.triangle.fill")
                             .font(.system(size: 9))
-                            .foregroundColor(audioEngine.recordingWarningText != nil ? AppColors.warning : (audioEngine.isRecording ? AppColors.error : AppColors.textMuted))
+                            .foregroundColor(runtime.recordingWarningText != nil ? AppColors.warning : (runtime.isRecording ? AppColors.error : AppColors.textMuted))
                             .frame(width: 10, height: 10)
-                        Text(audioEngine.isFinalizingRecording ? "Finishing…" : (audioEngine.isRecording ? "Recording" : "Record"))
+                        Text(runtime.isFinalizingRecording ? "Finishing…" : (runtime.isRecording ? "Recording" : "Record"))
                             .font(AppTypography.caption)
-                            .foregroundColor(audioEngine.isRecording ? AppColors.error : AppColors.textSecondary)
+                            .foregroundColor(runtime.isRecording ? AppColors.error : AppColors.textSecondary)
                     }
                     .frame(width: 108, height: 28)
                 }
                 .buttonStyle(.plain)
                 .disabled(recordDisabled)
                 .opacity(recordDisabled ? 0.4 : 1.0)
-                .help(audioEngine.recordingWarningText ?? (audioEngine.isFinalizingRecording ? "Finishing queued recording writes" : (audioEngine.isRecording ? "Stop Recording" : "Record \(audioEngine.chainDisplayName ?? "selected chain") output")))
-                .sonexisDialog("Recording incomplete",
-                    message: audioEngine.recordingWarningText ?? "The recording may contain gaps.",
-                    tone: .warning,
-                    isPresented: $audioEngine.recordingIssuePresented,
-                    actions: recordingIssueActions
-                )
+                .help(runtime.recordingWarningText ?? (runtime.isFinalizingRecording ? "Finishing queued recording writes" : (runtime.isRecording ? "Stop Recording" : "Record combined output of all active chains")))
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -322,11 +317,20 @@ struct HeaderView<SettingsOverlay: View>: View {
         .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
         .animation(.easeOut(duration: 0.16), value: showingAudioSettings)
         .zIndex(20)
+        // Present from the enabled header container. Attaching this sheet to
+        // the Record button made its contents inherit the button's disabled
+        // state after recording stopped, so neither action could be clicked.
+        .sonexisDialog("Recording incomplete",
+            message: runtime.recordingWarningText ?? "The recording may contain gaps.",
+            tone: .warning,
+            isPresented: $runtime.recordingIssuePresented,
+            actions: recordingIssueActions
+        )
     }
 
     private var recordingIssueActions: [SonexisDialogAction] {
         var actions: [SonexisDialogAction] = []
-        if let url = audioEngine.lastRecordingURL {
+        if let url = runtime.lastRecordingURL {
             actions.append(SonexisDialogAction("Show File") {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             })
