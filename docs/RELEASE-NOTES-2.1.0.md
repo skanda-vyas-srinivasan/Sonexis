@@ -5,6 +5,7 @@ Sonexis 2.1.0 adds independent effect chains for individual apps while keeping D
 ## What’s new
 
 - Create separate effect chains for running apps.
+- Drag app-chain tabs into a preferred order; Default remains pinned first.
 - Give each app its own graph, preset, gain settings, and enabled state.
 - Let app-specific chains override Default without processing the same source twice.
 - Switch chains, presets, Power, and enabled state from the Sonexis menu bar.
@@ -21,5 +22,6 @@ Sonexis 2.1.0 adds independent effect chains for individual apps while keeping D
 - Narrow windows keep the full graph reachable through scrolling.
 - Automatic and Manual wiring transitions preserve the agreed chain behavior.
 - The menu bar, settings panel, chain tabs, collapsed effects tray, and responsive layout received visual and interaction polish.
+- Closing the editor from macOS full screen now exits the full-screen Space before hiding the window.
 
 Sonexis 2.1.0 requires macOS 14.4 or later.

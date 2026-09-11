@@ -35,6 +35,10 @@ for preset in presets {
 let viewport = CGSize(width: 820, height: 650)
 expect(CanvasViewportLayout.contentSize(viewport: viewport, positions: [], nodeScale: 1) == viewport, "Empty canvas scrolls")
 expect(CanvasViewportLayout.contentSize(viewport: viewport, positions: [CGPoint(x: 260, y: 180), CGPoint(x: 600, y: 180)], nodeScale: 1) == viewport, "Fitting chain unnecessarily scrolls")
+expect(CanvasViewportLayout.terminalX(viewportWidth: viewport.width, documentWidth: 940) == 740,
+       "Expanding the document must not push End outside the window")
+expect(CanvasViewportLayout.terminalX(viewportWidth: 1240, documentWidth: viewport.width) == 740,
+       "A window wider than its document keeps End inside the document")
 let wide = CGSize(width: 1240, height: 900)
 let points = [CGPoint(x: 264.6875, y: 81.57421875), CGPoint(x: 545.33203125, y: 532.03515625), CGPoint(x: 861.5546875, y: 148.2890625)]
 let narrowSize = CanvasViewportLayout.contentSize(viewport: viewport, positions: points, nodeScale: 1)

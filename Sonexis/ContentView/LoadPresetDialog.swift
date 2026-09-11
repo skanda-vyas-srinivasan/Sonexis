@@ -100,28 +100,40 @@ struct LoadPresetDialog: View {
             contentType: .sonexisPreset, defaultFilename: exportFilename) { result in
             if case .failure(let error) = result { fileError = "Export failed: \(error.localizedDescription)" }
         }
-        .alert("Preset operation failed", isPresented: Binding(
+        .sonexisDialog("Preset operation failed",
+            message: fileError ?? presetManager.saveError ?? "",
+            tone: .error,
+            isPresented: Binding(
             get: { renamingPreset == nil && (fileError != nil || presetManager.saveError != nil) },
             set: { if !$0 { fileError = nil; presetManager.saveError = nil } }
-        )) {
-            Button("OK", role: .cancel) { fileError = nil; presetManager.saveError = nil }
-        } message: { Text(fileError ?? presetManager.saveError ?? "") }
-        .alert("Replace existing preset?", isPresented: $showImportConflict) {
-            Button("Replace", role: .destructive) { finishImport(replace: true) }
-            Button("Keep Both") { finishImport(replace: false) }
-            Button("Cancel", role: .cancel) { pendingImport = nil }
-        } message: {
-            Text("A preset named \"\(pendingImport?.name ?? "")\" already exists. Keep Both imports a separately named copy.")
-        }
-        .alert("Delete preset?", isPresented: $showDeleteConfirm) {
-            Button("Delete", role: .destructive) {
-                if let preset = deletingPreset { presetManager.deletePreset(preset) }
-                deletingPreset = nil
-            }
-            Button("Cancel", role: .cancel) { deletingPreset = nil }
-        } message: {
-            Text("Delete \"\(deletingPreset?.name ?? "")\" from your library? The chain currently on the canvas will stay open.")
-        }
+            ),
+            actions: [SonexisDialogAction("OK", role: .primary) {
+                fileError = nil
+                presetManager.saveError = nil
+            }]
+        )
+        .sonexisDialog("Replace existing preset?",
+            message: "A preset named \"\(pendingImport?.name ?? "")\" already exists. Keep Both imports a separately named copy.",
+            tone: .warning,
+            isPresented: $showImportConflict,
+            actions: [
+                SonexisDialogAction("Cancel", role: .cancel) { pendingImport = nil },
+                SonexisDialogAction("Keep Both") { finishImport(replace: false) },
+                SonexisDialogAction("Replace", role: .destructive) { finishImport(replace: true) }
+            ]
+        )
+        .sonexisDialog("Delete preset?",
+            message: "Delete \"\(deletingPreset?.name ?? "")\" from your library? The chain currently on the canvas will stay open.",
+            tone: .warning,
+            isPresented: $showDeleteConfirm,
+            actions: [
+                SonexisDialogAction("Cancel", role: .cancel) { deletingPreset = nil },
+                SonexisDialogAction("Delete", role: .destructive) {
+                    if let preset = deletingPreset { presetManager.deletePreset(preset) }
+                    deletingPreset = nil
+                }
+            ]
+        )
         .sheet(item: $renamingPreset) { preset in
             SavePresetDialog(presetName: $renameText, errorMessage: presetManager.saveError,
                 title: "Rename preset", actionTitle: "Rename",

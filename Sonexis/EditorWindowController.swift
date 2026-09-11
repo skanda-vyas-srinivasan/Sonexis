@@ -10,13 +10,24 @@ extension Notification.Name {
 final class EditorWindowController: NSObject, NSWindowDelegate {
     private(set) var window: NSWindow?
     private var originalDelegate: NSWindowDelegate?
+    private weak var pendingFullScreenHide: NSWindow?
+    private let isFullScreen: (NSWindow) -> Bool
+    private let exitFullScreen: (NSWindow) -> Void
     var isQuitting = false
+
+    init(isFullScreen: @escaping (NSWindow) -> Bool = { $0.styleMask.contains(.fullScreen) },
+         exitFullScreen: @escaping (NSWindow) -> Void = { $0.toggleFullScreen(nil) }) {
+        self.isFullScreen = isFullScreen
+        self.exitFullScreen = exitFullScreen
+        super.init()
+    }
 
     func attach(to window: NSWindow) {
         guard self.window !== window else { return }
         if let previous = self.window, previous.delegate === self {
             previous.delegate = originalDelegate
         }
+        pendingFullScreenHide = nil
         self.window = window
         originalDelegate = window.delegate
         window.delegate = self
@@ -27,13 +38,28 @@ final class EditorWindowController: NSObject, NSWindowDelegate {
             return originalDelegate?.windowShouldClose?(sender) ?? true
         }
         NotificationCenter.default.post(name: .sonexisEditorWillHide, object: sender)
+        if isFullScreen(sender) {
+            guard pendingFullScreenHide !== sender else { return false }
+            pendingFullScreenHide = sender
+            exitFullScreen(sender)
+            return false
+        }
         sender.orderOut(nil)
         return false
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        originalDelegate?.windowDidExitFullScreen?(notification)
+        guard let sender = notification.object as? NSWindow,
+              pendingFullScreenHide === sender else { return }
+        pendingFullScreenHide = nil
+        sender.orderOut(nil)
     }
 
     @discardableResult
     func reopen() -> Bool {
         guard let window else { return false }
+        pendingFullScreenHide = nil
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         return true

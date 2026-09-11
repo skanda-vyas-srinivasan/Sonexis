@@ -21,6 +21,11 @@ enum CanvasViewportLayout {
                width: viewport.width, height: viewport.height)
     }
 
+    static func terminalX(viewportWidth: CGFloat, documentWidth: CGFloat) -> CGFloat {
+        let availableWidth = viewportWidth > 0 ? min(viewportWidth, documentWidth) : documentWidth
+        return max(availableWidth - 80, 100)
+    }
+
     static func overlayPosition(_ point: CGPoint, size: CGSize, visibleRect: CGRect) -> CGPoint {
         let minX = visibleRect.minX + size.width * 0.5 + 12
         let minY = visibleRect.minY + size.height * 0.5 + 12

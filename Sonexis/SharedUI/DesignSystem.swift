@@ -277,6 +277,172 @@ extension View {
     }
 }
 
+enum SonexisDialogTone {
+    case info
+    case warning
+    case error
+
+    var tint: Color {
+        switch self {
+        case .info: AppColors.neonCyan
+        case .warning: AppColors.warning
+        case .error: AppColors.error
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .info: "info.circle.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        }
+    }
+}
+
+enum SonexisDialogActionRole {
+    case standard
+    case primary
+    case destructive
+    case cancel
+}
+
+struct SonexisDialogAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let role: SonexisDialogActionRole
+    let action: () -> Void
+
+    init(_ title: String, role: SonexisDialogActionRole = .standard, action: @escaping () -> Void) {
+        self.title = title
+        self.role = role
+        self.action = action
+    }
+}
+
+private struct SonexisDialogSheet: View {
+    let title: String
+    let message: String
+    let tone: SonexisDialogTone
+    @Binding var isPresented: Bool
+    let actions: [SonexisDialogAction]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: tone.icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(tone.tint)
+                    .shadow(color: tone.tint.opacity(0.32), radius: 7)
+
+                Text(title)
+                    .font(AppTypography.heading)
+                    .foregroundStyle(AppColors.textPrimary)
+            }
+
+            Text(message)
+                .font(AppTypography.body)
+                .foregroundStyle(AppColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Spacer()
+                ForEach(actions) { action in
+                    SonexisDialogButton(action: action) {
+                        isPresented = false
+                        DispatchQueue.main.async {
+                            action.action()
+                        }
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 430)
+        .sonexisFloatingPanel(tint: tone.tint, cornerRadius: 14, glowOpacity: 0.18)
+        .preferredColorScheme(.dark)
+    }
+}
+
+private struct SonexisDialogButton: View {
+    let action: SonexisDialogAction
+    let perform: () -> Void
+    @State private var isHovered = false
+
+    private var tint: Color {
+        switch action.role {
+        case .destructive: AppColors.error
+        case .primary: AppColors.neonPink
+        case .standard: AppColors.neonCyan
+        case .cancel: AppColors.textMuted
+        }
+    }
+
+    var body: some View {
+        Button(action: perform) {
+            Text(action.title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(action.role == .cancel ? AppColors.textSecondary : AppColors.textPrimary)
+                .padding(.horizontal, 13)
+                .frame(height: 32)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(tint.opacity(isHovered ? 0.25 : 0.15))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(tint.opacity(isHovered ? 0.78 : 0.48), lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(action.role == .cancel ? .cancelAction :
+            (action.role == .primary ? .defaultAction : nil))
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
+private struct SonexisDialogModifier: ViewModifier {
+    let title: String
+    let message: String
+    let tone: SonexisDialogTone
+    @Binding var isPresented: Bool
+    let actions: [SonexisDialogAction]
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented) {
+            SonexisDialogSheet(
+                title: title,
+                message: message,
+                tone: tone,
+                isPresented: $isPresented,
+                actions: actions
+            )
+        }
+    }
+}
+
+extension View {
+    func sonexisDialog(
+        _ title: String,
+        message: String,
+        tone: SonexisDialogTone,
+        isPresented: Binding<Bool>,
+        actions: [SonexisDialogAction]
+    ) -> some View {
+        modifier(SonexisDialogModifier(
+            title: title,
+            message: message,
+            tone: tone,
+            isPresented: isPresented,
+            actions: actions
+        ))
+    }
+}
+
 struct AnimatedGrid: View {
     let intensity: Double
 

@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-struct HeaderView: View {
+struct HeaderView<SettingsOverlay: View>: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
     let onSave: () -> Void
@@ -15,6 +15,7 @@ struct HeaderView: View {
     let allowLoad: Bool
     @Binding var saveStatusText: String?
     @Binding var showingAudioSettings: Bool
+    @ViewBuilder let settingsOverlay: () -> SettingsOverlay
 
     var body: some View {
         VStack(spacing: 0) {
@@ -119,14 +120,12 @@ struct HeaderView: View {
                 .disabled(recordDisabled)
                 .opacity(recordDisabled ? 0.4 : 1.0)
                 .help(audioEngine.recordingWarningText ?? (audioEngine.isFinalizingRecording ? "Finishing queued recording writes" : (audioEngine.isRecording ? "Stop Recording" : "Record \(audioEngine.chainDisplayName ?? "selected chain") output")))
-                .alert("Recording incomplete", isPresented: $audioEngine.recordingIssuePresented) {
-                    if let url = audioEngine.lastRecordingURL {
-                        Button("Show File") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                    }
-                    Button("OK", role: .cancel) {}
-                } message: {
-                    Text(audioEngine.recordingWarningText ?? "The recording may contain gaps.")
-                }
+                .sonexisDialog("Recording incomplete",
+                    message: audioEngine.recordingWarningText ?? "The recording may contain gaps.",
+                    tone: .warning,
+                    isPresented: $audioEngine.recordingIssuePresented,
+                    actions: recordingIssueActions
+                )
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -169,6 +168,15 @@ struct HeaderView: View {
                             )
                         }
                     )
+                    .overlay(alignment: .bottomLeading) {
+                        settingsOverlay()
+                            .frame(width: 640)
+                            // Put the panel's top edge directly beneath the gear.
+                            .alignmentGuide(.bottom) { dimensions in
+                                dimensions[.top]
+                            }
+                    }
+                    .zIndex(30)
 
                 if audioEngine.onPowerStart == nil {
                     CaptureTargetMenu(audioEngine: audioEngine)
@@ -320,6 +328,17 @@ struct HeaderView: View {
         .animation(.easeInOut(duration: 0.3), value: audioEngine.isRunning)
         .animation(.easeOut(duration: 0.16), value: showingAudioSettings)
         .zIndex(20)
+    }
+
+    private var recordingIssueActions: [SonexisDialogAction] {
+        var actions: [SonexisDialogAction] = []
+        if let url = audioEngine.lastRecordingURL {
+            actions.append(SonexisDialogAction("Show File") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            })
+        }
+        actions.append(SonexisDialogAction("OK", role: .primary) {})
+        return actions
     }
 
     private func promptForRecordingURL() -> URL? {
@@ -573,9 +592,9 @@ struct AudioSettingsToolbarStrip: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppColors.panelPurple)
-        .overlay(alignment: .bottom) {
-            AppColors.controlStrokeSoft.opacity(0.58)
-                .frame(height: 1)
+        .overlay {
+            Rectangle()
+                .stroke(AppColors.controlStrokeSoft.opacity(0.58), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .tutorialTarget(.settingsStrip)

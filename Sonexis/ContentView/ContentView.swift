@@ -224,7 +224,8 @@ struct ContentView: View {
                             allowSave: !tutorial.isActive || tutorial.step == .buildSave,
                             allowLoad: !tutorial.isActive || tutorial.step == .buildLoad,
                             saveStatusText: $saveStatusText,
-                            showingAudioSettings: $showingAudioSettings
+                            showingAudioSettings: $showingAudioSettings,
+                            settingsOverlay: { audioSettingsOverlay }
                         )
                         // The dropdown extends beyond the header's layout bounds.
                         // Set sibling ordering here, above the divider and canvas.
@@ -248,9 +249,7 @@ struct ContentView: View {
                                 tutorial: tutorial
                             )
                         case .beginner:
-                            CanvasView(audioEngine: audioEngine, tutorial: tutorial, pluginManager: pluginManager, chainWorkspace: chainWorkspace) {
-                                audioSettingsOverlay
-                            }
+                            CanvasView(audioEngine: audioEngine, tutorial: tutorial, pluginManager: pluginManager, chainWorkspace: chainWorkspace)
                         case .home:
                             EmptyView()
                         }
@@ -500,14 +499,15 @@ struct ContentView: View {
                 tutorial.advance()
             }
         }
-        .alert("Preset Storage", isPresented: Binding(
+        .sonexisDialog("Preset Storage",
+            message: presetManager.saveError ?? "",
+            tone: .error,
+            isPresented: Binding(
             get: { presetManager.saveError != nil && !showingSaveDialog && !showingLoadDialog },
             set: { if !$0 { presetManager.saveError = nil } }
-        )) {
-            Button("OK") { presetManager.saveError = nil }
-        } message: {
-            Text(presetManager.saveError ?? "")
-        }
+            ),
+            actions: [SonexisDialogAction("OK", role: .primary) { presetManager.saveError = nil }]
+        )
 
     }
 

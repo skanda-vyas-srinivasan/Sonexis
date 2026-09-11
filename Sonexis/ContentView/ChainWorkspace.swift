@@ -264,6 +264,13 @@ final class ChainWorkspace: ObservableObject {
         capture()
     }
 
+    func moveAppChain(_ movingID: UUID, toPositionOf destinationID: UUID) {
+        guard !tutorial.isActive, suspendedChains.isEmpty else { return }
+        runtime.captureDefinitions()
+        guard runtime.moveAppChain(movingID, toPositionOf: destinationID) else { return }
+        capture()
+    }
+
     func add(_ target: AudioCaptureTarget) {
         guard canAddChain else { return }
         if let existing = chains.first(where: { $0.target?.id == target.id }) { select(existing.id); return }
@@ -461,10 +468,15 @@ struct ChainWorkspaceView: View {
             workspace.refreshAndSave(); workspace.store.flush()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in workspace.shutdown() }
-        .alert("Chains", isPresented: Binding(get: { workspace.issue != nil }, set: { if !$0 { workspace.issue = nil } })) {
-            Button("Show Workspace Files") { NSWorkspace.shared.open(workspace.store.directory) }
-            Button("OK", role: .cancel) { workspace.issue = nil }
-        } message: { Text(workspace.issue ?? "") }
+        .sonexisDialog("Chains",
+            message: workspace.issue ?? "",
+            tone: .error,
+            isPresented: Binding(get: { workspace.issue != nil }, set: { if !$0 { workspace.issue = nil } }),
+            actions: [
+                SonexisDialogAction("Show Workspace Files") { NSWorkspace.shared.open(workspace.store.directory) },
+                SonexisDialogAction("OK", role: .primary) { workspace.issue = nil }
+            ]
+        )
         .onReceive(workspace.runtime.$state) { state in
             if case .failed(let message) = state { workspace.issue = message }
         }
@@ -474,9 +486,13 @@ struct ChainWorkspaceView: View {
 struct ChainStrip: View {
     @ObservedObject var workspace: ChainWorkspace
     @State private var apps = AudioCaptureTarget.runningApps()
-    @State private var removing: AudioChainDefinition?
     @State private var removingAll = false
     @State private var hoveredID: UUID?
+    @State private var hoveredCloseID: UUID?
+    @State private var draggingID: UUID?
+    @State private var dragTranslation: CGFloat = 0
+    @State private var dragCompensation: CGFloat = 0
+    @State private var tabWidths: [UUID: CGFloat] = [:]
 
     private var canCloseApps: Bool {
         !workspace.isRecording && !workspace.tutorial.isActive && workspace.chains.contains { $0.target != nil }
@@ -490,6 +506,7 @@ struct ChainStrip: View {
                         tab(chain)
                     }
                 }
+                .coordinateSpace(name: "chain-tabs")
             }
             Menu {
                 ForEach(apps.filter { app in !workspace.chains.contains { $0.target?.id == app.id } }) { app in
@@ -523,14 +540,15 @@ struct ChainStrip: View {
                 .disabled(!canCloseApps)
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in apps = AudioCaptureTarget.runningApps() }
-        .confirmationDialog("Remove this app chain? Its audio will use the Default chain.",
-                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            if let removing { Button("Close \(workspace.name(for: removing))", role: .destructive) { workspace.remove(removing.id) } }
-        }
-        .confirmationDialog("Close all app tabs? Their chains will be removed and all apps will use Default.",
-                            isPresented: $removingAll) {
-            Button("Close All App Tabs", role: .destructive) { workspace.removeAllAppChains() }
-        }
+        .sonexisDialog("Close all app tabs?",
+            message: "Their chains will be removed and all apps will use Default.",
+            tone: .warning,
+            isPresented: $removingAll,
+            actions: [
+                SonexisDialogAction("Cancel", role: .cancel) {},
+                SonexisDialogAction("Close All App Tabs", role: .destructive) { workspace.removeAllAppChains() }
+            ]
+        )
     }
 
     private func tab(_ chain: AudioChainDefinition) -> some View {
@@ -567,16 +585,27 @@ struct ChainStrip: View {
             .accessibilityValue(enabled ? "Chain enabled" : "Chain disabled")
             .help(chain.target == nil ? "Default effects for apps without their own chain" : "Edit \(workspace.name(for: chain)); other chains keep running")
             if chain.target != nil {
-                Button { removing = chain } label: {
+                Button { workspace.remove(chain.id) } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(isCloseTutorialTarget ? AppColors.neonCyan : AppColors.textMuted)
-                        .frame(width: 24, height: 40).contentShape(Rectangle())
+                        .foregroundStyle(isCloseTutorialTarget ? AppColors.neonCyan :
+                            (hoveredCloseID == chain.id ? AppColors.textPrimary : AppColors.textMuted))
+                        .frame(width: 18, height: 18)
+                        .background {
+                            Circle().fill(hoveredCloseID == chain.id ? AppColors.error.opacity(0.78) : .clear)
+                        }
+                        .frame(width: 24, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 4)
                 .disabled(!workspace.canRemoveChain(chain.id))
                 .accessibilityLabel("Close \(workspace.name(for: chain)) chain")
                 .help("Close app chain")
+                .onHover { hovering in
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        hoveredCloseID = hovering ? chain.id : (hoveredCloseID == chain.id ? nil : hoveredCloseID)
+                    }
+                }
             }
         }
         .background {
@@ -597,16 +626,97 @@ struct ChainStrip: View {
                 Rectangle().fill(AppColors.neonPink).frame(height: 2).padding(.horizontal, 14)
             }
         }
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { tabWidths[chain.id] = proxy.size.width }
+                    .onChange(of: proxy.size.width) { tabWidths[chain.id] = $0 }
+            }
+        }
+        .offset(x: draggingID == chain.id ? dragTranslation + dragCompensation : 0)
+        .zIndex(draggingID == chain.id ? 10 : 0)
+        .simultaneousGesture(tabDragGesture(for: chain))
         .onHover { hoveredID = $0 ? chain.id : (hoveredID == chain.id ? nil : hoveredID) }
         .contextMenu {
             Button(chain.effectsEnabled ? "Disable Chain" : "Enable Chain") { workspace.toggleEffects(chain.id) }
                 .disabled(!workspace.canToggleChain(chain.id))
             if chain.target != nil {
-                Button("Close Tab", role: .destructive) { removing = chain }.disabled(!workspace.canRemoveChain(chain.id))
+                Button("Close Tab", role: .destructive) { workspace.remove(chain.id) }.disabled(!workspace.canRemoveChain(chain.id))
             }
             Divider()
             Button("Close All App Tabs", role: .destructive) { removingAll = true }.disabled(!canCloseApps)
         }
+    }
+
+    private func tabDragGesture(for chain: AudioChainDefinition) -> some Gesture {
+        DragGesture(minimumDistance: 5, coordinateSpace: .named("chain-tabs"))
+            .onChanged { value in
+                guard chain.target != nil, !workspace.tutorial.isActive else { return }
+                if draggingID == nil {
+                    draggingID = chain.id
+                    dragTranslation = 0
+                    dragCompensation = 0
+                }
+                guard draggingID == chain.id,
+                      let currentIndex = workspace.chains.firstIndex(where: { $0.id == chain.id }) else { return }
+
+                dragTranslation = value.translation.width
+                let pointerX = value.location.x
+
+                if currentIndex > 1 {
+                    let previous = workspace.chains[currentIndex - 1]
+                    if pointerX < tabMidX(previous.id) {
+                        compensateForMove(chain.id, from: currentIndex, to: currentIndex - 1)
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            workspace.moveAppChain(chain.id, toPositionOf: previous.id)
+                        }
+                        return
+                    }
+                }
+
+                if currentIndex + 1 < workspace.chains.count {
+                    let next = workspace.chains[currentIndex + 1]
+                    if pointerX > tabMidX(next.id) {
+                        compensateForMove(chain.id, from: currentIndex, to: currentIndex + 1)
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            workspace.moveAppChain(chain.id, toPositionOf: next.id)
+                        }
+                    }
+                }
+            }
+            .onEnded { _ in
+                guard draggingID == chain.id else { return }
+                withAnimation(.easeOut(duration: 0.14)) {
+                    draggingID = nil
+                    dragTranslation = 0
+                    dragCompensation = 0
+                }
+            }
+    }
+
+    private func tabMidX(_ id: UUID) -> CGFloat {
+        tabOriginX(id) + (tabWidths[id] ?? 0) / 2
+    }
+
+    private func tabOriginX(_ id: UUID) -> CGFloat {
+        var origin: CGFloat = 0
+        for chain in workspace.chains {
+            if chain.id == id { break }
+            origin += tabWidths[chain.id] ?? 0
+        }
+        return origin
+    }
+
+    private func compensateForMove(_ id: UUID, from sourceIndex: Int, to destinationIndex: Int) {
+        let oldOrigin = tabOriginX(id)
+        let destination = workspace.chains[destinationIndex]
+        let newOrigin: CGFloat
+        if sourceIndex < destinationIndex {
+            newOrigin = tabOriginX(destination.id) + (tabWidths[destination.id] ?? 0) - (tabWidths[id] ?? 0)
+        } else {
+            newOrigin = tabOriginX(destination.id)
+        }
+        dragCompensation += oldOrigin - newOrigin
     }
 }
 

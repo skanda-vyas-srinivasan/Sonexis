@@ -2,7 +2,7 @@
 
 Audit date: 2026-09-10. Fix progress: **210-01 through 210-04 and 210-06 fixed and regression-tested**; 210-05 is deferred by user decision. Live acceptance confirmed the additional recording defect 210-07. Original failure evidence is retained below.
 
-Tested the working tree based on `451f5baf66dce0bbfb6c87b35e154fdef92a5359`, including the subsequent app changes. The release candidate is **2.1.0 (4)**. Machine: Apple M4, 16 GiB RAM, 10 logical CPUs, macOS 26.5.2 (25F84), Xcode 26.6.
+Tested the working tree based on `451f5baf66dce0bbfb6c87b35e154fdef92a5359`, including the subsequent app changes. The release candidate is **2.1.0 (5)**. Machine: Apple M4, 16 GiB RAM, 10 logical CPUs, macOS 26.5.2 (25F84), Xcode 26.6.
 
 Every entry below has observed failure evidence. The underlying cause of the Core Audio stall is explicitly unresolved. Passing checks, synthetic stress limits, and tests that could not be completed are recorded in the [audit record](docs/RELEASE-2.1.0-AUDIT.md), not presented as additional defects.
 

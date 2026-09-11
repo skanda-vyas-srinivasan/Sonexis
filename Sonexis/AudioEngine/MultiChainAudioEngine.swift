@@ -168,6 +168,23 @@ final class MultiChainAudioEngine: ObservableObject {
         definitions[index].presetID = presetID
     }
 
+    /// Reorders only the workspace presentation. Active processors and audio
+    /// pipelines are keyed by chain ID, so tab movement must not restart sound.
+    @discardableResult
+    func moveAppChain(_ movingID: UUID, toPositionOf destinationID: UUID) -> Bool {
+        precondition(Thread.isMainThread)
+        guard movingID != destinationID,
+              let sourceIndex = definitions.firstIndex(where: { $0.id == movingID && $0.target != nil }),
+              let destinationIndex = definitions.firstIndex(where: { $0.id == destinationID && $0.target != nil })
+        else { return false }
+
+        var reordered = definitions
+        let moving = reordered.remove(at: sourceIndex)
+        reordered.insert(moving, at: min(destinationIndex, reordered.count))
+        definitions = reordered
+        return true
+    }
+
     func start() throws {
         precondition(Thread.isMainThread)
         guard state != .running, !isTransitioning else { return }

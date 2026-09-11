@@ -30,12 +30,11 @@ private struct CanvasDocumentFramePreferenceKey: PreferenceKey {
     }
 }
 
-struct CanvasView<SettingsOverlay: View>: View {
+struct CanvasView: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
     @ObservedObject var pluginManager: PluginManager
     var chainWorkspace: ChainWorkspace? = nil
-    @ViewBuilder var settingsOverlay: () -> SettingsOverlay
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppTheme.defaultThemeID
     @State private var effectChain: [BeginnerNode] = []
@@ -1057,9 +1056,6 @@ struct CanvasView<SettingsOverlay: View>: View {
                         .background(AppColors.gridLines)
 
                     canvasView
-                        // Attach settings to the drawing area so both toolbar rows
-                        // remain visible and opening the panel never resizes the canvas.
-                        .overlay(alignment: .topLeading, content: settingsOverlay)
                         .background(
                             GeometryReader { proxy in
                                 Color.clear.preference(
@@ -1965,7 +1961,9 @@ struct CanvasView<SettingsOverlay: View>: View {
     }
 
     private var visibleCanvasRect: CGRect {
-        guard canvasFrameInRoot.width > 0 else { return CGRect(origin: .zero, size: canvasSize) }
+        guard canvasFrameInRoot.width > 0, canvasDocumentFrameInRoot.width > 0 else {
+            return CGRect(origin: .zero, size: canvasSize)
+        }
         return CanvasViewportLayout.visibleRect(viewport: canvasFrameInRoot, document: canvasDocumentFrameInRoot)
     }
 
@@ -2523,10 +2521,21 @@ struct CanvasView<SettingsOverlay: View>: View {
 
     private func endNodePosition(in size: CGSize, lane: GraphLane?) -> CGPoint {
         if graphMode == .split, let lane {
-            let bounds = laneBounds(in: size, lane: lane)
-            return CGPoint(x: max(bounds.maxX - 80, bounds.minX + 80), y: bounds.midY)
+            let viewportSize = CGSize(
+                width: canvasFrameInRoot.width > 0 ? min(canvasFrameInRoot.width, size.width) : size.width,
+                height: size.height
+            )
+            let bounds = laneBounds(in: viewportSize, lane: lane)
+            let x = max(bounds.maxX - 80, bounds.minX + 80)
+            return CGPoint(x: x, y: bounds.midY)
         }
-        return CGPoint(x: max(size.width - 80, 100), y: size.height * 0.5)
+        return CGPoint(
+            x: CanvasViewportLayout.terminalX(
+                viewportWidth: canvasFrameInRoot.width,
+                documentWidth: size.width
+            ),
+            y: size.height * 0.5
+        )
     }
 
     private func endpointVisualSize(for nodeID: UUID) -> CGSize {

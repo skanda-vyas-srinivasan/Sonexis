@@ -220,24 +220,22 @@ struct PresetView: View {
                 presentFileError(message: "Export failed: \(error.localizedDescription)")
             }
         }
-        .alert("Import Failed", isPresented: $showFileError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(fileErrorMessage ?? "Something went wrong.")
-        }
-        .alert("Preset Already Exists", isPresented: $showImportConflict) {
-            Button("Overwrite", role: .destructive) {
-                overwriteImportPreset()
-            }
-            Button("Change Name") {
-                startRenameImport()
-            }
-            Button("Cancel", role: .cancel) {
-                pendingImportPreset = nil
-            }
-        } message: {
-            Text("A preset named \"\(pendingImportPreset?.name ?? "this preset")\" already exists.")
-        }
+        .sonexisDialog("Import Failed",
+            message: fileErrorMessage ?? "Something went wrong.",
+            tone: .error,
+            isPresented: $showFileError,
+            actions: [SonexisDialogAction("OK", role: .primary) {}]
+        )
+        .sonexisDialog("Preset Already Exists",
+            message: "A preset named \"\(pendingImportPreset?.name ?? "this preset")\" already exists.",
+            tone: .warning,
+            isPresented: $showImportConflict,
+            actions: [
+                SonexisDialogAction("Cancel", role: .cancel) { pendingImportPreset = nil },
+                SonexisDialogAction("Change Name") { startRenameImport() },
+                SonexisDialogAction("Overwrite", role: .destructive) { overwriteImportPreset() }
+            ]
+        )
         .sheet(isPresented: $showRenameDialog) {
             RenamePresetDialog(
                 presetName: $renamePresetName,
@@ -437,14 +435,15 @@ struct PresetCard: View {
                 isHovered = hovering
             }
         }
-        .alert("Delete preset?", isPresented: $showDeleteConfirm) {
-            Button("Delete", role: .destructive) {
-                onDelete()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This cannot be undone.")
-        }
+        .sonexisDialog("Delete preset?",
+            message: "This cannot be undone.",
+            tone: .warning,
+            isPresented: $showDeleteConfirm,
+            actions: [
+                SonexisDialogAction("Cancel", role: .cancel) {},
+                SonexisDialogAction("Delete", role: .destructive) { onDelete() }
+            ]
+        )
     }
 }
 

@@ -11,13 +11,19 @@ final class TestWindow: NSWindow {
     var hideCount = 0
     var reopenCount = 0
     var deminiaturizeCount = 0
+    var fullScreenToggleCount = 0
     var minimized = false
+    var pretendFullScreen = false
     override var isMiniaturized: Bool { minimized }
     override func orderOut(_ sender: Any?) { hideCount += 1 }
     override func makeKeyAndOrderFront(_ sender: Any?) { reopenCount += 1 }
     override func deminiaturize(_ sender: Any?) {
         deminiaturizeCount += 1
         minimized = false
+    }
+    override func toggleFullScreen(_ sender: Any?) {
+        fullScreenToggleCount += 1
+        pretendFullScreen = false
     }
 }
 final class OriginalDelegate: NSObject, NSWindowDelegate {
@@ -34,7 +40,10 @@ func makeWindow() -> TestWindow {
     TestWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
         styleMask: [.titled, .closable], backing: .buffered, defer: true)
 }
-let controller = EditorWindowController()
+let controller = EditorWindowController(
+    isFullScreen: { ($0 as? TestWindow)?.pretendFullScreen == true },
+    exitFullScreen: { $0.toggleFullScreen(nil) }
+)
 expect(!controller.reopen(), "Unattached controller claims to reopen")
 let window = makeWindow()
 let original = OriginalDelegate()
@@ -56,11 +65,18 @@ for _ in 0..<3 {
 }
 expect(hideNotifications == 3 && window.hideCount == 3, "Hide did not notify workspace persistence")
 expect(window.reopenCount == 3 && original.quitCloseCount == 0, "Close incorrectly forwarded as teardown")
+window.pretendFullScreen = true
+expect(!controller.windowShouldClose(window), "Full-screen close destroyed the editor")
+expect(window.fullScreenToggleCount == 1 && window.hideCount == 3,
+       "Full-screen close must exit its Space before hiding")
+controller.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification, object: window))
+expect(window.hideCount == 4 && hideNotifications == 4,
+       "Editor was not hidden after completing the full-screen exit")
 window.minimized = true
 expect(controller.reopen() && window.deminiaturizeCount == 1, "Dock reopen did not unminimize")
 controller.isQuitting = true
 expect(controller.windowShouldClose(window), "Quit still hides instead of closing")
-expect(original.quitCloseCount == 1 && hideNotifications == 3, "Quit intercepted as ordinary hide")
+expect(original.quitCloseCount == 1 && hideNotifications == 4, "Quit intercepted as ordinary hide")
 let replacement = makeWindow()
 controller.attach(to: replacement)
 expect(window.delegate === original, "Previous delegate not restored on detach")

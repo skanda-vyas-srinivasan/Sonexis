@@ -16,7 +16,7 @@ Feature scope is closed. Additional work should address demonstrated defects or 
 | 2 | Test and reproduce | Run regression suites and targeted stress, audio, security/input-validation, tutorial, and UI/accessibility checks; retain logs and reproducers | First pass complete; see audit coverage and gaps |
 | 3 | Agree on and fix proven issues | Work through `sonexis_issues_version210release.md` by severity; attach before/after evidence to each fix | 210-01–04 and 210-06–07 fixed; 210-05 deferred |
 | 4 | Complete real-device acceptance | Check live app routing, listening, recovery, tutorial interaction, fresh launch, and upgrade in a release candidate | Available-device checks passed; real sleep/wake requires an attended run |
-| 5 | Prepare the release | Set version/build, commit the reviewed changes, prepare release notes and signed/notarized app and installer | 2.1.0 (4), notes, builds, and internal DMG complete; Developer ID/notary credentials unavailable |
+| 5 | Prepare the release | Set version/build, commit the reviewed changes, prepare release notes and signed/notarized app and installer | 2.1.0 (5), notes and builds complete; refresh internal DMG, then Developer ID/notary credentials remain unavailable |
 | 6 | Verify and publish | Install the exact candidate DMG, check launch/update behavior, then approve publication of that artifact | Blocked until a signed/notarized artifact exists; nothing published |
 
 ## Testing and acceptance
@@ -71,7 +71,7 @@ Use temporary test data and offline audio for destructive/malformed-input tests.
 
 Do not ship with a reproduced crash in a normal workflow, lost saved work, unintended capture/duplicate processing, persistent audio loss, or a blocked essential control. Resolve other proven issues or explicitly accept a documented limitation before release. An untested area remains unverified, not passed. No fixed release date is implied by this checklist.
 
-Next: on a machine with the Developer ID certificate and notary credentials, sign/notarize/staple build 4, build the final DMG, and perform its install/launch check. An attended real sleep/wake cycle remains the only uncompleted device test. Default plus two simultaneous app chains routed independently, device switching passed in both directions while running, the fixed recorder passed a 96.70-second live Bluetooth repeat, and quit/relaunch preserved all saved files. Issues 210-01–04 and 210-06–07 have passing fix evidence. Gain slider accessibility (210-05) is deferred by user decision and remains a known limitation.
+Next: on a machine with the Developer ID certificate and notary credentials, sign/notarize/staple build 5, build the final DMG, and perform its install/launch check. An attended real sleep/wake cycle remains the only uncompleted device test. Default plus two simultaneous app chains routed independently, device switching passed in both directions while running, the fixed recorder passed a 96.70-second live Bluetooth repeat, and quit/relaunch preserved all saved files. Issues 210-01–04 and 210-06–07 have passing fix evidence. Gain slider accessibility (210-05) is deferred by user decision and remains a known limitation.
 
 ## First audit outcome — 2026-09-10
 
@@ -87,5 +87,5 @@ The [audit record](RELEASE-2.1.0-AUDIT.md) documents passing regressions and add
 - **210-06 fixed:** Power is available throughout App Chains in the header, menu bar and workspace action. Finish/Skip/Continue restore the original Power state; regression and actual app checks pass. [Verification](release-2.1.0-evidence/fixes/210-06/README.md).
 - **210-07 fixed:** The recording reserve now absorbs 128 blocks and the writer uses user-initiated scheduling. The deterministic 96-block stall, all regressions, Debug/Release builds, and a 96.70-second live Bluetooth repeat pass. [Verification](release-2.1.0-evidence/fixes/210-07/README.md).
 - **Device acceptance:** Built-in 48 kHz and Bluetooth 44.1 kHz hot switches passed while running; quit/relaunch preserved all six saved files. [Evidence](release-2.1.0-evidence/live-acceptance/device-switch-and-quit.md). Real sleep/wake requires an attended check.
-- **Release candidate:** 2.1.0 build 4 and an internally verified unsigned DMG are prepared. Developer ID signing/notarization are blocked by missing Keychain credentials. [Evidence](release-2.1.0-evidence/release-candidate-build4.md).
+- **Release candidate:** 2.1.0 build 5 includes the final settings-panel layout and is being packaged as an internally verified unsigned DMG. Developer ID signing/notarization are blocked by missing Keychain credentials. [Evidence](release-2.1.0-evidence/release-candidate-build5.md).
 - **Next:** Produce and install-test the signed/notarized artifact on a credentialed machine, then approve publication.
