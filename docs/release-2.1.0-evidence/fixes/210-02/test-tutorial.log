@@ -1,0 +1,7 @@
+PASS: three tour paths, feature coverage, settings lifetime, event guards, completion, exit and persistence
+PASS: action steps cannot be skipped; settings remains optional; app events require the correct target
+PASS: per-version onboarding, existing-user migration, setup deferral, skip, relaunch and active-tour guards
+PASS: optional lesson continuation, restoration gates, retry, final completion and Finish here
+PASS: wire gain stays open during edits and completes only on Done after a change
+PASS: Left/Right instruction navigation, action-step skipping, non-destructive review and lesson boundaries
+PASS: all three lessons can be read with Right arrow without editing, adding apps, or saving presets

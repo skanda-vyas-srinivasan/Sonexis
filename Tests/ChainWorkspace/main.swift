@@ -2,6 +2,11 @@ import AppKit
 import Foundation
 @testable import Sonexis
 func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() { fatalError(message) } }
+func settle(_ workspace: ChainWorkspace) {
+    let deadline = Date().addingTimeInterval(3)
+    while workspace.runtime.isTransitioning && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.005)) }
+    expect(!workspace.runtime.isTransitioning, "Workspace audio transition did not complete")
+}
 final class FakePipeline: AudioChainPipeline {
     func start() throws {}
     func stopImmediately(reason: String) {}
@@ -39,9 +44,9 @@ expect(workspace.selectedProcessor!.currentGraphSnapshot!.nodes.isEmpty,"New app
 workspace.select(aID)
 expect(workspace.selectedProcessor === processorA && workspace.selectedProcessor!.currentGraphSnapshot!.nodes.count == 1,"Switching keeps original processor and graph")
 expect(workspace.chains.first(where:{$0.id==aID})?.presetID == presetID,"Preset identity belongs to the chain")
-workspace.togglePower()
+workspace.togglePower(); settle(workspace)
 expect(workspace.runtime.state == .running && workspace.runtime.processors.values.allSatisfy(\.isRunning),"Editor power starts every chain")
-workspace.selectedProcessor!.stop()
+workspace.selectedProcessor!.stop(); settle(workspace)
 expect(workspace.runtime.state == .stopped,"Editor power stops every chain")
 workspace.toggleEffects(aID)
 workspace.toggleGlobalBypass()
@@ -102,10 +107,10 @@ let recoveryFiles = try FileManager.default.contentsOfDirectory(atPath:directory
 expect(recoveryFiles.contains(where:{$0.hasPrefix("chains-recovery-")}),"Archive corrupt primary")
 print("PASS: workspace migration, two app chains, edit/switch preservation, chain presets, global controls, restart persistence, flush ordering, removal and recovery")
 
-restored.togglePower()
+restored.togglePower(); settle(restored)
 let defaultProcessor = restored.runtime.processors[defaultID]!
 let defaultGraph = defaultProcessor.currentGraphSnapshot
-restored.removeAllAppChains()
+restored.removeAllAppChains(); settle(restored)
 expect(restored.chains.count == 1 && restored.selectedID == defaultID, "Close all returns to Default")
 expect(restored.runtime.processors[defaultID] === defaultProcessor, "Close all preserves Default processor")
 expect(defaultProcessor.currentGraphSnapshot?.nodes.count == defaultGraph?.nodes.count, "Close all preserves Default graph")
@@ -114,7 +119,7 @@ expect(restored.runtime.processors[aID] == nil && restored.runtime.processors[bI
 restored.store.flush()
 let cleared = try ChainWorkspaceStore(directory: directory).load()!
 expect(cleared.chains.count == 1 && cleared.selectedID == defaultID, "Closed app tabs stay removed after relaunch")
-restored.removeAllAppChains()
+restored.removeAllAppChains(); settle(restored)
 expect(restored.chains.count == 1, "Closing all with only Default is harmless")
 restored.shutdown()
 print("PASS: close all app chains preserves Default, playback, selection, and persistence")
@@ -125,7 +130,7 @@ workspace.select(defaultID)
 let preservedDefault = workspace.selectedProcessor!
 let preservedGraph = preservedDefault.currentGraphSnapshot!.presetComparisonData
 let menuPreset = workspace.presets.savePreset(name: "Menu test", graph: graph)!
-workspace.togglePower()
+workspace.togglePower(); settle(workspace)
 workspace.loadPreset(menuPreset, chainID: menuTargetID)
 expect(workspace.selectedID == defaultID, "Menu preset does not change editor selection")
 expect(workspace.selectedProcessor === preservedDefault && preservedDefault.currentGraphSnapshot!.presetComparisonData == preservedGraph, "Menu preset leaves other chain graph and processor untouched")
@@ -179,7 +184,7 @@ originalProcessor.applyIndependentGraph(originalLessonGraph)
 originalProcessor.processTapInputTrimDB = -21
 originalProcessor.processTapOutputMakeupDB = 6
 lesson.setPreset(UUID(), chainID: originalSelection)
-lesson.togglePower()
+lesson.togglePower(); settle(lesson)
 lesson.refreshAndSave()
 lesson.store.flush()
 let originalDocument = try ChainWorkspaceStore(directory: lessonDirectory).load()!
@@ -191,11 +196,11 @@ lesson.tutorial.startChains()
 expect(lesson.tutorial.step == .chainsIntro, "App lesson starts after capturing original work")
 lesson.tutorial.nextButtonTapped()
 rejectPractice = true
-lesson.add(practiceApp)
+lesson.add(practiceApp); settle(lesson)
 expect(lesson.tutorial.step == .chainsAdd && lesson.chains.count == originalDocument.chains.count,
        "Failed add does not advance or create a partial practice chain")
 rejectPractice = false
-lesson.add(practiceApp)
+lesson.add(practiceApp); settle(lesson)
 let practiceChain = lesson.selectedID
 expect(lesson.tutorial.step == .chainsOverrides && lesson.tutorial.practiceChainID == practiceChain,
        "Successful add enters the effect exercise")
@@ -233,7 +238,7 @@ expect(!lesson.canSelectChain(defaultLessonID) && !lesson.canRemoveChain(origina
        "The close exercise cannot alter other chains")
 lesson.select(practiceChain)
 expect(lesson.tutorial.step == .chainsClose, "Clicking the tab title cannot skip closing it")
-lesson.remove(practiceChain)
+lesson.remove(practiceChain); settle(lesson)
 expect(lesson.tutorial.step == .chainsComplete, "Closing the practice chain completes the exercise")
 lesson.refreshAndSave()
 lesson.store.flush()
@@ -241,11 +246,7 @@ let duringLesson = try ChainWorkspaceStore(directory: lessonDirectory).load()!
 let duringLessonBytes = try encoder.encode(duringLesson)
 expect(duringLessonBytes == originalDocumentBytes,
        "Practice actions never overwrite original chains, selection, preset identity, or gains")
-rejectRestore = true
-lesson.tutorial.finishTutorial()
-expect(lesson.tutorial.isActive, "Failed restore leaves the lesson active so restoration can be retried")
-rejectRestore = false
-lesson.tutorial.finishTutorial()
+lesson.tutorial.finishTutorial(); settle(lesson)
 expect(!lesson.tutorial.isActive && lesson.selectedID == originalSelection,
        "Finish restores original selection")
 expect(lesson.runtime.state == .running && lesson.selectedProcessor!.processTapInputTrimDB == -21
@@ -255,22 +256,17 @@ expect(lesson.selectedProcessor!.currentGraphSnapshot!.presetComparisonData == o
        "Finish restores unsaved graph edits")
 lesson.tutorial.startChains()
 lesson.tutorial.nextButtonTapped()
-lesson.add(practiceApp)
-lesson.tutorial.skipTutorial()
+lesson.add(practiceApp); settle(lesson)
+lesson.tutorial.skipTutorial(); settle(lesson)
 expect(!lesson.tutorial.isActive && lesson.selectedID == originalSelection
        && lesson.chains.count == originalDocument.chains.count, "Early exit removes practice work and restores original chains")
 lesson.tutorial.startChains()
 lesson.tutorial.nextButtonTapped()
-lesson.add(practiceApp)
+lesson.add(practiceApp); settle(lesson)
 let continuingPractice = lesson.selectedID
 lesson.tutorial.step = .chainsClose
-lesson.remove(continuingPractice)
-rejectRestore = true
-lesson.tutorial.continueToNextLesson()
-expect(lesson.tutorial.step == .chainsComplete && lesson.tutorial.pendingNextLesson == nil,
-       "Continue must not open Manual wiring if original chains cannot be restored")
-rejectRestore = false
-lesson.tutorial.continueToNextLesson()
+lesson.remove(continuingPractice); settle(lesson)
+lesson.tutorial.continueToNextLesson(); settle(lesson)
 expect(!lesson.tutorial.isActive && lesson.tutorial.pendingNextLesson == .manualWiring
        && lesson.selectedID == originalSelection && lesson.chains.count == originalDocument.chains.count,
        "Continue restores the app workspace before queuing Manual wiring")
@@ -283,6 +279,105 @@ expect(continuedDocumentBytes == originalDocumentBytes,
 lesson.tutorial.startPendingLesson()
 expect(lesson.tutorial.step == .advancedIntro && lesson.tutorial.pendingNextLesson == nil,
        "Manual wiring starts after restoration")
-lesson.tutorial.skipTutorial()
+lesson.tutorial.skipTutorial(); settle(lesson)
+// A failed asynchronous restart cannot roll the restored user document back
+// to the tutorial's temporary app chain.
+lesson.tutorial.startChains()
+lesson.tutorial.nextButtonTapped()
+lesson.add(practiceApp); settle(lesson)
+rejectRestore = true
+lesson.tutorial.skipTutorial(); settle(lesson)
+expect(!lesson.tutorial.isActive && lesson.selectedID == originalSelection
+       && lesson.chains.count == originalDocument.chains.count,
+       "Audio failure must not undo restoration or retain practice chains")
+if case .failed = lesson.runtime.state {} else { fatalError("Restored document must report failed audio restart") }
+expect(lesson.selectedProcessor!.currentGraphSnapshot!.presetComparisonData == originalLessonGraph.presetComparisonData,
+       "Audio failure must preserve the restored original graph")
+let failedRestartDocument = try ChainWorkspaceStore(directory: lessonDirectory).load()!
+let failedRestartBytes = try encoder.encode(failedRestartDocument)
+expect(failedRestartBytes == originalDocumentBytes,
+       "Failed audio restart must preserve the saved user document")
+rejectRestore = false
+lesson.selectedProcessor!.start(); settle(lesson)
+expect(lesson.runtime.state == .running, "User can retry after failed restoration restart")
 lesson.shutdown()
 print("PASS: real app tutorial actions, failed-operation gating, shared progress, persistence isolation, finish and early-exit restoration")
+
+// Power is available from either surface throughout App Chains. Each exit must
+// restore the state from before the lesson, even if the user toggles it inside.
+for initiallyRunning in [false, true] {
+    for exitKind in ["finish", "skip", "continue"] {
+        let powerDirectory = directory.appendingPathComponent("power-\(initiallyRunning)-\(exitKind)")
+        let powerLesson = ChainWorkspace(directory: powerDirectory, runtime: runtime())
+        if initiallyRunning { powerLesson.togglePower(); settle(powerLesson) }
+        powerLesson.refreshAndSave(); powerLesson.store.flush()
+        let saved = try Data(contentsOf: powerDirectory.appendingPathComponent("chains.json"))
+        powerLesson.tutorial.startChains()
+        expect(powerLesson.tutorial.step == .chainsIntro, "Power lesson entered")
+        for step: TutorialStep in [.chainsIntro, .chainsAdd, .chainsOverrides, .chainsMenuBar,
+                                   .chainsChoosePreset, .chainsDisable, .chainsEnable,
+                                   .chainsOpenEditor, .chainsClose, .chainsBackground, .chainsComplete] {
+            powerLesson.tutorial.step = step
+            expect(step.allowsPowerControl, "Both Power surfaces must be unlocked at \(step)")
+            powerLesson.togglePower(); settle(powerLesson)
+            expect(powerLesson.runtime.state == (initiallyRunning ? .stopped : .running), "Menu Power must toggle during \(step)")
+            expect(powerLesson.tutorial.step == step, "Power must not advance the lesson")
+            if initiallyRunning { powerLesson.selectedProcessor!.start() }
+            else { powerLesson.selectedProcessor!.stop() }
+            settle(powerLesson)
+            expect(powerLesson.runtime.state == (initiallyRunning ? .running : .stopped), "Editor Power must restore the toggle during \(step)")
+        }
+        // Leave power opposite to the entry state so restoration is observable.
+        powerLesson.togglePower(); settle(powerLesson)
+        switch exitKind {
+        case "finish": powerLesson.tutorial.finishTutorial()
+        case "skip": powerLesson.tutorial.skipTutorial()
+        default: powerLesson.tutorial.continueToNextLesson()
+        }
+        settle(powerLesson)
+        expect(!powerLesson.tutorial.isActive, "Exit completes")
+        expect(powerLesson.runtime.state == (initiallyRunning ? .running : .stopped), "\(exitKind) restores entry Power state")
+        powerLesson.store.flush()
+        let after = try Data(contentsOf: powerDirectory.appendingPathComponent("chains.json"))
+        expect(after == saved, "Power tutorial must preserve saved chains")
+        powerLesson.shutdown()
+    }
+}
+print("PASS: App Chains Power on both action paths at every step; finish/skip/continue restore stopped and running entry states")
+
+let pendingLesson = ChainWorkspace(directory: directory.appendingPathComponent("pending-lesson"), runtime: runtime())
+pendingLesson.togglePower()
+pendingLesson.tutorial.startChains()
+expect(!pendingLesson.tutorial.isActive, "Do not snapshot an unresolved Power transition")
+settle(pendingLesson)
+pendingLesson.tutorial.startChains()
+expect(pendingLesson.tutorial.step == .chainsIntro, "Lesson can start after Power settles")
+pendingLesson.tutorial.skipTutorial(); settle(pendingLesson)
+expect(pendingLesson.runtime.state == .running, "Settled entry state is restored")
+pendingLesson.shutdown()
+
+final class TutorialStartPipeline: AudioChainPipeline {
+    let shouldFail: () -> Bool
+    init(shouldFail: @escaping () -> Bool) { self.shouldFail = shouldFail }
+    func start() throws { if shouldFail() { throw PrototypeError(message: "test start failure") } }
+    func stopImmediately(reason: String) {}
+}
+var failTutorialStart = true
+let retryRuntime = MultiChainAudioEngine(resolve: { _ in [] }, makePipeline: { _, _ in
+    TutorialStartPipeline(shouldFail: { failTutorialStart })
+})
+let retryLesson = ChainWorkspace(directory: directory.appendingPathComponent("retry-lesson"), runtime: retryRuntime)
+retryLesson.tutorial.startChains()
+retryLesson.togglePower(); settle(retryLesson)
+if case .failed = retryRuntime.state {} else { fatalError("Start failure must be reported") }
+expect(retryLesson.tutorial.step == .chainsIntro && retryLesson.tutorial.step.allowsPowerControl,
+       "Failed startup must leave Power available without advancing")
+failTutorialStart = false
+retryLesson.selectedProcessor!.start(); settle(retryLesson)
+expect(retryRuntime.state == .running, "Editor Power retries the failed start")
+retryLesson.tutorial.skipTutorial(); settle(retryLesson)
+expect(retryRuntime.state == .stopped, "Retry followed by Skip restores originally stopped state")
+retryLesson.shutdown()
+expect(!TutorialStep.buildAddBass.allowsPowerControl && !TutorialStep.advancedIntro.allowsPowerControl,
+       "Other tutorial Power locks stay unchanged")
+print("PASS: pending entry waits for settled state; failed tutorial start remains retryable; other lesson locks unchanged")

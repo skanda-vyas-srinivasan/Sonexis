@@ -1,0 +1,4 @@
+PASS: 43710 legacy/new sample comparisons; topology cases, variable blocks, stateful effects, cache invalidation, fresh parameters, split isolation
+4 nodes: legacy 172.82 us/block, prepared 150.50 us/block, 12.9% less block time (Debug median)
+16 nodes: legacy 585.81 us/block, prepared 515.73 us/block, 12.0% less block time (Debug median)
+48 nodes: legacy 2245.24 us/block, prepared 1639.44 us/block, 27.0% less block time (Debug median)

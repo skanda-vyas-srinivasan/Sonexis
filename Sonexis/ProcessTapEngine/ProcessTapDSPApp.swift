@@ -12,6 +12,7 @@ private let rebuildRetryDelay: TimeInterval = 1.5
 private let rebuildRetryLimit = 4
 
 final class ProcessTapDSPApp {
+    private let lifecycleQueue: DispatchQueue
     private let dspProcessor: DSPProcessor
     private weak var audioProcessor: ProcessTapAudioProcessor?
 
@@ -46,8 +47,10 @@ final class ProcessTapDSPApp {
         configuration: DSPConfiguration = .productBaseline,
         audioProcessor: ProcessTapAudioProcessor? = nil,
         captureTarget: AudioCaptureTarget? = nil,
-        fixedSelection: ProcessTapSelection? = nil
+        fixedSelection: ProcessTapSelection? = nil,
+        lifecycleQueue: DispatchQueue = .main
     ) {
+        self.lifecycleQueue = lifecycleQueue
         self.dspProcessor = DSPProcessor(configuration: configuration)
         self.audioProcessor = audioProcessor
         self.captureTarget = captureTarget
@@ -195,7 +198,7 @@ final class ProcessTapDSPApp {
         let outputStreamFormat = try CoreAudioSupport.streamVirtualFormat(streamIDs[0])
         print("Default output stream format: \(outputStreamFormat.formatSummary)")
 
-        let tapEngine = TapCaptureEngine()
+        let tapEngine = TapCaptureEngine(lifecycleQueue: lifecycleQueue)
         tapEngine.processSelectionDidChange = { [weak self] in self?.refreshCaptureProcesses() }
         tapCaptureEngine = tapEngine
         let tapConfiguration = try tapEngine.prepare(
@@ -297,7 +300,7 @@ final class ProcessTapDSPApp {
             "Startup: holding processed output until ring fill reaches \(startupPrerollTargetFrames) frames; fallback requires at least \(startupPartialPrerollMinimumFrames) frames after \(Int(startupPartialPrerollTimeout * 1000.0)) ms."
         )
 
-        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let timer = DispatchSource.makeTimerSource(queue: lifecycleQueue)
         timer.schedule(deadline: .now(), repeating: startupPrerollPollInterval)
         timer.setEventHandler { [weak self] in
             guard let self, !self.isStopped, let ringBuffer = self.ringBuffer else { return }
@@ -391,7 +394,7 @@ final class ProcessTapDSPApp {
             completion()
         }
         smoothTeardownWorkItem = workItem
-        DispatchQueue.main.asyncAfter(
+        lifecycleQueue.asyncAfter(
             deadline: .now() + rampDuration + rampSettleDuration,
             execute: workItem
         )
@@ -457,7 +460,7 @@ final class ProcessTapDSPApp {
             AudioObjectAddPropertyListenerBlock(
                 AudioObjectID(kAudioObjectSystemObject),
                 &address,
-                DispatchQueue.main,
+                lifecycleQueue,
                 block
             ),
             operation: "Install default output device listener"
@@ -473,7 +476,7 @@ final class ProcessTapDSPApp {
         let status = AudioObjectRemovePropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
             &address,
-            DispatchQueue.main,
+            lifecycleQueue,
             defaultOutputListenerBlock
         )
         if log { printCleanupResult("removed default-output route listener", status: status) }
@@ -492,7 +495,7 @@ final class ProcessTapDSPApp {
             AudioObjectAddPropertyListenerBlock(
                 deviceID,
                 &address,
-                DispatchQueue.main,
+                lifecycleQueue,
                 block
             ),
             operation: "Install active output device alive listener"
@@ -512,7 +515,7 @@ final class ProcessTapDSPApp {
         let status = AudioObjectRemovePropertyListenerBlock(
             activeDeviceAliveListenerDeviceID,
             &address,
-            DispatchQueue.main,
+            lifecycleQueue,
             activeDeviceAliveListenerBlock
         )
         if log { printCleanupResult("removed active output device alive listener", status: status) }
@@ -529,14 +532,14 @@ final class ProcessTapDSPApp {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleSystemWillSleep()
+            self?.lifecycleQueue.async { [weak self] in self?.handleSystemWillSleep() }
         }
         let didWake = notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleSystemDidWake()
+            self?.lifecycleQueue.async { [weak self] in self?.handleSystemDidWake() }
         }
         sleepWakeObservers = [willSleep, didWake]
         print("Installed sleep/wake observers.")
@@ -591,7 +594,7 @@ final class ProcessTapDSPApp {
             self?.handleRouteChange(reason: reason)
         }
         routeChangeWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+        lifecycleQueue.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
 
     private func handleRouteChange(reason: String) {
@@ -635,7 +638,7 @@ final class ProcessTapDSPApp {
 
         let milliseconds = Int((delay * 1000.0).rounded())
         print("Recovery: scheduling rebuild for \(reason) in \(milliseconds) ms.")
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        lifecycleQueue.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     private func attemptRecoveryRebuild(reason: String, attemptsRemaining: Int) {
@@ -687,7 +690,7 @@ final class ProcessTapDSPApp {
         lastUnderflowFrames = 0
         statusTick = 0
 
-        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let timer = DispatchSource.makeTimerSource(queue: lifecycleQueue)
         timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
         timer.setEventHandler { [weak self] in
             guard let self, let ringBuffer else { return }

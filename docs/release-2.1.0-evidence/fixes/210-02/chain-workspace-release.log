@@ -1,0 +1,35 @@
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+PASS: tutorial isolates practice edits and blocks menu-bar chain mutations until restored
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+PASS: workspace migration, two app chains, edit/switch preservation, chain presets, global controls, restart persistence, flush ordering, removal and recovery
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+PASS: close all app chains preserves Default, playback, selection, and persistence
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=menu bar preset, nodes=1
+PASS: menu preset targets one chain without selecting it or restarting playback
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=menu bar preset, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=1
+PASS: real app tutorial actions, failed-operation gating, shared progress, persistence isolation, finish and early-exit restoration

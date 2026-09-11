@@ -71,7 +71,7 @@ struct SavedPreset: Identifiable, Codable {
         let spacing: CGFloat = 160
         let activeEffects = chain.activeEffects.filter { !$0.type.isRetired }
         let nodes: [BeginnerNode] = activeEffects.enumerated().map { index, snapshot in
-            var node = BeginnerNode(
+            let node = BeginnerNode(
                 type: snapshot.type,
                 position: CGPoint(x: startX + spacing * CGFloat(index), y: baseY),
                 lane: .left,
@@ -158,8 +158,8 @@ struct SavedPreset: Identifiable, Codable {
             params.flangerFeedback = values.flangerFeedback ?? params.flangerFeedback
             params.flangerMix = values.flangerMix ?? params.flangerMix
         case .bitcrusher:
-            params.bitcrusherBitDepth = values.bitcrusherBitDepth ?? params.bitcrusherBitDepth
-            params.bitcrusherDownsample = values.bitcrusherDownsample ?? params.bitcrusherDownsample
+            params.bitcrusherBitDepth = BitcrusherParameterLimits.boundedBitDepth(values.bitcrusherBitDepth ?? params.bitcrusherBitDepth)
+            params.bitcrusherDownsample = BitcrusherParameterLimits.boundedDownsample(values.bitcrusherDownsample ?? params.bitcrusherDownsample)
             params.bitcrusherMix = values.bitcrusherMix ?? params.bitcrusherMix
         case .tapeSaturation:
             params.tapeSaturationDrive = values.tapeSaturationDrive ?? params.tapeSaturationDrive

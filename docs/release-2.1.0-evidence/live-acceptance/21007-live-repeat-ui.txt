@@ -1,0 +1,21 @@
+210-07 live repeat, 2026-09-10
+
+Build: fresh Debug build containing the 128-buffer/user-initiated-writer fix
+Output: Hesh ANC Bluetooth, 44.1 kHz
+Selected chain: Default
+Generated source: signed local 990 Hz helper at amplitude 0.00005
+
+During recording:
+- Record control: Recording / Stop Recording
+- No recording warning was displayed.
+
+After 96.70 seconds and finalization:
+- Record control returned to Record / Record Default output.
+- No "Recording incomplete" alert appeared.
+- No recording warning text appeared.
+- Sonexis dropped-frame accounting therefore completed at zero.
+- The saved WAV contains 4,264,448 stereo frames, all finite, with no near-zero run.
+
+Cleanup:
+- The verification source was stopped and its control returned to Play.
+- Sonexis processing was stopped and the app was returned to Home.

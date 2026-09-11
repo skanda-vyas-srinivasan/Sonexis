@@ -161,6 +161,16 @@ final class ChainWorkspace: ObservableObject {
         issue = startupIssue
         savingPaused = startupIssue != nil
         wireProcessors()
+        runtime.onConfigurationRestored = { [weak self] in
+            guard let self else { return }
+            self.wireProcessors()
+            if !self.chains.contains(where: { $0.id == self.selectedID }), let first = self.chains.first {
+                self.selectedID = first.id
+            }
+            self.prepareSelectedCanvas()
+            self.capture()
+            self.issue = "The audio change failed. Your previous chains have been restored."
+        }
         store.onError = { [weak self] in self?.issue = $0 }
         observation = runtime.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         tutorialObservation = tutorial.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
@@ -170,6 +180,10 @@ final class ChainWorkspace: ObservableObject {
     }
 
     private func beginAppTutorial() -> Bool {
+        guard !runtime.isTransitioning else {
+            issue = "Wait for audio to finish starting or stopping before starting the app-chain lesson."
+            return false
+        }
         guard !isRecording, !savingPaused, suspendedChains.isEmpty else {
             issue = "Finish recording or the current tutorial before starting the app-chain lesson."
             return false
@@ -185,7 +199,9 @@ final class ChainWorkspace: ObservableObject {
     private func restoreAppTutorial() -> Bool {
         guard let original = appTutorialSnapshot else { return true }
         do {
-            try runtime.configure(original.chains)
+            // Restoring user work must not put the practice document back if
+            // restarting audio later fails. Report audio failure separately.
+            try runtime.configure(original.chains, rollbackOnAudioFailure: false)
             runtime.setGlobalBypass(original.globalBypass)
             wireProcessors()
             selectedID = original.selectedID
@@ -202,7 +218,7 @@ final class ChainWorkspace: ObservableObject {
     }
 
     var canAddChain: Bool {
-        !isRecording && suspendedChains.isEmpty && (!tutorial.isActive || tutorial.step == .chainsAdd)
+        !runtime.isTransitioning && !isRecording && suspendedChains.isEmpty && (!tutorial.isActive || tutorial.step == .chainsAdd)
     }
 
     func canSelectChain(_ id: UUID) -> Bool {
@@ -212,7 +228,7 @@ final class ChainWorkspace: ObservableObject {
     }
 
     func canRemoveChain(_ id: UUID) -> Bool {
-        !isRecording && suspendedChains.isEmpty && (!tutorial.isActive ||
+        !runtime.isTransitioning && !isRecording && suspendedChains.isEmpty && (!tutorial.isActive ||
             (tutorial.step == .chainsClose && id == tutorial.practiceChainID))
     }
 
@@ -253,13 +269,22 @@ final class ChainWorkspace: ObservableObject {
         if let existing = chains.first(where: { $0.target?.id == target.id }) { select(existing.id); return }
         capture()
         let chain = Self.emptyChain(target: target)
+        let previousSelection = selectedID
         do {
-            try runtime.configure(chains + [chain])
+            try runtime.configure(chains + [chain]) { [weak self] succeeded in
+                guard let self else { return }
+                guard succeeded else {
+                    self.selectedID = previousSelection
+                    self.prepareSelectedCanvas()
+                    self.capture()
+                    return
+                }
+                self.tutorial.didAddPracticeChain(id: chain.id, name: target.name)
+            }
             wireProcessors()
             selectedID = chain.id
             prepareSelectedCanvas()
             capture()
-            tutorial.didAddPracticeChain(id: chain.id, name: target.name)
         } catch { issue = "Could not add app chain: \(error)" }
     }
 
@@ -267,13 +292,21 @@ final class ChainWorkspace: ObservableObject {
         guard canRemoveChain(id) else { return }
         guard !isRecording, let chain = chains.first(where: { $0.id == id }), chain.target != nil else { return }
         capture()
+        let previousSelection = selectedID
         do {
-            try runtime.configure(chains.filter { $0.id != id })
+            try runtime.configure(chains.filter { $0.id != id }) { [weak self] succeeded in
+                guard let self else { return }
+                if succeeded { self.tutorial.advanceIf(.chainsClose) }
+                else {
+                    self.selectedID = previousSelection
+                    self.prepareSelectedCanvas()
+                    self.capture()
+                }
+            }
             wireProcessors()
             if selectedID == id { selectedID = chains.first(where: { $0.target == nil })!.id }
             prepareSelectedCanvas()
             capture()
-            tutorial.advanceIf(.chainsClose)
         } catch { issue = "Could not remove app chain: \(error)" }
     }
 
@@ -309,8 +342,8 @@ final class ChainWorkspace: ObservableObject {
     }
 
     func togglePower() {
-        guard !tutorial.isActive || tutorial.step == .buildPower || tutorial.step == .advancedIntro else { return }
-        if runtime.state == .running { runtime.stop() }
+        guard tutorial.step.allowsPowerControl || tutorial.step == .advancedIntro else { return }
+        if runtime.state == .running || runtime.isTransitioning { runtime.stop() }
         else {
             capture()
             do { try runtime.start() } catch { issue = "Could not start chains: \(error)" }
@@ -380,7 +413,7 @@ final class ChainWorkspace: ObservableObject {
             processor.chainDisplayName = name(for: chain)
             processor.globalBypassActive = runtime.globallyBypassed
             processor.onPowerStart = { [weak self] in
-                guard let self, self.runtime.state != .running else { return }
+                guard let self, self.runtime.state != .running, !self.runtime.isTransitioning else { return }
                 self.togglePower()
             }
             processor.onPowerStop = { [weak self] in self?.runtime.stop() }
@@ -598,10 +631,18 @@ struct ChainMenuBarPanel: View {
                     .foregroundStyle(palette.neonPink)
                 Spacer()
                 Button { workspace.togglePower() } label: {
-                    Image(systemName: workspace.runtime.state == .running ? "power.circle.fill" : "power.circle")
+                    Group {
+                        if workspace.runtime.isTransitioning && workspace.runtime.state != .running {
+                            ProgressView().controlSize(.small).frame(width: 24, height: 24)
+                        } else {
+                            Image(systemName: workspace.runtime.state == .running ? "power.circle.fill" : "power.circle")
+                        }
+                    }
                         .font(.system(size: 24)).foregroundStyle(workspace.runtime.state == .running ? palette.success : palette.textMuted)
-                }.help("Start or stop all chains")
-                .disabled(workspace.tutorial.isActive)
+                }.help(workspace.runtime.isTransitioning ? "Cancel pending audio operation" : "Start or stop all chains")
+                .accessibilityLabel("Power")
+                .accessibilityValue(workspace.runtime.isTransitioning ? "Pending" : (workspace.runtime.state == .running ? "On" : "Off"))
+                .disabled(!workspace.tutorial.step.allowsPowerControl)
             }
             if let instruction = workspace.tutorial.menuInstruction {
                 Text(instruction)

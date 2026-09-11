@@ -1,0 +1,7 @@
+The following is a diff from the previous accessibility tree for Window: "Sonexis" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 106
+~			94 text Clarity Gain
++			106 slider Value: 1, Secondary Actions: Increment, Decrement
++				107 value indicator 1
++			108 text 100%
++			109 button Done

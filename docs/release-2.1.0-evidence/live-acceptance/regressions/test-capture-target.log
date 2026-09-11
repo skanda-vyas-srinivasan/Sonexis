@@ -1,0 +1,4 @@
+PASS: app identity, embedded helpers, persistence, all/app/empty/relaunch selection, self-exclusion, route preservation
+PASS: fresh tap constructors for all audio, selected app, and absent app
+PASS: headless audio helper executable fallback and unrelated helper exclusion
+PASS: generic helper ownership, other-app exclusion, missing ownership, and regular-app exclusion

@@ -1,0 +1,8 @@
+/Users/skandavyas/Sonexis/Sonexis/PresetManager.swift:74:17: warning: variable 'node' was never mutated; consider changing to 'let' constant
+ 72 |         let activeEffects = chain.activeEffects.filter { !$0.type.isRetired }
+ 73 |         let nodes: [BeginnerNode] = activeEffects.enumerated().map { index, snapshot in
+ 74 |             var node = BeginnerNode(
+    |                 `- warning: variable 'node' was never mutated; consider changing to 'let' constant
+ 75 |                 type: snapshot.type,
+ 76 |                 position: CGPoint(x: startX + spacing * CGFloat(index), y: baseY),
+PASS: workspace/layout/settings/identity round-trip, Modified comparison, preset isolation, dedup/debounce/quit flush, corruption/backup recovery, future schema preservation, explicit fresh start, invalid graphs, disk failure/retry, anonymous/empty workspaces, split/plugin state, archival failure

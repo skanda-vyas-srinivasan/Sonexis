@@ -1880,8 +1880,10 @@ extension AudioEngine {
         case .bitcrusher:
             let isNodeDisabled = nodeId != nil && !nodeIsEnabled(nodeId!, snapshot: snapshot)
             let isGlobalDisabled = nodeId == nil && !snapshot.bitcrusherEnabled
-            let bitDepthValue = Int(nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherBitDepth ?? snapshot.bitcrusherBitDepth)
-            let downsampleValue = Int(nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherDownsample ?? snapshot.bitcrusherDownsample)
+            let bitDepthValue = Int(BitcrusherParameterLimits.boundedBitDepth(
+                nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherBitDepth ?? snapshot.bitcrusherBitDepth))
+            let downsampleValue = Int(BitcrusherParameterLimits.boundedDownsample(
+                nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherDownsample ?? snapshot.bitcrusherDownsample))
             let mixValue = nodeParams(for: nodeId, snapshot: snapshot)?.bitcrusherMix ?? snapshot.bitcrusherMix
 
             let targetGain: Float = (isNodeDisabled || isGlobalDisabled || mixValue <= 0) ? 0 : 1

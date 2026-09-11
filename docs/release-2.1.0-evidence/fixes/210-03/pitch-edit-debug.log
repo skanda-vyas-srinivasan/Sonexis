@@ -1,0 +1,3 @@
+{"case":"live-parameter-change-offline","firstSoundAfterEditFrame":0,"fromSemitones":0,"longestSilentFrames":1,"rate":44100,"silenceMS":0.022675736961451247,"toSemitones":7}
+{"case":"live-parameter-change-offline","firstSoundAfterEditFrame":0,"fromSemitones":0,"longestSilentFrames":1,"rate":48000,"silenceMS":0.020833333333333332,"toSemitones":7}
+2026-09-10 10:41:38.201 audit-debug[63378:3359279] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.

@@ -1,0 +1,4 @@
+PASS: blocked start leaves main responsive, timeout, serialized cleanup, late-completion suppression, safe retry
+PASS: cancellation between worker return and main completion cannot leak live taps
+PASS: blocked stop does not freeze main or allow concurrent restart
+PASS: HAL resolution off main; cancelled resolution cannot create taps

@@ -7,6 +7,11 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 func expectFailure(_ message: String, _ action: () throws -> Void) {
     do { try action(); fatalError(message) } catch {}
 }
+func settle(_ runtime: MultiChainAudioEngine) {
+    let deadline = Date().addingTimeInterval(3)
+    while runtime.isTransitioning && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.005)) }
+    expect(!runtime.isTransitioning, "Audio transition did not complete")
+}
 let appA = AudioCaptureTarget(bundleID: "test.a", name: "A", bundlePath: "/A.app")
 let appB = AudioCaptureTarget(bundleID: "test.b", name: "B", bundlePath: "/B.app")
 var node = BeginnerNode(type: .delay)
@@ -94,13 +99,13 @@ runtime.setGlobalBypass(true)
 expect(!processorA.processingEnabled && !processorB.processingEnabled, "Global bypass applies to all")
 runtime.setGlobalBypass(false)
 expect(!processorA.processingEnabled && processorB.processingEnabled, "Global bypass preserves individual choices")
-try runtime.start()
+try runtime.start(); settle(runtime)
 expect(runtime.state == .running, "All chains start")
 events=[]
-try runtime.refreshProcesses()
+try runtime.refreshProcesses(); settle(runtime)
 expect(events.isEmpty, "Unchanged process list must not restart playback")
 processes[appA.id]=[30]
-try runtime.refreshProcesses()
+try runtime.refreshProcesses(); settle(runtime)
 expect(events.prefix(3).allSatisfy { $0.hasPrefix("stop") }, "Stop ALL old routes before starting ANY replacements")
 expect(events.suffix(3).allSatisfy { $0.hasPrefix("start") }, "Start new partitions after old ones stop")
 expect(runtime.processors[a.id] === processorA, "Relaunch preserves the processor and effect state")
@@ -109,9 +114,12 @@ let absent = try AudioChainRoutingPlan(chains:definitions,resolve:resolve)
 expect(absent.selections[a.id] == .only([]), "Absent app stays an empty override")
 expect(absent.selections[base.id] == .allAudio(excluding:[20]), "Default retains other-app exclusion")
 failNext=true
-expectFailure("Surface pipeline startup failure") { try runtime.configure([base,a]) }
+var configurationSucceeded: Bool?
+try runtime.configure([base,a]) { configurationSucceeded = $0 }
+settle(runtime)
+expect(configurationSucceeded == false, "Surface asynchronous pipeline startup failure")
 expect(runtime.definitions.count == 3 && runtime.state == .running, "Failed configuration restores previous routing")
-runtime.stop()
+runtime.stop(); settle(runtime)
 expect(runtime.state == .stopped, "Stop all chains")
 var invalid=empty; invalid.nodes=[node,node]
 expectFailure("Reject duplicate nodes before DSP dictionaries") { try runtime.updateGraph(invalid,chainID:a.id) }

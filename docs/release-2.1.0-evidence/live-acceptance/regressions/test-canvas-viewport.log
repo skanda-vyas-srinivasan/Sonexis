@@ -1,0 +1,2 @@
+PASS: 81 bundled-preset viewport/zoom cases; Brighten overflow, widening, empty/fitting canvas, scrolled menu coordinates
+PASS: drag retains scroll extent; clearing releases it

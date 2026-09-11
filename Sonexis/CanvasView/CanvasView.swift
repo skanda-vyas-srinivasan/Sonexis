@@ -23,6 +23,13 @@ private struct CanvasFramePreferenceKey: PreferenceKey {
     }
 }
 
+private struct CanvasDocumentFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 struct CanvasView<SettingsOverlay: View>: View {
     @ObservedObject var audioEngine: AudioEngine
     @ObservedObject var tutorial: TutorialController
@@ -37,6 +44,7 @@ struct CanvasView<SettingsOverlay: View>: View {
     @State private var showSignalFlow = false
     @State private var arrowFpsIndex = 2
     @State private var canvasSize: CGSize = .zero
+    @State private var minimumCanvasSize: CGSize = .zero
     @State private var draggingNodeID: UUID?
     @State private var dragStartPosition: CGPoint = .zero
     @State private var manualConnections: [BeginnerConnection] = []
@@ -79,6 +87,7 @@ struct CanvasView<SettingsOverlay: View>: View {
     @State private var pendingAudioGraphApplyReason = "graph edit"
     @State private var pendingAudioGraphApplyForce = false
     @State private var canvasFrameInRoot: CGRect = .zero
+    @State private var canvasDocumentFrameInRoot: CGRect = .zero
     @State private var didPrepareAdvancedTutorialCanvas = false
     @State private var expandedControlPanelLifts: [UUID: CGFloat] = [:]
     private let connectionSnapRadius: CGFloat = 120
@@ -546,7 +555,7 @@ struct CanvasView<SettingsOverlay: View>: View {
                             selectedWireID = nil
                             tutorial.didFinishWireGain()
                         }
-                        .position(midpoint)
+                        .position(CanvasViewportLayout.overlayPosition(midpoint, size: CGSize(width: 180, height: 128), visibleRect: visibleCanvasRect))
                         .zIndex(5)
                     } else if let autoWire = selectedAutoWire,
                               let binding = autoGainBinding(for: autoWire.key) {
@@ -556,7 +565,7 @@ struct CanvasView<SettingsOverlay: View>: View {
                         ) {
                             selectedAutoWire = nil
                         }
-                        .position(autoWire.midpoint)
+                        .position(CanvasViewportLayout.overlayPosition(autoWire.midpoint, size: CGSize(width: 180, height: 128), visibleRect: visibleCanvasRect))
                         .zIndex(5)
                     }
 
@@ -799,6 +808,8 @@ struct CanvasView<SettingsOverlay: View>: View {
                                         }
                                         // Move mode
                                         if draggingNodeID != effectValue.id {
+                                            // Keep scrolling anchored while the outermost node moves inward.
+                                            minimumCanvasSize = canvasSize
                                             draggingNodeID = effectValue.id
                                             dragStartPosition = nodePosition(effectValue, in: geometry.size)
                                             if !selectedNodeIDs.contains(effectValue.id) && !NSEvent.modifierFlags.contains(.shift) {
@@ -889,16 +900,34 @@ struct CanvasView<SettingsOverlay: View>: View {
 
     @ViewBuilder
     private var canvasView: some View {
+        GeometryReader { viewport in
+            let size = CanvasViewportLayout.contentSize(
+                viewport: viewport.size, positions: effectChain.map(\.position),
+                nodeScale: nodeScale, minimumSize: minimumCanvasSize
+            )
+            ScrollView([.horizontal, .vertical]) {
+                canvasDocumentView
+                    .frame(width: size.width, height: size.height)
+                    .background(GeometryReader { document in
+                        Color.clear.preference(
+                            key: CanvasDocumentFramePreferenceKey.self,
+                            value: document.frame(in: .named(canvasRootCoordinateSpace))
+                        )
+                    })
+            }
+            .background(GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TutorialTargetPreferenceKey.self,
+                    value: [.buildCanvas: proxy.frame(in: .global)]
+                )
+            })
+        }
+    }
+
+    @ViewBuilder
+    private var canvasDocumentView: some View {
         GeometryReader { geometry in
             canvasContent(in: geometry)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TutorialTargetPreferenceKey.self,
-                            value: [.buildCanvas: proxy.frame(in: .global)]
-                        )
-                    }
-                )
                 .onHover { hovering in
                     isCanvasHovering = hovering
                     updateCursor()
@@ -1051,6 +1080,9 @@ struct CanvasView<SettingsOverlay: View>: View {
         .onPreferenceChange(CanvasFramePreferenceKey.self) { frame in
             canvasFrameInRoot = frame
         }
+        .onPreferenceChange(CanvasDocumentFramePreferenceKey.self) { frame in
+            canvasDocumentFrameInRoot = frame
+        }
         .overlay(
             HStack {
                 Button("Zoom In") { zoomIn() }
@@ -1083,6 +1115,9 @@ struct CanvasView<SettingsOverlay: View>: View {
             if step == .buildGraphMode && graphMode == .split {
                 tutorial.advance()
             }
+        }
+        .onChange(of: effectChain.isEmpty) { isEmpty in
+            if isEmpty { minimumCanvasSize = .zero }
         }
         .onChange(of: audioEngine.isRunning) { isRunning in
             updateSignalFlowVisibility(isRunning: isRunning)
@@ -1158,12 +1193,12 @@ struct CanvasView<SettingsOverlay: View>: View {
     private func contextMenuInRootCoordinates(_ menu: CustomContextMenu) -> CustomContextMenu {
         CustomContextMenu(
             anchor: CGPoint(
-                x: menu.anchor.x + canvasFrameInRoot.minX,
-                y: menu.anchor.y + canvasFrameInRoot.minY
+                x: menu.anchor.x + canvasDocumentFrameInRoot.minX,
+                y: menu.anchor.y + canvasDocumentFrameInRoot.minY
             ),
             position: CGPoint(
-                x: menu.position.x + canvasFrameInRoot.minX,
-                y: menu.position.y + canvasFrameInRoot.minY
+                x: menu.position.x + canvasDocumentFrameInRoot.minX,
+                y: menu.position.y + canvasDocumentFrameInRoot.minY
             ),
             tint: menu.tint,
             items: menu.items
@@ -1588,6 +1623,7 @@ struct CanvasView<SettingsOverlay: View>: View {
         let nodes = snapshot.hasNodeParameters ? snapshot.nodes : migrateNodeParameters(snapshot.nodes)
         let removedIds = Set(nodes.filter { $0.type == .pitchShift || $0.type.isRetired }.map { $0.id })
         let filteredNodes = nodes.filter { $0.type != .pitchShift && !$0.type.isRetired }
+        minimumCanvasSize = .zero
         effectChain = filteredNodes
         manualConnections = snapshot.connections.filter { !removedIds.contains($0.fromNodeId) && !removedIds.contains($0.toNodeId) }
         let filteredAutoGains = snapshot.autoGainOverrides.filter {
@@ -1928,29 +1964,23 @@ struct CanvasView<SettingsOverlay: View>: View {
         )
     }
 
+    private var visibleCanvasRect: CGRect {
+        guard canvasFrameInRoot.width > 0 else { return CGRect(origin: .zero, size: canvasSize) }
+        return CanvasViewportLayout.visibleRect(viewport: canvasFrameInRoot, document: canvasDocumentFrameInRoot)
+    }
+
     private func menuAdjusted(_ menu: CustomContextMenu) -> CustomContextMenu {
-        let padding: CGFloat = 12
-        let size = menu.size
-        var x = menu.anchor.x + size.width * 0.5 + 12
-        if x + size.width * 0.5 > canvasSize.width - padding {
-            x = menu.anchor.x - size.width * 0.5 - 12
+        let halfWidth = menu.size.width * 0.5
+        var x = menu.anchor.x + halfWidth + 12
+        if x + halfWidth > visibleCanvasRect.maxX - 12 {
+            x = menu.anchor.x - halfWidth - 12
         }
-        let minY = size.height * 0.5 + padding
-        let maxY = max(canvasSize.height - size.height * 0.5 - padding, minY)
-        let y = min(max(menu.anchor.y, minY), maxY)
-        return CustomContextMenu(anchor: menu.anchor, position: CGPoint(x: x, y: y), tint: menu.tint, items: menu.items)
+        return menuAtPoint(menu, point: CGPoint(x: x, y: menu.anchor.y))
     }
 
     private func menuAtPoint(_ menu: CustomContextMenu, point: CGPoint) -> CustomContextMenu {
-        let padding: CGFloat = 12
-        let size = menu.size
-        let minX = size.width * 0.5 + padding
-        let maxX = max(canvasSize.width - size.width * 0.5 - padding, minX)
-        let minY = size.height * 0.5 + padding
-        let maxY = max(canvasSize.height - size.height * 0.5 - padding, minY)
-        let x = min(max(point.x, minX), maxX)
-        let y = min(max(point.y, minY), maxY)
-        return CustomContextMenu(anchor: menu.anchor, position: CGPoint(x: x, y: y), tint: menu.tint, items: menu.items)
+        let position = CanvasViewportLayout.overlayPosition(point, size: menu.size, visibleRect: visibleCanvasRect)
+        return CustomContextMenu(anchor: menu.anchor, position: position, tint: menu.tint, items: menu.items)
     }
 
     private func updateSelection(in rect: CGRect, additive: Bool) {
@@ -2984,14 +3014,15 @@ struct CanvasView<SettingsOverlay: View>: View {
         guard size.height > 0 else { return 0 }
 
         let rawPosition = nodePosition(node, in: size)
-        guard rawPosition.y > size.height * 0.64 else { return 0 }
+        let visible = visibleCanvasRect
+        guard rawPosition.y > visible.minY + visible.height * 0.64 else { return 0 }
 
         let panelTop = rawPosition.y + 73 * nodeScale
         let panelBottom = panelTop + estimatedControlPanelHeight(for: node.type)
-        let overflow = panelBottom + 16 - size.height
+        let overflow = panelBottom + 16 - visible.maxY
         guard overflow > 0 else { return 0 }
 
-        let topLimit: CGFloat = 82
+        let topLimit: CGFloat = visible.minY + 82
         let maxLift = max(rawPosition.y - topLimit, 0)
         return min(overflow, maxLift)
     }

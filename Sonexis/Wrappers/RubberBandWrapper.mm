@@ -31,6 +31,9 @@
     size_t _outputSize;
     int _minProcessFrames;
     bool _isPrimed;
+    bool _needsStartPadding;
+    size_t _startDelayRemaining;
+    float _wetMix;
 }
 
 static void ensureRingCapacity(
@@ -153,6 +156,9 @@ static void ringWrite(
     _outputWrite = 0;
     _outputSize = 0;
     _isPrimed = false;
+    _needsStartPadding = true;
+    _startDelayRemaining = 0;
+    _wetMix = 0.0f;
 }
 
 - (void)setPitchSemitones:(double)semitones {
@@ -181,6 +187,7 @@ static void ringWrite(
     }
     _minProcessFrames = clamped;
     _isPrimed = false;
+    _wetMix = 0.0f;
 }
 
 - (int)processInput:(const float *)input
@@ -196,6 +203,20 @@ static void ringWrite(
         [self configureWithSampleRate:_sampleRate channels:channels];
     }
 
+    if (_needsStartPadding) {
+        // Rubber Band real-time mode leaves start alignment to its caller.
+        // Query after the initial pitch ratio has been set, pad its input, and
+        // discard the corresponding output delay before crossfading to wet.
+        const size_t padSamples = (size_t)rubberband_get_preferred_start_pad(_state) * channels;
+        if (padSamples > 0) {
+            _inputDeinterleaved.assign(padSamples, 0.0f);
+            ringWrite(_inputFifo, _inputRead, _inputWrite, _inputSize,
+                      _inputDeinterleaved.data(), padSamples);
+        }
+        _startDelayRemaining = rubberband_get_start_delay(_state);
+        _needsStartPadding = false;
+    }
+
     const int totalSamples = frames * channels;
     ringWrite(_inputFifo, _inputRead, _inputWrite, _inputSize, input, (size_t)totalSamples);
 
@@ -207,6 +228,8 @@ static void ringWrite(
         const int chunkSamples = chunkFrames * channels;
         if ((int)_inputDeinterleaved.size() < chunkSamples) {
             _inputDeinterleaved.resize(chunkSamples);
+        }
+        if ((int)_outputDeinterleaved.size() < chunkSamples) {
             _outputDeinterleaved.resize(chunkSamples);
         }
         if ((int)_outputInterleaved.size() < chunkSamples) {
@@ -240,23 +263,28 @@ static void ringWrite(
         int available = rubberband_available(_state);
         while (available > 0) {
             int toRetrieve = std::min(available, chunkFrames);
-            rubberband_retrieve(_state, _outputPointers.data(), (unsigned int)toRetrieve);
-            const int retrievedSamples = toRetrieve * channels;
+            const int retrieved = (int)rubberband_retrieve(_state, _outputPointers.data(), (unsigned int)toRetrieve);
+            if (retrieved <= 0) { break; }
+            const int discard = (int)std::min(_startDelayRemaining, (size_t)retrieved);
+            _startDelayRemaining -= discard;
+            const int retrievedSamples = (retrieved - discard) * channels;
             int outputIndex = 0;
-            for (int frame = 0; frame < toRetrieve; frame++) {
+            for (int frame = discard; frame < retrieved; frame++) {
                 for (int ch = 0; ch < channels; ch++) {
                     const float outputValue = _outputPointers[ch][frame];
                     _outputInterleaved[outputIndex++] = std::isfinite(outputValue) ? outputValue : 0.0f;
                 }
             }
-            ringWrite(
-                _outputFifo,
-                _outputRead,
-                _outputWrite,
-                _outputSize,
-                _outputInterleaved.data(),
-                (size_t)retrievedSamples
-            );
+            if (retrievedSamples > 0) {
+                ringWrite(
+                    _outputFifo,
+                    _outputRead,
+                    _outputWrite,
+                    _outputSize,
+                    _outputInterleaved.data(),
+                    (size_t)retrievedSamples
+                );
+            }
             available = rubberband_available(_state);
         }
 
@@ -270,15 +298,24 @@ static void ringWrite(
         if (availableOutFrames >= prebufferFrames) {
             _isPrimed = true;
         } else {
-            const size_t totalOutSamples = (size_t)outputCapacity * channels;
-            std::fill(output, output + totalOutSamples, 0.0f);
+            // No pitch output yet: keep the current input audible. Do not use
+            // signal level to decide readiness; intentional silence is valid.
+            for (int frame = 0; frame < outputCapacity; frame++) {
+                for (int ch = 0; ch < channels; ch++) {
+                    const float dry = frame < frames ? input[frame * channels + ch] : 0.0f;
+                    output[frame * channels + ch] = std::isfinite(dry) ? dry : 0.0f;
+                }
+            }
             return outputCapacity;
         }
     }
 
     const int toCopyFrames = std::min(outputCapacity, availableOutFrames);
+    const float fadeStep = (float)(1.0 / std::max(1.0, _sampleRate * 0.02));
 
     for (int frame = 0; frame < outputCapacity; frame++) {
+        if (frame < toCopyFrames) { _wetMix = std::min(1.0f, _wetMix + fadeStep); }
+        else { _wetMix = 0.0f; }
         for (int ch = 0; ch < channels; ch++) {
             float value;
             if (frame < toCopyFrames) {
@@ -291,7 +328,8 @@ static void ringWrite(
             if (!std::isfinite(value)) {
                 value = 0.0f;
             }
-            output[frame * channels + ch] = value;
+            const float dry = frame < frames ? input[frame * channels + ch] : 0.0f;
+            output[frame * channels + ch] = (std::isfinite(dry) ? dry : 0.0f) * (1.0f - _wetMix) + value * _wetMix;
         }
     }
 
@@ -300,6 +338,7 @@ static void ringWrite(
         _outputRead = (_outputRead + consumedSamples) % _outputFifo.size();
         _outputSize -= consumedSamples;
     }
+    if (toCopyFrames < outputCapacity) { _isPrimed = false; }
 
     return outputCapacity;
 }
@@ -317,6 +356,9 @@ static void ringWrite(
     _outputWrite = 0;
     _outputSize = 0;
     _isPrimed = false;
+    _needsStartPadding = true;
+    _startDelayRemaining = 0;
+    _wetMix = 0.0f;
 }
 
 @end

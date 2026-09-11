@@ -1,12 +1,12 @@
 # Sonexis 2.1.0 audit record
 
-Date: 2026-09-10. First audit pass completed on the available Mac. **Release acceptance is not complete.** Six demonstrated issues are in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md); this document records coverage, passing results, stress limits, and verification gaps.
+Date: 2026-09-10. First audit pass completed on the available Mac. **Release acceptance is not complete.** Seven demonstrated issues are in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md); this document records coverage, passing results, stress limits, and verification gaps.
 
 ## Environment and method
 
 - Apple M4, 16 GiB RAM, 10 logical CPUs; macOS 26.5.2 (25F84), Xcode 26.6.
 - Source baseline: `451f5baf66dce0bbfb6c87b35e154fdef92a5359` plus the pre-existing uncommitted changes. [Baseline metadata](release-2.1.0-evidence/baseline.json) includes the working-tree inventory and tracked-diff hash.
-- Current app version is still 2.0.1, build 3. Target release is 2.1.0. No application source was changed by this audit.
+- The audited baseline was 2.0.1 build 3. The prepared release candidate is version 2.1.0 build 4.
 - Debug app built successfully, then all 12 existing regression scripts ran sequentially against that matching build. Release also built successfully for arm64 and x86_64; Intel execution was not tested.
 - Additional offline probes link the actual optimized Release object files as an audit library with test visibility. This is not a signed distribution build and is not a replacement DSP implementation.
 - UI evidence comes from the actual current Debug app at `.build/DerivedData/Build/Products/Debug/Sonexis.app`, using Computer Use. An initial app-name lookup opened the installed older app; it was not used as the basis of any reported defect. Current-build UI checks used its full path.
@@ -118,10 +118,11 @@ A quiet generated tone played successfully through `afplay` outside the sandbox.
 
 Later, the normal Sonexis app blocked in `AudioDeviceStart` during tutorial continuation. Two actual-app samples 62 seconds apart confirm the UI-thread block; this is the reported defect. Why the audio service entered this state remains unknown. No system audio service was reset, and no unrelated applications were reconfigured.
 
+The 2026-09-10 real-device pass subsequently verified simultaneous Default plus two app-specific routes with three distinguishable generated sources. The intended frequency dominated each selected-chain recording, and app-specific sources were strongly excluded from Default. Power start/stop and all 16 regression suites passed. A 43.55-second Default recording nevertheless reported 14,848 missing frames (336.69 ms), establishing **210-07**. See the [live acceptance record](release-2.1.0-evidence/live-acceptance/README.md).
+
 Still required before claiming release acceptance:
 
-- Complete real audio routing with two distinguishable apps plus Default, including helper-heavy apps such as browsers, after the HAL responsiveness issue is addressed.
-- Live listening for clicks/distortion, recording on the final device path, device switch/unplug, sleep/wake, and stop/quit restoring native audio.
+- Complete an attended sleep/wake cycle and any additional wired/USB device coverage claimed for release. Built-in/Bluetooth hot switching and stop/quit restoration now pass on this Mac.
 - Built-in speakers, wired/USB, and Bluetooth coverage; minimum macOS 14.4 and Intel runtime coverage if advertised. Only this M4/macOS 26.5.2 environment was available here.
 - Full native menu-bar interaction and remaining tutorial exercises, keyboard/assistive-technology acceptance, and fresh-install/2.0.1 upgrade testing of the final signed installer.
 - Verify signing/notarization and the final DMG. This audit built unsigned binaries; packaging scripts alone do not prove the shipped artifact passes installation checks.
@@ -130,4 +131,4 @@ Still required before claiming release acceptance:
 
 The user's six existing Sonexis JSON files were backed up before further UI work and compared afterwards. Both the comparison after the tutorial hang and the [final comparison](release-2.1.0-evidence/data-final.json) found all six byte-identical. The frozen test app was terminated only after that comparison, then reopened from its saved workspace. Sonexis was left stopped on [Home](release-2.1.0-evidence/ui-final-home.png), and no audit helpers or generated-audio playback processes remained. No app fixes, version bump, commit, or release publication were performed during the audit.
 
-Next: review and fix **210-01** and **210-02**, followed by the Pitch transition gap. Re-run the relevant reproducer after each fix, then resume the outstanding live acceptance checks from the [release roadmap](RELEASE-2.1.0-ROADMAP.md).
+Post-audit update: **210-01 is fixed**, with [Debug/Release verification](release-2.1.0-evidence/fixes/210-01/README.md). **210-02 is also fixed**, with [blocked-call regressions and a normal live Power check](release-2.1.0-evidence/fixes/210-02/README.md). **210-03 is fixed**, with [Debug/Release continuity and shifted-frequency verification](release-2.1.0-evidence/fixes/210-03/README.md). **210-04 is fixed**, with [viewport regressions and actual resize/scroll checks](release-2.1.0-evidence/fixes/210-04/README.md). **210-05 is deferred by user decision** and remains a known accessibility limitation. **210-06 is fixed**, with [Power/restoration regressions and an actual app check](release-2.1.0-evidence/fixes/210-06/README.md). **210-07 is fixed**, with deterministic writer-stall coverage, all 16 regressions, Debug/Release builds, and a 96.70-second live repeat on the original Bluetooth path passing. Built-in/Bluetooth hot switching and quit/relaunch preservation also pass. The final 2.1.0 (4) source and internal DMG are prepared, but Developer ID signing/notarization and an attended sleep/wake check remain external acceptance boundaries. See the [device evidence](release-2.1.0-evidence/live-acceptance/device-switch-and-quit.md), [candidate record](release-2.1.0-evidence/release-candidate-build4.md), and [release roadmap](RELEASE-2.1.0-ROADMAP.md).

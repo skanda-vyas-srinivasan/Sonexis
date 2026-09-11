@@ -1,0 +1,8 @@
+{
+  "workspace.json": true,
+  "presets.backup.json": true,
+  "workspace.backup.json": true,
+  "presets.json": true,
+  "chains.backup.json": true,
+  "chains.json": true
+}

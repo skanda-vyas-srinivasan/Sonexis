@@ -1,0 +1,7 @@
+{
+  "Sonexis/CanvasView/CanvasView.swift": "71e70e8fcfe191c9ab50acb13dd7c8bf3bad4a2409e11e734d15e9bfaeb6c613",
+  "Sonexis/CanvasView/SupportingTypes.swift": "929a1da035802eefa482fdb0f25237433c8e50be5e000aa36c446880cb5c8ec3",
+  "Sonexis/CanvasView/FlowLine.swift": "cd989b7ae134063acba00e1ec82c92644c185909f8f24072d496dba124a025bf",
+  "Tests/CanvasViewport/main.swift": "185542365999ffae8d4e0c7230b35f8ea45616537e6e50f29c1ce94832d0a439",
+  "Scripts/test-canvas-viewport.sh": "aff38c04b86f43fae3cf821a01d8214669de8de80d37b8da7862a3a1ed25945e"
+}

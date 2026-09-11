@@ -66,6 +66,34 @@ expect(overloadResult?.droppedFrames == 1 && overloadResult?.writtenFrames == 3,
 let overloadSamples = try read(overloadResult!.url)
 expect(overloadSamples == first, "Accepted audio must survive writer overload")
 
+// A temporary writer stall must be absorbed by the default reserve. This
+// models scheduler/filesystem pauses without ever blocking or allocating in
+// the real-time append path.
+let stalledWriterEntered = DispatchSemaphore(value: 0)
+let releaseStalledWriter = DispatchSemaphore(value: 0)
+var isFirstStalledWrite = true
+let buffered = try AudioRecordingSession(url: root.appendingPathComponent("buffered-stall.wav"), sampleRate: 48_000,
+    channels: 2, frameCapacity: 1024,
+    writeBuffer: { file, buffer in
+        if isFirstStalledWrite {
+            isFirstStalledWrite = false
+            stalledWriterEntered.signal()
+            _ = releaseStalledWriter.wait(timeout: .now() + 5)
+        }
+        try file.write(from: buffer)
+    }, onIssue: { fatalError($0) })
+append(first, to: buffered)
+expect(stalledWriterEntered.wait(timeout: .now() + 5) == .success, "Buffered writer not entered")
+for index in 0..<96 {
+    append([Float(index) / 100, -Float(index) / 100], to: buffered)
+}
+releaseStalledWriter.signal()
+let bufferedResult = finish(buffered)
+expect(bufferedResult.droppedFrames == 0 && bufferedResult.writtenFrames == 99,
+       "Default recording reserve must absorb a temporary writer stall")
+let bufferedSamples = try read(bufferedResult.url)
+expect(bufferedSamples.count == 198, "Buffered stall recording must retain every sample")
+
 let oversized = try AudioRecordingSession(url: root.appendingPathComponent("oversized.wav"), sampleRate: 48_000,
     channels: 2, frameCapacity: 2, onIssue: { _ in })
 append(first, to: oversized)
@@ -97,4 +125,4 @@ append([0.1, -0.2, 0.3], to: mono, rate: 44_100, channels: 1)
 let monoResult = finish(mono)
 let monoSamples = try read(monoResult.url)
 expect(monoSamples == [0.1, -0.2, 0.3], "Fresh mono session must not inherit previous errors or state")
-print("PASS: exact WAV samples/order, variable blocks, stop/drain, post-stop rejection, bounded overload, oversize recovery, format changes, disk failures, independent mono session")
+print("PASS: exact WAV samples/order, variable blocks, stop/drain, post-stop rejection, buffered writer stalls, bounded overload, oversize recovery, format changes, disk failures, independent mono session")

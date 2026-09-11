@@ -1,0 +1,6 @@
+2026-09-10 10:31:05.788 recording-tests[62575:3346075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-10 10:31:05.790 recording-tests[62575:3346075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-10 10:31:05.842 recording-tests[62575:3346075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-10 10:31:05.842 recording-tests[62575:3346075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-10 10:31:05.843 recording-tests[62575:3346075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+PASS: exact WAV samples/order, variable blocks, stop/drain, post-stop rejection, bounded overload, oversize recovery, format changes, disk failures, independent mono session

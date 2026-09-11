@@ -392,7 +392,7 @@ struct ContentView: View {
                     lastGraphSnapshot = snapshot
                     currentPresetID = tutorialRestorePresetID
                     if tutorialWasRunning && !audioEngine.isRunning { audioEngine.start() }
-                    if !tutorialWasRunning && audioEngine.isRunning { audioEngine.stop() }
+                    if !tutorialWasRunning && (audioEngine.isRunning || audioEngine.isPowerTransitioning) { audioEngine.stop() }
                     if needsHeadlessRestore {
                         tutorialRestoreSnapshot = nil
                         tutorialRestorePresetID = nil

@@ -35,8 +35,13 @@ struct TutorialOverlay: View {
                 }
             }()
 
+            // Power stays available throughout App Chains without stealing the
+            // current exercise's highlight or adding a colored border to Power.
+            let powerRects = step.isAppChainStep && !isReviewing
+                ? [convertToLocal(rect: targets[.buildPower], proxy: proxy)].compactMap { $0 }
+                : []
             ZStack {
-                dimmingLayer(size: size, highlights: highlightRects)
+                dimmingLayer(size: size, highlights: highlightRects + powerRects)
                     .allowsHitTesting(false)
 
                 if isReviewing {

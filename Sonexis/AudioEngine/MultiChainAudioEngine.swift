@@ -47,74 +47,106 @@ protocol AudioChainPipeline: AnyObject {
 }
 extension ProcessTapDSPEngine: AudioChainPipeline {}
 
-/// Main-thread owner of independent DSP/plugin state and non-overlapping taps.
-/// UI selection is deliberately absent: changing the visible canvas must never
-/// change which chains run. The chain-list UI will own this runtime next.
+/// Cancellation is advisory: HAL calls cannot be interrupted safely. The same
+/// serial owner must finish that call and release its resources before retrying.
+private final class AudioLifecycleRequest {
+    private let lock = NSLock()
+    private var cancelled = false
+    func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+}
+
+/// Accessed only on the audio lifecycle queue, including timers/listeners in its
+/// Process Tap pipelines. Retains processors until their IO callbacks are gone.
+private final class AudioPipelineSession {
+    var pipelines: [AudioChainPipeline] = []
+    var processors: [AudioEngine] = []
+    var plan: AudioChainRoutingPlan?
+
+    func stop() {
+        for pipeline in pipelines { pipeline.stopImmediately(reason: "multi-chain routing transition") }
+        pipelines.removeAll()
+        processors.removeAll()
+        plan = nil
+    }
+}
+
+/// Graphs and UI state belong to the main thread. HAL ownership belongs to one
+/// serial queue; UI cancellation never tears down a pipeline concurrently.
 final class MultiChainAudioEngine: ObservableObject {
-    enum State: Equatable { case stopped, running, failed(String) }
+    enum State: Equatable { case stopped, starting, stopping, running, failed(String) }
+    // Both callbacks execute on the serial audio queue, never on main.
     typealias Resolver = (AudioCaptureTarget) throws -> Set<AudioObjectID>
     typealias PipelineFactory = (AudioEngine, ProcessTapSelection) -> AudioChainPipeline
 
     @Published private(set) var definitions: [AudioChainDefinition] = []
     @Published private(set) var state: State = .stopped
+    @Published private(set) var isTransitioning = false
     private(set) var processors: [UUID: AudioEngine] = [:]
-    private var pipelines: [UUID: AudioChainPipeline] = [:]
-    private var activePlan: AudioChainRoutingPlan?
     private var processTimer: Timer?
     @Published private(set) var globallyBypassed = false
+    var onConfigurationRestored: (() -> Void)?
     private let resolve: Resolver
     private let makePipeline: PipelineFactory
+    private let lifecycleQueue: DispatchQueue
+    private let session = AudioPipelineSession()
+    private let operationTimeout: TimeInterval
+    private var request: AudioLifecycleRequest?
+    private var timeoutWork: DispatchWorkItem?
 
     init(resolve: @escaping Resolver = { Set(try $0.processObjectIDs(excluding: kAudioObjectUnknown)) },
-         makePipeline: @escaping PipelineFactory = {
-             ProcessTapDSPEngine(audioProcessor: $0, fixedSelection: $1)
-         }) {
+         makePipeline: PipelineFactory? = nil,
+         operationTimeout: TimeInterval = 10) {
+        let queue = DispatchQueue(label: "Sonexis.AudioLifecycle", qos: .userInitiated)
+        self.lifecycleQueue = queue
         self.resolve = resolve
-        self.makePipeline = makePipeline
+        self.operationTimeout = operationTimeout
+        self.makePipeline = makePipeline ?? {
+            ProcessTapDSPEngine(audioProcessor: $0, fixedSelection: $1, lifecycleQueue: queue)
+        }
     }
 
-    func configure(_ next: [AudioChainDefinition]) throws {
+    private func install(_ next: [AudioChainDefinition], reusing existing: [UUID: AudioEngine]) {
+        let retainedIDs = Set(next.map(\.id))
+        for (id, processor) in existing where !retainedIDs.contains(id) {
+            processor.isRunning = false
+            processor.isPowerTransitioning = false
+            processor.resetOutputMeter()
+        }
+        var nextProcessors: [UUID: AudioEngine] = [:]
+        for chain in next {
+            let processor = existing[chain.id] ?? AudioEngine(observeSystemLifecycle: false)
+            processor.applyIndependentGraph(chain.graph)
+            processor.processTapInputTrimDB = chain.inputTrimDB
+            processor.processTapOutputMakeupDB = chain.outputMakeupDB
+            processor.processTapOutputCeilingEnabled = chain.outputCeilingEnabled
+            processor.processingEnabled = chain.effectsEnabled && !globallyBypassed
+            processor.publishProcessingState()
+            nextProcessors[chain.id] = processor
+        }
+        processors = nextProcessors
+        definitions = next
+    }
+
+    func configure(_ next: [AudioChainDefinition], rollbackOnAudioFailure: Bool = true,
+                   completion: ((Bool) -> Void)? = nil) throws {
         precondition(Thread.isMainThread)
-        let nextPlan = try AudioChainRoutingPlan(chains: next, resolve: resolve)
+        guard !isTransitioning else { throw PrototypeError(message: "Wait for the audio transition to finish.") }
+        // Structural checks never query HAL on the UI thread.
+        _ = try AudioChainRoutingPlan(chains: next, resolve: { _ in [] })
         for chain in next { try chain.graph.validateForIndependentProcessing() }
         let previous = definitions
         let previousProcessors = processors
         let wasRunning = state == .running
-        stopPipelines()
-        do {
-            var nextProcessors: [UUID: AudioEngine] = [:]
-            for chain in next {
-                let processor = previousProcessors[chain.id] ?? AudioEngine(observeSystemLifecycle: false)
-                processor.applyIndependentGraph(chain.graph)
-                processor.processTapInputTrimDB = chain.inputTrimDB
-                processor.processTapOutputMakeupDB = chain.outputMakeupDB
-                processor.processTapOutputCeilingEnabled = chain.outputCeilingEnabled
-                processor.processingEnabled = chain.effectsEnabled && !globallyBypassed
-                processor.publishProcessingState()
-                nextProcessors[chain.id] = processor
-            }
-            processors = nextProcessors
-            definitions = next
-            if wasRunning { try startPipelines(plan: nextPlan) }
-            else { state = .stopped }
-        } catch {
-            stopPipelines()
-            definitions = previous
-            processors = previousProcessors
-            for chain in previous {
-                processors[chain.id]?.applyIndependentGraph(chain.graph)
-                processors[chain.id]?.processTapInputTrimDB = chain.inputTrimDB
-                processors[chain.id]?.processTapOutputMakeupDB = chain.outputMakeupDB
-                processors[chain.id]?.processTapOutputCeilingEnabled = chain.outputCeilingEnabled
-                processors[chain.id]?.processingEnabled = chain.effectsEnabled && !globallyBypassed
-                processors[chain.id]?.publishProcessingState()
-            }
-            if wasRunning {
-                do { try startPipelines(plan: AudioChainRoutingPlan(chains: previous, resolve: resolve)) }
-                catch { state = .failed("Could not restore chains: \(error)") }
-            }
-            throw error
-        }
+        install(next, reusing: previousProcessors)
+        if wasRunning {
+            let restore: (() -> Void)? = rollbackOnAudioFailure ? { [weak self] in
+                guard let self else { return }
+                self.install(previous, reusing: previousProcessors)
+                self.onConfigurationRestored?()
+            } : nil
+            transition(rollback: restore, completion: completion)
+        } else { setState(.stopped); completion?(true) }
     }
 
     /// Capture editor changes without reapplying graphs or restarting workers.
@@ -138,43 +170,143 @@ final class MultiChainAudioEngine: ObservableObject {
 
     func start() throws {
         precondition(Thread.isMainThread)
-        guard state != .running else { return }
-        do {
-            try startPipelines(plan: AudioChainRoutingPlan(chains: definitions, resolve: resolve))
-            processTimer?.invalidate()
-            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-                guard let self, self.state == .running else { return }
-                do { try self.refreshProcesses() }
-                catch { self.stopPipelines(); self.state = .failed("App routing update failed: \(error)") }
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            processTimer = timer
-        } catch {
-            stopPipelines()
-            state = .failed(String(describing: error))
-            throw error
-        }
+        guard state != .running, !isTransitioning else { return }
+        _ = try AudioChainRoutingPlan(chains: definitions, resolve: { _ in [] })
+        transition()
     }
 
     func stop() {
         precondition(Thread.isMainThread)
         processTimer?.invalidate()
         processTimer = nil
-        stopPipelines()
         for processor in processors.values { processor.stopRecording() }
-        state = .stopped
+        if let request {
+            request.cancel()
+            setState(.stopping)
+            return // The pending operation owns cleanup, even if HAL is stalled.
+        }
+        guard state != .stopped else { return }
+        let token = beginRequest(state: .stopping)
+        let session = session
+        lifecycleQueue.async { [weak self] in
+            session.stop()
+            DispatchQueue.main.async { self?.complete(token, error: nil) }
+        }
     }
 
     func refreshProcesses() throws {
         precondition(Thread.isMainThread)
-        guard state == .running else { return }
-        let next = try AudioChainRoutingPlan(chains: definitions, resolve: resolve)
-        guard next != activePlan else { return }
-        // Stop every old partition before starting any new one. Otherwise the
-        // default could still contain a process that an override has just added.
-        stopPipelines()
-        do { try startPipelines(plan: next) }
-        catch { state = .failed(String(describing: error)); throw error }
+        guard state == .running, !isTransitioning else { return }
+        transition(refreshOnly: true)
+    }
+
+    private func setState(_ next: State) {
+        state = next
+        for processor in processors.values {
+            processor.isRunning = next == .running
+            processor.isPowerTransitioning = isTransitioning && next != .running
+            if next != .running { processor.resetOutputMeter() }
+        }
+    }
+
+    private func beginRequest(state: State) -> AudioLifecycleRequest {
+        let token = AudioLifecycleRequest()
+        request = token
+        isTransitioning = true
+        setState(state)
+        let timeout = DispatchWorkItem { [weak self, weak token] in
+            guard let self, let token, self.request === token else { return }
+            token.cancel()
+            self.setState(.failed("Core Audio is not responding. Cancellation is pending; you can keep using the editor. Retry audio after cleanup finishes, or quit and reopen Sonexis."))
+        }
+        timeoutWork = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + operationTimeout, execute: timeout)
+        return token
+    }
+
+    private func complete(_ token: AudioLifecycleRequest, error: Error?, rollback: (() -> Void)? = nil,
+                          completion: ((Bool) -> Void)? = nil) {
+        precondition(Thread.isMainThread)
+        guard request === token else { return }
+        if token.isCancelled {
+            // Cancellation may arrive after the worker's last check, while its
+            // completion is queued on main. Always acknowledge cleanup first.
+            let session = session
+            lifecycleQueue.async { [weak self] in
+                session.stop()
+                DispatchQueue.main.async {
+                    guard let self, self.request === token else { return }
+                    self.timeoutWork?.cancel()
+                    self.timeoutWork = nil
+                    self.request = nil
+                    self.isTransitioning = false
+                    if case .failed = self.state { self.setState(self.state) }
+                    else { self.setState(.stopped) }
+                    completion?(true) // Explicit cancellation preserves the accepted document.
+                }
+            }
+            return
+        }
+        timeoutWork?.cancel()
+        timeoutWork = nil
+        request = nil
+        isTransitioning = false
+        if let error {
+            if let rollback {
+                rollback()
+                completion?(false)
+                transition() // Old partitions were fully stopped before restore.
+                return
+            }
+            setState(.failed("Could not start audio: \(error)"))
+            completion?(false)
+        } else {
+            setState(state == .stopping ? .stopped : .running)
+            if state == .running { startProcessTimer() }
+            completion?(true)
+        }
+    }
+
+    private func transition(refreshOnly: Bool = false, rollback: (() -> Void)? = nil,
+                            completion: ((Bool) -> Void)? = nil) {
+        let token = beginRequest(state: refreshOnly ? .running : .starting)
+        let definitions = definitions, processors = processors
+        let session = session, resolve = resolve, factory = makePipeline
+        lifecycleQueue.async { [weak self] in
+            var failure: Error?
+            do {
+                guard !token.isCancelled else { throw PrototypeError(message: "Audio operation cancelled") }
+                let plan = try AudioChainRoutingPlan(chains: definitions, resolve: resolve)
+                if !refreshOnly || plan != session.plan {
+                    session.stop()
+                    if !token.isCancelled {
+                        session.processors = Array(processors.values)
+                        for chain in definitions {
+                            if token.isCancelled { break }
+                            guard let processor = processors[chain.id], let selection = plan.selections[chain.id] else {
+                                throw PrototypeError(message: "Chain processor or route is missing")
+                            }
+                            let pipeline = factory(processor, selection)
+                            session.pipelines.append(pipeline)
+                            try pipeline.start()
+                        }
+                        session.plan = plan
+                    }
+                }
+            } catch { failure = error }
+            if failure != nil || token.isCancelled { session.stop() }
+            let result = failure
+            DispatchQueue.main.async { self?.complete(token, error: result, rollback: rollback, completion: completion) }
+        }
+    }
+
+    private func startProcessTimer() {
+        guard processTimer == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            try? self?.refreshProcesses()
+        }
+        processTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     func setGlobalBypass(_ bypassed: Bool) {
@@ -204,39 +336,14 @@ final class MultiChainAudioEngine: ObservableObject {
         definitions[index].graph = graph
     }
 
-    private func startPipelines(plan: AudioChainRoutingPlan) throws {
-        do {
-            for chain in definitions {
-                guard let processor = processors[chain.id], let selection = plan.selections[chain.id] else {
-                    throw PrototypeError(message: "Chain processor or route is missing")
-                }
-                let pipeline = makePipeline(processor, selection)
-                pipelines[chain.id] = pipeline
-                try pipeline.start()
-                processor.isRunning = true
-            }
-            activePlan = plan
-            state = .running
-        } catch {
-            stopPipelines()
-            throw error
-        }
-    }
-
-    private func stopPipelines() {
-        for pipeline in pipelines.values { pipeline.stopImmediately(reason: "multi-chain routing transition") }
-        pipelines.removeAll()
-        for processor in processors.values {
-            processor.isRunning = false
-            processor.resetOutputMeter()
-        }
-        activePlan = nil
-    }
-
     deinit {
         processTimer?.invalidate()
-        for pipeline in pipelines.values { pipeline.stopImmediately(reason: "multi-chain runtime released") }
+        timeoutWork?.cancel()
+        request?.cancel()
+        let session = session
+        lifecycleQueue.async { session.stop() }
     }
+
 }
 
 extension GraphSnapshot {

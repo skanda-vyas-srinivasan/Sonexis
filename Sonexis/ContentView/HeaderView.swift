@@ -19,26 +19,34 @@ struct HeaderView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                let powerLockedByTutorial = tutorial.isActive && tutorial.step != .buildPower
+                let powerLockedByTutorial = !tutorial.step.allowsPowerControl
 
                 // Power button with status
                 VStack(spacing: 4) {
                     Button(action: {
                         guard !powerLockedByTutorial else { return }
 
-                        if audioEngine.isRunning {
+                        if audioEngine.isRunning || audioEngine.isPowerTransitioning {
                             audioEngine.stop()
                         } else {
                             audioEngine.start()
                             if audioEngine.isRunning { tutorial.advanceIf(.buildPower) }
                         }
                     }) {
-                        Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
+                        Group {
+                            if audioEngine.isPowerTransitioning {
+                                ProgressView().controlSize(.small).frame(width: 24, height: 24)
+                            } else {
+                                Image(systemName: audioEngine.isRunning ? "power.circle.fill" : "power.circle")
+                            }
+                        }
                             .font(.system(size: 24))
                             .foregroundColor(audioEngine.isRunning ? AppColors.success : AppColors.textMuted)
                             .shadow(color: audioEngine.isRunning ? AppColors.success.opacity(0.18) : .clear, radius: 8)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Power")
+                    .accessibilityValue(audioEngine.isPowerTransitioning ? "Pending" : (audioEngine.isRunning ? "On" : "Off"))
                     .disabled(powerLockedByTutorial)
                     .onChange(of: tutorial.step) { step in
                         if step == .buildPower && audioEngine.isRunning { tutorial.advanceIf(.buildPower) }
@@ -47,7 +55,7 @@ struct HeaderView: View {
                         if running { tutorial.advanceIf(.buildPower) }
                     }
                     .opacity(powerLockedByTutorial ? 0.45 : 1)
-                    .help(powerLockedByTutorial ? "Power is controlled by this tutorial" : (audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText))
+                    .help(powerLockedByTutorial ? "Power is controlled by this tutorial" : (audioEngine.isPowerTransitioning ? "Cancel pending audio operation" : (audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)))
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(

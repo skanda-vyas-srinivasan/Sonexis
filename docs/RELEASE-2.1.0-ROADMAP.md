@@ -14,10 +14,10 @@ Feature scope is closed. Additional work should address demonstrated defects or 
 | --- | --- | --- | --- |
 | 1 | Establish the release baseline | Record source revision plus working-tree state, build configuration, machine, and test commands | Recorded in the audit |
 | 2 | Test and reproduce | Run regression suites and targeted stress, audio, security/input-validation, tutorial, and UI/accessibility checks; retain logs and reproducers | First pass complete; see audit coverage and gaps |
-| 3 | Agree on and fix proven issues | Work through `sonexis_issues_version210release.md` by severity; attach before/after evidence to each fix | Pending audit |
-| 4 | Complete real-device acceptance | Check live app routing, listening, recovery, tutorial interaction, fresh launch, and upgrade in a release candidate | Pending |
-| 5 | Prepare the release | Set version/build, commit the reviewed changes, prepare release notes and signed/notarized app and installer | Pending |
-| 6 | Verify and publish | Install the exact candidate DMG, check launch/update behavior, then approve publication of that artifact | Pending |
+| 3 | Agree on and fix proven issues | Work through `sonexis_issues_version210release.md` by severity; attach before/after evidence to each fix | 210-01–04 and 210-06–07 fixed; 210-05 deferred |
+| 4 | Complete real-device acceptance | Check live app routing, listening, recovery, tutorial interaction, fresh launch, and upgrade in a release candidate | Available-device checks passed; real sleep/wake requires an attended run |
+| 5 | Prepare the release | Set version/build, commit the reviewed changes, prepare release notes and signed/notarized app and installer | 2.1.0 (4), notes, builds, and internal DMG complete; Developer ID/notary credentials unavailable |
+| 6 | Verify and publish | Install the exact candidate DMG, check launch/update behavior, then approve publication of that artifact | Blocked until a signed/notarized artifact exists; nothing published |
 
 ## Testing and acceptance
 
@@ -60,7 +60,7 @@ Use temporary test data and offline audio for destructive/malformed-input tests.
 
 ## Release preparation
 
-- Set marketing version to 2.1.0 and use an incremented build number for each candidate. The inspected project still says 2.0.1 (build 3).
+- Marketing version is 2.1.0 and the first candidate build is 4. Increment the build number for any replacement candidate.
 - Commit the intended app, assets, tests, and documentation; record the exact revision used for the candidate.
 - Run the existing `Scripts/test-*.sh` suites against a fresh matching Debug build. Several suites link its debug library, so build before running them. Also compile and exercise an optimized Release build.
 - Export/sign/notarize the app, then use the [DMG workflow](../Scripts/DMG-README.md). The installer script consumes an already-notarized app; it does not perform the app notarization step.
@@ -71,8 +71,21 @@ Use temporary test data and offline audio for destructive/malformed-input tests.
 
 Do not ship with a reproduced crash in a normal workflow, lost saved work, unintended capture/duplicate processing, persistent audio loss, or a blocked essential control. Resolve other proven issues or explicitly accept a documented limitation before release. An untested area remains unverified, not passed. No fixed release date is implied by this checklist.
 
-Next: review confirmed issues 210-01 and 210-02, then fix and re-test them before continuing live acceptance.
+Next: on a machine with the Developer ID certificate and notary credentials, sign/notarize/staple build 4, build the final DMG, and perform its install/launch check. An attended real sleep/wake cycle remains the only uncompleted device test. Default plus two simultaneous app chains routed independently, device switching passed in both directions while running, the fixed recorder passed a 96.70-second live Bluetooth repeat, and quit/relaunch preserved all saved files. Issues 210-01–04 and 210-06–07 have passing fix evidence. Gain slider accessibility (210-05) is deferred by user decision and remains a known limitation.
 
 ## First audit outcome — 2026-09-10
 
-The [audit record](RELEASE-2.1.0-AUDIT.md) documents passing regressions and additional stress checks. Six observed issues are recorded in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md), including a malformed-preset crash, a main-thread HAL startup hang, and a Pitch activation gap. Review 210-01 and 210-02 first. Live routing/device and final installer acceptance remain open; an attempted or blocked check has not been marked passed.
+The [audit record](RELEASE-2.1.0-AUDIT.md) documents passing regressions and additional stress checks. Seven observed issues are recorded in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md), including the live-recording frame loss found during real-device acceptance. Device recovery and final installer acceptance remain open; an attempted or blocked check has not been marked passed.
+
+## Fix progress
+
+- **210-01 fixed:** Bitcrusher values are bounded on load and before DSP integer conversion. Original crash probes and additional safety regressions pass in Debug and optimized Release; preset, workspace and chain-workspace regressions pass. [Verification](release-2.1.0-evidence/fixes/210-01/README.md).
+- **210-02 fixed:** Serial background HAL ownership, pending/cancel/timeout handling, late-start cleanup, and safe retry. Blocked-call tests, normal live Power start/stop, and all 14 regression suites pass. [Verification](release-2.1.0-evidence/fixes/210-02/README.md). The underlying OS stall is not claimed fixed.
+- **210-03 fixed:** Current audio remains audible during Pitch warm-up, then fades into shifted output. The original half-second silent gap is gone in Debug and Release; 72 activation cases and a silent-startup check pass in each configuration. Existing buffering latency remains. [Verification](release-2.1.0-evidence/fixes/210-03/README.md).
+- **210-04 fixed:** Oversized canvases scroll without resizing tiles or rewriting saved node positions. Scrolled controls/menus and the original wide/narrow resize case are verified in the app; viewport and existing regressions pass. [Verification](release-2.1.0-evidence/fixes/210-04/README.md).
+- **210-05 deferred by user:** Gain sliders still lack accessible names/units; this is a known limitation, not a passing check.
+- **210-06 fixed:** Power is available throughout App Chains in the header, menu bar and workspace action. Finish/Skip/Continue restore the original Power state; regression and actual app checks pass. [Verification](release-2.1.0-evidence/fixes/210-06/README.md).
+- **210-07 fixed:** The recording reserve now absorbs 128 blocks and the writer uses user-initiated scheduling. The deterministic 96-block stall, all regressions, Debug/Release builds, and a 96.70-second live Bluetooth repeat pass. [Verification](release-2.1.0-evidence/fixes/210-07/README.md).
+- **Device acceptance:** Built-in 48 kHz and Bluetooth 44.1 kHz hot switches passed while running; quit/relaunch preserved all six saved files. [Evidence](release-2.1.0-evidence/live-acceptance/device-switch-and-quit.md). Real sleep/wake requires an attended check.
+- **Release candidate:** 2.1.0 build 4 and an internally verified unsigned DMG are prepared. Developer ID signing/notarization are blocked by missing Keychain credentials. [Evidence](release-2.1.0-evidence/release-candidate-build4.md).
+- **Next:** Produce and install-test the signed/notarized artifact on a credentialed machine, then approve publication.

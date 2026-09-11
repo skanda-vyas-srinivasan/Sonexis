@@ -47,6 +47,20 @@ struct PluginReference: Codable, Equatable {
     }
 }
 
+enum BitcrusherParameterLimits {
+    static let bitDepth = 4.0...16.0
+    static let downsample = 1.0...20.0
+
+    // Check finiteness and clamp while still a Double, before any Int conversion.
+    static func boundedBitDepth(_ value: Double) -> Double {
+        value.isFinite ? min(max(value, bitDepth.lowerBound), bitDepth.upperBound) : 8
+    }
+
+    static func boundedDownsample(_ value: Double) -> Double {
+        value.isFinite ? min(max(value, downsample.lowerBound), downsample.upperBound) : 4
+    }
+}
+
 struct NodeEffectParameters: Codable, Equatable {
     var bassBoostAmount: Double
     var enhancerAmount: Double
@@ -390,8 +404,10 @@ struct NodeEffectParameters: Codable, Equatable {
         flangerDepth = try container.decodeIfPresent(Double.self, forKey: .flangerDepth) ?? defaults.flangerDepth
         flangerFeedback = try container.decodeIfPresent(Double.self, forKey: .flangerFeedback) ?? defaults.flangerFeedback
         flangerMix = try container.decodeIfPresent(Double.self, forKey: .flangerMix) ?? defaults.flangerMix
-        bitcrusherBitDepth = try container.decodeIfPresent(Double.self, forKey: .bitcrusherBitDepth) ?? defaults.bitcrusherBitDepth
-        bitcrusherDownsample = try container.decodeIfPresent(Double.self, forKey: .bitcrusherDownsample) ?? defaults.bitcrusherDownsample
+        bitcrusherBitDepth = BitcrusherParameterLimits.boundedBitDepth(
+            try container.decodeIfPresent(Double.self, forKey: .bitcrusherBitDepth) ?? defaults.bitcrusherBitDepth)
+        bitcrusherDownsample = BitcrusherParameterLimits.boundedDownsample(
+            try container.decodeIfPresent(Double.self, forKey: .bitcrusherDownsample) ?? defaults.bitcrusherDownsample)
         bitcrusherMix = try container.decodeIfPresent(Double.self, forKey: .bitcrusherMix) ?? defaults.bitcrusherMix
         tapeSaturationDrive = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationDrive) ?? defaults.tapeSaturationDrive
         tapeSaturationMix = try container.decodeIfPresent(Double.self, forKey: .tapeSaturationMix) ?? defaults.tapeSaturationMix

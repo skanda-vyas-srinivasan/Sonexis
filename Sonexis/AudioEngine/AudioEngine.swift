@@ -390,6 +390,7 @@ class AudioEngine: ObservableObject {
     var processTapEngine: ProcessTapDSPEngine?
     var processTapStopInProgress = false
     @Published var isRunning = false
+    @Published var isPowerTransitioning = false
     @Published var errorMessage: String?
     @Published var inputDeviceName: String = "Searching..."
     @Published var outputDeviceName: String = "Searching..."

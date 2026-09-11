@@ -1,0 +1,2 @@
+2026-09-10 11:22:21.075 integration-tests[65375:3398178] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+PASS: real engine add/remove/reorder/rewire, bypass, split/manual/automatic, exact final-output WAV, single stateful render per block

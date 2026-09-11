@@ -1,0 +1,113 @@
+2026-09-10 10:56:45.085 xcodebuild[63590:3368838]  DVTFilePathFSEvents: Failed to start fs event stream.
+2026-09-10 10:56:45.253 xcodebuild[63590:3368837] [MT] DVTDeveloperPaths: Failed to get length of DARWIN_USER_CACHE_DIR from confstr(3), error = Error Domain=NSPOSIXErrorDomain Code=5 "Input/output error". Using NSCachesDirectory instead.
+2026-09-10 10:56:45.510 xcodebuild[63590:3368839] CoreSimulatorService connection became invalid.  Simulator services will no longer be available.
+2026-09-10 10:56:45.510 xcodebuild[63590:3368881] Logging connecton invalid: <OS_xpc_error: <dictionary: 0x1fd0555f0> { count = 1, transaction: 0, voucher = 0x0, contents =
+	"XPCErrorDescription" => <string: 0x1fd055730> { string cache = 0x0, length = 18, contents = "Connection invalid" }
+}>
+[-[SimServiceContext sendRequest:]:1751] ERROR : Unable to deliver request ({
+    "developer_dir" = "/Applications/Xcode.app/Contents/Developer";
+    request = "set_developer_dir";
+}) because we are not connected to CoreSimulatorService.
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project Sonexis.xcodeproj -scheme Sonexis -configuration Debug -derivedDataPath .build/DerivedData -destination platform=macOS build CODE_SIGNING_ALLOWED=NO
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+
+2026-09-10 10:56:45.553 xcodebuild[63590:3368837] [MT] DVTAssertions: Warning in DVTFrameworks/DVTFoundation/FileTypes/DVTFileDataTypeDetection.m:80
+Details:  detectedTypeIdentifier (com.apple.xml-property-list) does not conform to matchedTypeIdentifier in MagicFileDataTypeDetector extenson com.apple.property-list. When both are specified, this conformance is required unless overridden by setting allowNonInheritance. extension.identifier:Xcode.MagicFileDataTypeDetector.XMLPlist
+Object:   <DVTFileDataTypeDetectionMagicCache: 0xbc9ec8090>
+Method:   -initWithExtension:
+Thread:   <_NSMainThread: 0x100de9d40>{number = 1, name = main}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+2026-09-10 10:56:45.554 xcodebuild[63590:3368837] [MT] DVTAssertions: Warning in DVTFrameworks/DVTFoundation/FileTypes/DVTFileDataTypeDetection.m:80
+Details:  detectedTypeIdentifier (com.apple.binary-property-list) does not conform to matchedTypeIdentifier in MagicFileDataTypeDetector extenson com.apple.property-list. When both are specified, this conformance is required unless overridden by setting allowNonInheritance. extension.identifier:Xcode.MagicFileDataTypeDetector.BinaryPlist
+Object:   <DVTFileDataTypeDetectionMagicCache: 0xbc9ec9200>
+Method:   -initWithExtension:
+Thread:   <_NSMainThread: 0x100de9d40>{number = 1, name = main}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+[-[SimServiceContext initWithDeveloperDir:connectionType:error:]:432] WARN  : Unable to discover any Simulator runtimes. Developer Directory is /Applications/Xcode.app/Contents/Developer.
+[-[SimDiskImageManager init]:175] ERROR : Could not kickstart simdiskimaged; SimDiskImageManager services will not be available: Error Domain=NSPOSIXErrorDomain Code=53 "Software caused connection abort" UserInfo={NSLocalizedDescription=Error returned in reply from CoreSimulatorService: Connection invalid}
+[-[SimDiskImageManager _onQueue_checkConnection:]:239] ERROR : simdiskimaged returned error (invalid), marking disconnected.
+[-[SimDiskImageManager _onQueue_checkConnection:]:239] ERROR : simdiskimaged returned error (invalid), marking disconnected.
+[-[SimServiceContext initWithDeveloperDir:connectionType:error:]_block_invoke:468] ERROR : Could not get list of trusted mount directories: Error Domain=com.apple.CoreSimulator.SimError Code=410 "The service used to manage runtime disk images (simdiskimaged) crashed or is not responding" UserInfo={NSLocalizedDescription=The service used to manage runtime disk images (simdiskimaged) crashed or is not responding}
+[-[SimServiceContext sendRequest:reply:error:]:1771] ERROR : Unable to deliver request ({
+    request = "notification_subscription";
+    "set_path" = "/Users/skandavyas/Library/Developer/CoreSimulator/Devices";
+}) because we are not connected to CoreSimulatorService.
+2026-09-10 10:56:45.617 xcodebuild[63590:3368882] Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedDescription=CoreSimulatorService connection became invalid.  Simulator services will no longer be available.}
+[-[SimServiceContext sendRequest:reply:error:]:1771] ERROR : Unable to deliver request ({
+    request = "notification_subscription";
+    "set_path" = "/Users/skandavyas/Library/Developer/CoreSimulator/Devices";
+}) because we are not connected to CoreSimulatorService.
+2026-09-10 10:56:45.618 xcodebuild[63590:3368882]  iOSSimulator: [SimServiceContext defaultDeviceSetWithError:] returned nil (Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedFailureReason=Failed to subscribe to notifications from CoreSimulatorService., NSLocalizedDescription=Failed to initialize simulator device set., NSUnderlyingError=0xbca1147b0 {Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedDescription=CoreSimulatorService connection became invalid.  Simulator services will no longer be available.}}}). Simulator device support disabled.
+2026-09-10 10:56:45.618 xcodebuild[63590:3368838] Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedDescription=CoreSimulatorService connection became invalid.  Simulator services will no longer be available.}
+2026-09-10 10:56:45.618 xcodebuild[63590:3368838]  IDESimulatorAvailability: startObservingSimulatorUpdates() FAILED to register SimDeviceSet observer
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00008132-001A71CE1139001C, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00008132-001A71CE1139001C, name:My Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'Sonexis' in project 'Sonexis' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk /Users/skandavyas/Sonexis/.build/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache
+    cd /Users/skandavyas/Sonexis/Sonexis.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -o /Users/skandavyas/Sonexis/.build/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache
+Failed to create FS event stream. Considering the cache up-to-date.
+
+CompileC /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/RubberBandWrapper.o /Users/skandavyas/Sonexis/Sonexis/Wrappers/RubberBandWrapper.mm normal arm64 objective-c++ com.apple.compilers.llvm.clang.1_0.compiler (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    
+    Using response file: /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/af3fcb34312c57c0f52879cdce924b91-common-args.resp
+    
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c++ -ivfsstatcache /Users/skandavyas/Sonexis/.build/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache -target arm64-apple-macos14.4 -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/skandavyas/Sonexis/.build/DerivedData/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Werror\=return-type -Wdocumentation -Wunreachable-code -Wquoted-include-in-framework-header -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wimplicit-retain-self -Wno-non-virtual-dtor -Wno-overloaded-virtual -Wno-exit-time-destructors -Wduplicate-method-match -Wno-missing-braces -Wparentheses -Wswitch -Wunused-function -Wno-unused-label -Wno-unused-parameter -Wunused-variable -Wunused-value -Wempty-body -Wuninitialized -Wconditional-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wconstant-conversion -Wint-conversion -Wbool-conversion -Wenum-conversion -Wno-float-conversion -Wnon-literal-null-conversion -Wobjc-literal-conversion -Wshorten-64-to-32 -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wundeclared-selector -Wdeprecated-implementations -Wno-c++11-extensions -Wno-implicit-fallthrough -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Winvalid-offsetof -Wno-sign-conversion -Winfinite-recursion -Wmove -Wcomma -Wblock-capture-autoreleasing -Wstrict-prototypes -Wrange-loop-analysis -Wno-semicolon-before-method-body -Wunguarded-availability -index-store-path /Users/skandavyas/Sonexis/.build/DerivedData/Index.noindex/DataStore @/Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/af3fcb34312c57c0f52879cdce924b91-common-args.resp -MMD -MT dependencies -MF /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/RubberBandWrapper.d --serialize-diagnostics /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/RubberBandWrapper.dia -c /Users/skandavyas/Sonexis/Sonexis/Wrappers/RubberBandWrapper.mm -o /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/RubberBandWrapper.o -index-unit-output-path /Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/RubberBandWrapper.o
+
+Ld /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib normal (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++ -Xlinker -reproducible -target arm64-apple-macos14.4 -dynamiclib -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -O0 -L/Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -L/Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug -F/Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -F/Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug -filelist /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis.LinkFileList -install_name @rpath/Sonexis.debug.dylib -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @executable_path/../Frameworks -Xlinker -object_path_lto -Xlinker /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis_dependency_info.dat -fobjc-arc -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis.swiftmodule @/Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis-linker-args.resp -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -framework Accelerate -o /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib
+
+ConstructStubExecutorLinkFileList /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis-ExecutorLinkFileList-normal-arm64.txt (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    construct-stub-executor-link-file-list /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'Sonexis' from project 'Sonexis')
+
+Ld /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis normal (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++ -Xlinker -reproducible -target arm64-apple-macos14.4 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -O0 -L/Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug -F/Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker @executable_path/../Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis-ExecutorLinkFileList-normal-arm64.txt /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib -o /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis
+
+ExtractAppIntentsMetadata (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Sonexis --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk --xcode-version 17F113 --platform-family macOS --deployment-target 14.4 --bundle-identifier com.sonexis.app --output /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/Resources --target-triple arm64-apple-macos14.4 --binary-file /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis --dependency-file /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis_dependency_info.dat --stringsdata-file /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis.SwiftFileList --metadata-file-list /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis.DependencyMetadataFileList --static-metadata-file-list /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Sonexis.DependencyStaticMetadataFileList --swift-const-vals-list /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/Objects-normal/arm64/Sonexis.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-10 10:56:47.183 appintentsmetadataprocessor[63623:3369121] Starting appintentsmetadataprocessor export
+2026-09-10 10:56:47.186 appintentsmetadataprocessor[63623:3369121] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+GenerateDSYMFile /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app.dSYM /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil -q /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis -o /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app.dSYM
+
+CopySwiftLibs /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib --scan-folder /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/Frameworks --scan-folder /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/PlugIns --scan-folder /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/Library/SystemExtensions --scan-folder /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/Extensions --scan-folder /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Accelerate.framework --platform macosx --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/skandavyas/Sonexis/.build/DerivedData/Build/Intermediates.noindex/Sonexis.build/Debug/Sonexis.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+Ignoring --strip-bitcode because --sign was not passed
+
+GenerateDSYMFile /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app.dSYM /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib (in target 'Sonexis' from project 'Sonexis')
+    cd /Users/skandavyas/Sonexis
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app/Contents/MacOS/Sonexis.debug.dylib -o /Users/skandavyas/Sonexis/.build/DerivedData/Build/Products/Debug/Sonexis.app.dSYM
+
+** BUILD SUCCEEDED **
+

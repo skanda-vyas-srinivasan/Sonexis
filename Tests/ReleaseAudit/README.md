@@ -24,19 +24,26 @@ python3 Scripts/prepare-release-audit.py
 .build/ReleaseAudit/import-fuzz
 ```
 
-The following intentionally reproduce a crash in an isolated helper, with no
-device output or writes to the user's preset library:
+The following reproduced issue 210-01 before its fix. They now must return from
+rendering without a crash, with no device output or writes to the user's library:
 
 ```sh
 .build/ReleaseAudit/audit malformed bitcrusherBitDepth
 .build/ReleaseAudit/audit malformed bitcrusherDownsample
 ```
 
+After a fresh Debug build, `sh Scripts/test-bitcrusher-safety.sh` asserts import,
+persistence and actual DSP behavior for these inputs and additional numeric boundaries.
+
 `malformed` accepts an optional third argument giving the effect's serialized
 name, allowing the same numeric-boundary probe to test other effects.
 
 `pitch-edit` writes `docs/release-2.1.0-evidence/pitch-edit-output.wav` with a quiet
-generated signal, not captured user audio. Performance timings are offline
+generated signal, not captured user audio. Pass a path after `pitch-edit` to save
+new verification audio without overwriting the original failure evidence.
+`sh Scripts/test-pitch-continuity.sh` checks activation/reactivation, requested
+pitch frequency, silence, and mono/stereo at three sample rates after a Debug build.
+Performance timings are offline
 optimized DSP timings; they are not whole-app CPU percentages. `worker-audit`
 uses the actual worker and rings with a synthetic 48 kHz device clock, a
 4,096-frame output reservoir and 1,024-frame read/write blocks. It reports clock

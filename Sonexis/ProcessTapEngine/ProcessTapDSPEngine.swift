@@ -7,13 +7,15 @@ final class ProcessTapDSPEngine {
         configuration: DSPConfiguration = .productBaseline,
         audioProcessor: ProcessTapAudioProcessor? = nil,
         captureTarget: AudioCaptureTarget? = nil,
-        fixedSelection: ProcessTapSelection? = nil
+        fixedSelection: ProcessTapSelection? = nil,
+        lifecycleQueue: DispatchQueue = .main
     ) {
         self.app = ProcessTapDSPApp(
             configuration: configuration,
             audioProcessor: audioProcessor,
             captureTarget: captureTarget,
-            fixedSelection: fixedSelection
+            fixedSelection: fixedSelection,
+            lifecycleQueue: lifecycleQueue
         )
     }
 

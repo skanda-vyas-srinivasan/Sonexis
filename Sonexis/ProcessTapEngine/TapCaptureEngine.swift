@@ -24,10 +24,13 @@ struct TapCaptureConfiguration {
 }
 
 final class TapCaptureEngine {
+    private let lifecycleQueue: DispatchQueue
+    init(lifecycleQueue: DispatchQueue = .main) { self.lifecycleQueue = lifecycleQueue }
+
     var processSelectionDidChange: (() -> Void)?
     private var captureTarget: AudioCaptureTarget?
     private var ownProcessID: AudioObjectID = kAudioObjectUnknown
-    private var processRefreshTimer: Timer?
+    private var processRefreshTimer: DispatchSourceTimer?
     private var selectedProcessIDs: [AudioObjectID] = []
     private var lastRefreshError: String?
     private var tapID: AudioObjectID = kAudioObjectUnknown
@@ -100,7 +103,9 @@ final class TapCaptureEngine {
         sourceDevice = defaultOutput
         tapFormat = createdTapFormat
 
-        processRefreshTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+        let timer = DispatchSource.makeTimerSource(queue: lifecycleQueue)
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in
             guard let self, fixedSelection == nil, self.captureTarget != nil else { return }
             do {
                 let ids = try self.captureTarget?.processObjectIDs(excluding: self.ownProcessID) ?? []
@@ -113,7 +118,8 @@ final class TapCaptureEngine {
             }
         }
 
-        if let processRefreshTimer { RunLoop.main.add(processRefreshTimer, forMode: .common) }
+        processRefreshTimer = timer
+        timer.resume()
 
         return TapCaptureConfiguration(
             sourceDevice: defaultOutput,
@@ -209,7 +215,7 @@ final class TapCaptureEngine {
     }
 
     func destroyTap(log: Bool) {
-        processRefreshTimer?.invalidate()
+        processRefreshTimer?.cancel()
         processRefreshTimer = nil
         if tapID != kAudioObjectUnknown {
             let status = AudioHardwareDestroyProcessTap(tapID)

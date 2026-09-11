@@ -127,7 +127,8 @@ if mode == "malformed" {
         }
         emit(["case":"live-parameter-change-offline","rate":rate,"fromSemitones":0,"toSemitones":7,"longestSilentFrames":max(maxRun,run),"silenceMS":Double(max(maxRun,run))*1000/rate,"firstSoundAfterEditFrame":firstSound ?? -1])
         if rate == 48000 {
-            let url=URL(fileURLWithPath:"docs/release-2.1.0-evidence/pitch-edit-output.wav")
+            let outputPath = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : "docs/release-2.1.0-evidence/pitch-edit-output.wav"
+            let url=URL(fileURLWithPath:outputPath)
             let fmt=AVAudioFormat(standardFormatWithSampleRate:rate,channels:2)!
             let file=try AVAudioFile(forWriting:url,settings:fmt.settings)
             let buf=AVAudioPCMBuffer(pcmFormat:fmt,frameCapacity:AVAudioFrameCount(all.count/2))!;buf.frameLength=buf.frameCapacity

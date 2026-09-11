@@ -373,7 +373,10 @@ struct RightClickCapture: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // The viewport/graph may have changed since this capture view was made.
+        (nsView as? RightClickView)?.onRightClick = onRightClick
+    }
 
     final class Coordinator: NSObject {
         let onRightClick: (CGPoint) -> Void

@@ -14,7 +14,9 @@ final class AudioRecordingSession {
     let url: URL
     let format: AVAudioFormat
     private let lock = NSLock()
-    private let writerQueue = DispatchQueue(label: "Sonexis.RecordingWriter", qos: .utility)
+    // Recording is user-initiated work. A utility queue can be starved long
+    // enough to exhaust a small pool even when the disk itself is healthy.
+    private let writerQueue = DispatchQueue(label: "Sonexis.RecordingWriter", qos: .userInitiated)
     private var file: AVAudioFile?
     private var pool: [AVAudioPCMBuffer]
     private var accepting = true
@@ -28,7 +30,7 @@ final class AudioRecordingSession {
     private let writeBuffer: (AVAudioFile, AVAudioPCMBuffer) throws -> Void
 
     init(url: URL, sampleRate: Double, channels: AVAudioChannelCount,
-         frameCapacity: Int, poolSize: Int = 8,
+         frameCapacity: Int, poolSize: Int = 128,
          writeBuffer: @escaping (AVAudioFile, AVAudioPCMBuffer) throws -> Void = { try $0.write(from: $1) },
          onIssue: @escaping (String) -> Void) throws {
         guard frameCapacity > 0, poolSize > 0,

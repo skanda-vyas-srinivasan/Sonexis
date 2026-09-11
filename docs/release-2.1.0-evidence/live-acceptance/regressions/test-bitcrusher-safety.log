@@ -1,0 +1,2 @@
+PASS: original crash fixtures, wrapped imports, persisted library, legacy migration, negative and fractional values, clean round-trip
+PASS: node and global DSP output matches safe reference for extreme, non-finite, boundary, fractional and disabled cases

@@ -1,0 +1,7 @@
+PASS: blocked start leaves main responsive, timeout, serialized cleanup, late-completion suppression, safe retry
+PASS: cancellation between worker return and main completion cannot leak live taps
+PASS: blocked stop does not freeze main or allow concurrent restart
+PASS: HAL resolution off main; cancelled resolution cannot create taps
+PASS: releasing a runtime during blocked startup retains its processor until serial teardown finishes
+Graph load requested: mode=visualOnly, reason=select independent chain, nodes=0
+PASS: repeated editor/tutorial start requests are idempotent; explicit stop still works

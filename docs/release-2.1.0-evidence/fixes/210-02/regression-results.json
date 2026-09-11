@@ -1,0 +1,16 @@
+{
+  "test-audio-lifecycle.sh": 0,
+  "test-background-window.sh": 0,
+  "test-bitcrusher-safety.sh": 0,
+  "test-capture-target.sh": 0,
+  "test-chain-workspace.sh": 0,
+  "test-compiled-graph.sh": 0,
+  "test-graph-transition-integration.sh": 0,
+  "test-graph-transitions.sh": 0,
+  "test-knob-controls.sh": 0,
+  "test-multichain.sh": 0,
+  "test-preset-persistence.sh": 0,
+  "test-recording.sh": 0,
+  "test-tutorial.sh": 0,
+  "test-workspace-persistence.sh": 0
+}

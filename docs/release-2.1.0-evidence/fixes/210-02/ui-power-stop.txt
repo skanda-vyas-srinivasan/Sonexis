@@ -1,0 +1,98 @@
+Window: "Sonexis", App: Sonexis.
+0 standard window Sonexis, ID: editor, Secondary Actions: Raise
+	1 container
+		2 button Home
+		3 button Description: Power, Help: Start Processing, ID: power.circle
+		4 button Description: Edit, Help: Disable Effects, ID: slider.horizontal.3
+		5 button (disabled) Description: Record, Help: Record Default output
+		6 text Help: Processed output level after Sonexis effects., Value: Output -inf dB
+		7 button Description: gearshape, Help: Audio settings
+		8 text Help: Skanda's Brighten, Value: PRESET Skanda's Brighten
+		9 button Description: Save, Help: Save preset
+		10 button Description: Save options, Help: Save preset, Value: Collapsed, ID: chevron.down
+		11 button Description: Load, Help: Load preset
+		12 text Effects
+		13 scroll area
+			14 button (selected) Description: Default, Help: Default effects for apps without their own chain, Value: Chain enabled
+		15 menu button Description: Add app chain, Help: Add an app chain
+		16 image Description: Search, ID: magnifyingglass
+		17 text field (settable, string) Search
+		18 menu button Graph Mode
+		19 menu button Stereo
+		20 menu button Description: Go Down, ID: chevron.down
+		21 menu button Description: Wiring, Help: Automatic: Effects flow left-to-right by position.
+		22 menu button Description: Automatic, Help: Automatic: Effects flow left-to-right by position.
+		23 menu button Description: Go Down, Help: Automatic: Effects flow left-to-right by position., ID: chevron.down
+		24 text Auto-connect End
+		25 toggle button (disabled) Help: Automatic mode handles all connections., Value: off
+		26 text Flow
+		27 button 20 FPS
+		28 menu button Canvas
+		29 menu button Description: Go Down, ID: chevron.down
+		30 button Built-in
+		31 button Plugins
+		32 button Favorites
+		33 image Description: Volume Highest, ID: speaker.wave.3
+		34 text Bass Boost
+		35 image waveform
+		36 image Description: Volume Higher, ID: speaker.wave.3.fill
+		37 text Start End
+		38 image Description: Flame, ID: flame.fill
+		39 text Enhancer
+		40 scroll area Secondary Actions: Scroll Up, Scroll Down
+			41 list Secondary Actions: AXScrollToTop, AXScrollToBottom
+				42 text Tone
+				43 image Description: Volume Highest, ID: speaker.wave.3
+				44 text Bass Boost
+				45 button Description: Favorite, Help: Remove favorite, ID: star.fill
+				46 image Description: Flame, ID: flame.fill
+				47 text Enhancer
+				48 button Description: Favorite, Help: Add favorite, ID: star
+				49 image Description: Sparkle, ID: sparkles
+				50 text Clarity
+				51 button Description: Favorite, Help: Add favorite, ID: star
+				52 image Description: Edit, ID: slider.horizontal.3
+				53 text Simple EQ
+				54 button Description: Favorite, Help: Add favorite, ID: star
+				55 image Description: Playlist, ID: music.note.list
+				56 text Pitch (Rubber Band)
+				57 button Description: Favorite, Help: Add favorite, ID: star
+				58 text Space
+				59 image building.columns
+				60 text Reverb
+				61 button Description: Favorite, Help: Add favorite, ID: star
+				62 image arrow.left.and.right
+				63 text Stereo Widening
+				64 button Description: Favorite, Help: Add favorite, ID: star
+				65 image arrow.3.trianglepath
+				66 text Delay
+				67 button Description: Favorite, Help: Add favorite, ID: star
+				68 text Motion
+				69 image waveform
+				70 text Tremolo
+				71 button Description: Favorite, Help: Add favorite, ID: star
+				72 image arrow.left.arrow.right
+				73 text Auto Pan
+				74 button Description: Favorite, Help: Add favorite, ID: star
+				75 image waveform.circle
+				76 text Chorus
+				77 button Description: Favorite, Help: Add favorite, ID: star
+				78 text Texture Signature
+			79 scroll bar (settable, float) 0
+				80 value indicator (settable, float) 0
+				81 increment arrow button
+				82 decrement arrow button
+				83 increment page button
+				84 decrement page button
+		85 image Description: Sparkle, ID: sparkles
+		86 text Clarity
+		87 button Description: Back, ID: chevron.left
+	88 close button
+	89 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	90 minimize button
+91 menu bar
+	92 Sonexis
+	93 Edit
+	94 View
+	95 Window
+	96 Help

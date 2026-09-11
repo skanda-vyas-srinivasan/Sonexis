@@ -138,8 +138,8 @@ struct EffectParametersViewCompact: View {
                 CompactSlider(label: "Mix", value: $parameters.flangerMix, defaultValue: NodeEffectParameters.defaults().flangerMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .bitcrusher:
-                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, defaultValue: NodeEffectParameters.defaults().bitcrusherBitDepth, range: 4...16, format: .integer, tint: tint, onChange: onChange)
-                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, defaultValue: NodeEffectParameters.defaults().bitcrusherDownsample, range: 1...20, format: .integer, tint: tint, onChange: onChange)
+                CompactSlider(label: "Bit Depth", value: $parameters.bitcrusherBitDepth, defaultValue: NodeEffectParameters.defaults().bitcrusherBitDepth, range: BitcrusherParameterLimits.bitDepth, format: .integer, tint: tint, onChange: onChange)
+                CompactSlider(label: "Downsample", value: $parameters.bitcrusherDownsample, defaultValue: NodeEffectParameters.defaults().bitcrusherDownsample, range: BitcrusherParameterLimits.downsample, format: .integer, tint: tint, onChange: onChange)
                 CompactSlider(label: "Mix", value: $parameters.bitcrusherMix, defaultValue: NodeEffectParameters.defaults().bitcrusherMix, range: 0...1, format: .percent, tint: tint, onChange: onChange)
 
             case .tapeSaturation:

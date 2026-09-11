@@ -1,0 +1,1 @@
+PASS: independent delay/plugin state, app overrides, disjoint routing, bypass, relaunch, atomic stop/start, rollback, graph validation, persistence encoding

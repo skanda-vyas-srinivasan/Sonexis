@@ -116,6 +116,21 @@ enum TutorialStep: Equatable {
 }
 
 extension TutorialStep {
+    var isAppChainStep: Bool {
+        switch self {
+        case .chainsIntro, .chainsAdd, .chainsOverrides, .chainsClose, .chainsMenuBar,
+             .chainsBackground, .chainsComplete, .chainsChoosePreset, .chainsDisable,
+             .chainsEnable, .chainsOpenEditor:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var allowsPowerControl: Bool {
+        self == .inactive || self == .buildPower || isAppChainStep
+    }
+
     // Settings is intentionally an explanation; all other live lesson steps
     // require the corresponding action. Introductions and endings are navigation.
     var allowsNextButton: Bool {
