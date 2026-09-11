@@ -861,9 +861,7 @@ struct TutorialOverlay: View {
                     body: "An amber outline means the effect is not connected to End.",
                     showNext: true, isBasicsComplete: false)
         case .buildFlow:
-            return (title: "Wire animation",
-                    body: "Flow Off stops the animation while audio keeps playing.",
-                    showNext: true, isBasicsComplete: false)
+            return nil
         case .chainsIntro:
             return (title: "App audio chains",
                     body: "In this tutorial, you’ll learn how to create audio chains for specific apps.",

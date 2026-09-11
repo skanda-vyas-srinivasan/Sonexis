@@ -41,7 +41,7 @@ struct CanvasView: View {
     @State private var draggedEffectType: EffectType?
     @State private var draggedPlugin: PluginDescriptor?
     @State private var showSignalFlow = false
-    @State private var arrowFpsIndex = 2
+    @State private var arrowFpsIndex = 3
     @State private var canvasSize: CGSize = .zero
     @State private var minimumCanvasSize: CGSize = .zero
     @State private var draggingNodeID: UUID?
@@ -344,27 +344,6 @@ struct CanvasView: View {
                         }
                     )
             }
-
-            HStack(spacing: 6) {
-                Text("Flow")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textMuted)
-                Button(arrowFps == 0 ? "Flow Off" : "\(Int(arrowFps)) FPS") {
-                    arrowFpsIndex = (arrowFpsIndex + 1) % arrowFpsOptions.count
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(AppColors.textSecondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(AppColors.controlPurple.opacity(0.56))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(arrowFps == 0 ? AppColors.controlStroke.opacity(0.50) : AppColors.neonCyan.opacity(0.42), lineWidth: 1)
-                )
-                .cornerRadius(8)
-                .disabled(tutorial.isBuildStep && tutorial.step != .buildFlow)
-            }
-            .tutorialTarget(.flow)
 
             Spacer()
 

@@ -120,6 +120,7 @@ struct SonexisMenuBarPanel: View {
     let close: () -> Void
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultThemeID
     @State private var showsPresets = false
+    @State private var isQuitHovered = false
 
     private var palette: AppColorPalette { AppTheme.theme(for: themeID).palette }
     private var presetName: String {
@@ -170,6 +171,7 @@ struct SonexisMenuBarPanel: View {
                 .buttonStyle(.plain)
                 .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
                 .accessibilityLabel(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
+
             }
 
             VStack(spacing: 6) {
@@ -231,7 +233,8 @@ struct SonexisMenuBarPanel: View {
                     close()
                     NSApp.terminate(nil)
                 }
-                .foregroundStyle(palette.textSecondary)
+                .foregroundStyle(isQuitHovered ? palette.neonPink : palette.textSecondary)
+                .onHover { isQuitHovered = $0 }
             }
             .buttonStyle(.plain)
         }

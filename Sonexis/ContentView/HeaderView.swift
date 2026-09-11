@@ -66,12 +66,6 @@ struct HeaderView<SettingsOverlay: View>: View {
                         }
                     )
 
-                    if audioEngine.isRunning {
-                        Text(audioEngine.activeRouteLabel)
-                            .font(.system(size: 9))
-                            .foregroundColor(AppColors.success.opacity(0.8))
-                            .transition(.opacity)
-                    }
                 }
 
                 Divider()

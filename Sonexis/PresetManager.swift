@@ -309,7 +309,7 @@ struct EffectChainSnapshot: Codable {
 // MARK: - Preset Manager
 
 class PresetManager: ObservableObject {
-    private static let starterSeedKey = "Sonexis.StarterPresets.v1Installed"
+    private static let starterSeedKey = "Sonexis.StarterPresets.v2Installed"
     @Published private(set) var presets: [SavedPreset] = []
     @Published var saveError: String?
 

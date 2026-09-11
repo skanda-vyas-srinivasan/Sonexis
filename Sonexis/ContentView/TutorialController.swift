@@ -83,7 +83,7 @@ final class TutorialController: ObservableObject {
              .buildSettings,
              .buildSettingsExplain,
              .buildOutputGain, .buildCeiling, .buildSettingsSummary, .buildLibrary, .buildPresetLibrary,
-             .buildBypass, .buildDisconnected, .buildFlow, .buildWireLevels, .buildSelection,
+             .buildBypass, .buildDisconnected, .buildWireLevels, .buildSelection,
              .chainsIntro, .chainsAdd, .chainsOverrides,
              .chainsClose, .chainsMenuBar, .chainsBackground, .chainsComplete,
              .chainsChoosePreset, .chainsDisable,

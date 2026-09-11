@@ -726,6 +726,7 @@ struct ChainMenuBarPanel: View {
     let close: () -> Void
     @State private var apps = AudioCaptureTarget.runningApps()
     @State private var hoveredChainID: UUID?
+    @State private var hoveredToggleID: UUID?
     @State private var isAddChainHovered = false
     @State private var isQuitHovered = false
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultThemeID
@@ -734,10 +735,10 @@ struct ChainMenuBarPanel: View {
         apps.filter { app in !workspace.chains.contains { $0.target?.id == app.id } }
     }
     var body: some View {
-        VStack(spacing: 14) {
-            HStack {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
                 Image(nsImage: NSImage(named: "SonexisMark") ?? NSImage())
-                    .renderingMode(.template).resizable().scaledToFit().frame(width: 24, height: 24)
+                    .renderingMode(.template).resizable().scaledToFit().frame(width: 27, height: 27)
                     .foregroundStyle(palette.neonPink)
                 Spacer()
                 Button { workspace.togglePower() } label: {
@@ -748,45 +749,56 @@ struct ChainMenuBarPanel: View {
                             Image(systemName: workspace.runtime.state == .running ? "power.circle.fill" : "power.circle")
                         }
                     }
-                        .font(.system(size: 24)).foregroundStyle(workspace.runtime.state == .running ? palette.success : palette.textMuted)
+                    .font(.system(size: 24))
+                    .foregroundStyle(workspace.runtime.state == .running ? palette.success : palette.textMuted)
+                    .shadow(color: workspace.runtime.state == .running ? palette.success.opacity(0.18) : .clear, radius: 8)
                 }.help(workspace.runtime.isTransitioning ? "Cancel pending audio operation" : "Start or stop all chains")
                 .accessibilityLabel("Power")
                 .accessibilityValue(workspace.runtime.isTransitioning ? "Pending" : (workspace.runtime.state == .running ? "On" : "Off"))
                 .disabled(!workspace.tutorial.step.allowsPowerControl)
             }
+            .frame(height: 34)
+            .padding(.bottom, 8)
             if let instruction = workspace.tutorial.menuInstruction {
                 Text(instruction)
                     .font(.system(size: 12))
-                    .foregroundStyle(palette.textPrimary)
+                    .foregroundStyle(palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(palette.controlPurple.opacity(0.38))
+                    .overlay {
+                        Rectangle()
+                            .stroke(palette.controlStrokeSoft.opacity(0.72), lineWidth: 1)
+                    }
             }
             ScrollViewReader { scroll in
             ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(workspace.chains) { chain in
-                        VStack(spacing: 9) {
-                            HStack(spacing: 10) {
+                VStack(spacing: 8) {
+                    ForEach(Array(workspace.chains.enumerated()), id: \.element.id) { index, chain in
+                        VStack(spacing: 0) {
+                            HStack(spacing: 8) {
                                 Button { openChain(chain.id) } label: {
                                     HStack(spacing: 8) {
                                         if let target = chain.target {
                                             Image(nsImage: NSWorkspace.shared.icon(forFile: target.bundlePath))
-                                                .renderingMode(.original).resizable().frame(width: 16, height: 16)
+                                                .renderingMode(.original).resizable().frame(width: 18, height: 18)
                                         } else {
-                                            Image(systemName: "speaker.wave.2").frame(width: 16)
+                                            Image(systemName: "speaker.wave.2").frame(width: 18)
                                         }
                                         Text(workspace.name(for: chain)).fontWeight(.medium).lineLimit(1)
-                                            .foregroundStyle(hoveredChainID == chain.id ? palette.neonPink : palette.textPrimary)
+                                            .foregroundStyle(hoveredChainID == chain.id ? palette.textPrimary : palette.textSecondary)
+                                            .overlay(alignment: .bottomLeading) {
+                                                if hoveredChainID == chain.id {
+                                                    Rectangle()
+                                                        .fill(palette.neonPink)
+                                                        .frame(height: 1)
+                                                        .offset(y: 2)
+                                                }
+                                            }
                                         Spacer(minLength: 0)
                                     }
-                                    .padding(.horizontal, 7)
-                                    .frame(height: 28)
-                                    .background(
-                                        hoveredChainID == chain.id
-                                            ? palette.controlPurpleRaised.opacity(0.72)
-                                            : Color.clear,
-                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    )
+                                    .frame(height: 52)
                                     .contentShape(Rectangle())
                                 }
                                 .onHover { hovering in
@@ -798,12 +810,15 @@ struct ChainMenuBarPanel: View {
                                     workspace.tutorial.step == .chainsOpenEditor &&
                                     workspace.tutorial.practiceChainID == chain.id
                                 )
+                                ChainPresetMenu(workspace: workspace, presets: workspace.presets, chain: chain)
                                 Button { workspace.toggleEffects(chain.id) } label: {
                                     Image(systemName: "slider.horizontal.3")
                                         .foregroundStyle(chain.effectsEnabled && !workspace.runtime.globallyBypassed ? palette.neonPink : palette.textMuted)
                                         .frame(width: 24, height: 24)
                                         .contentShape(Rectangle())
                                 }
+                                .onHover { hovering in hoveredToggleID = hovering ? chain.id : nil }
+                                .opacity(hoveredToggleID == chain.id || !chain.effectsEnabled ? 1 : 0.72)
                                 .disabled(!workspace.canToggleChain(chain.id))
                                 .menuBarTutorialHighlight(
                                     [.chainsDisable, .chainsEnable].contains(workspace.tutorial.step) &&
@@ -812,22 +827,41 @@ struct ChainMenuBarPanel: View {
                                 .help(chain.effectsEnabled ? "Disable Chain" : "Enable Chain")
                                 .accessibilityLabel(chain.effectsEnabled ? "Disable \(workspace.name(for: chain)) chain" : "Enable \(workspace.name(for: chain)) chain")
                             }
-                            ChainPresetMenu(workspace: workspace, presets: workspace.presets, chain: chain)
+                            .contextMenu {
+                                Button("Remove Chain", role: .destructive) {
+                                    workspace.remove(chain.id)
+                                }
+                                .disabled(!workspace.canRemoveChain(chain.id))
+                            }
+                            if index < workspace.chains.count - 1 {
+                                Rectangle().fill(palette.controlStrokeSoft.opacity(0.55)).frame(height: 1)
+                            }
                         }
-                        .padding(10)
                         .id(chain.id)
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(palette.controlStrokeSoft).frame(height: 1)
-                        }
                     }
                 }
-            }.frame(height: min(CGFloat(workspace.chains.count) * 88, 264))
+            }
+            .frame(height: min(max(CGFloat(workspace.chains.count), 1) * 56, 224))
+            .scrollIndicators(.visible)
                 .onAppear {
                     if workspace.tutorial.isActive, let id = workspace.tutorial.practiceChainID {
                         scroll.scrollTo(id, anchor: .center)
                     }
                 }
             }
+            if workspace.chains.count > 4 {
+                HStack(spacing: 4) {
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("Scroll for more")
+                        .font(.system(size: 10, weight: .medium))
+                    Spacer()
+                }
+                .foregroundStyle(palette.textMuted)
+                .frame(height: 18)
+            }
+            Rectangle().fill(palette.controlStrokeSoft.opacity(0.72)).frame(height: 1)
             Menu {
                 ForEach(availableApps) { app in
                     Button { workspace.add(app) } label: {
@@ -842,34 +876,33 @@ struct ChainMenuBarPanel: View {
                     Text("Open another app to add it")
                 }
             } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.textSecondary)
-                    .frame(width: 248, height: 32)
-                .background(
-                    isAddChainHovered ? palette.controlPurpleRaised : palette.controlPurple,
-                    in: RoundedRectangle(cornerRadius: 6)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(
-                            isAddChainHovered ? palette.controlStroke : palette.controlStrokeSoft,
-                            lineWidth: 1
-                        )
-                )
+                HStack(spacing: 7) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Add App")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(isAddChainHovered ? palette.textPrimary : palette.textSecondary)
+                .frame(width: 100, alignment: .center)
+                .frame(height: 44, alignment: .center)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(palette.neonPink)
+                        .frame(width: 58, height: 1)
+                        .opacity(isAddChainHovered ? 1 : 0)
+                        .offset(y: -7)
+                }
                 .contentShape(Rectangle())
                 .onHover { hovering in
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        isAddChainHovered = hovering
-                    }
+                    isAddChainHovered = hovering
                 }
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
-            .fixedSize(horizontal: true, vertical: false)
             .disabled(!workspace.canAddChain)
             .help(workspace.isRecording ? "Stop recording before adding a chain" : "Add a running app")
-            Rectangle().fill(palette.controlStrokeSoft).frame(height: 1)
+            .padding(.vertical, 8)
+            Rectangle().fill(palette.controlStrokeSoft.opacity(0.72)).frame(height: 1)
             HStack {
                 if workspace.tutorial.isActive && workspace.tutorial.isAppChainTour {
                     Button("Exit tutorial") { workspace.tutorial.skipTutorial(); close() }
@@ -881,12 +914,16 @@ struct ChainMenuBarPanel: View {
                     NSApp.terminate(nil)
                 } label: {
                     Text("Quit")
-                        .padding(.horizontal, 9)
-                        .frame(height: 26)
-                        .background(
-                            isQuitHovered ? palette.controlPurpleRaised.opacity(0.82) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        )
+                        .foregroundStyle(isQuitHovered ? palette.textPrimary : palette.textSecondary)
+                        .frame(width: 54, height: 28)
+                        .overlay {
+                            if isQuitHovered {
+                                Rectangle()
+                                    .fill(palette.neonPink.opacity(0.85))
+                                    .frame(width: 24, height: 1)
+                                    .offset(y: 11)
+                            }
+                        }
                         .contentShape(Rectangle())
                 }
                 .onHover { hovering in
@@ -897,7 +934,16 @@ struct ChainMenuBarPanel: View {
             }.foregroundStyle(palette.textSecondary)
         }
         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(palette.textPrimary)
-        .padding(16).frame(width: 280).background(palette.panelPurple).preferredColorScheme(.dark)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(width: 272)
+        .background(palette.panelPurple)
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(palette.controlStrokeSoft.opacity(0.78), lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .preferredColorScheme(.dark)
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             apps = AudioCaptureTarget.runningApps()
         }
@@ -909,6 +955,7 @@ private struct ChainPresetMenu: View {
     @ObservedObject var workspace: ChainWorkspace
     @ObservedObject var presets: PresetManager
     let chain: AudioChainDefinition
+    @State private var isHovered = false
 
     private var preset: SavedPreset? { presets.presets.first { $0.id == chain.presetID } }
     private var isTutorialTarget: Bool {
@@ -935,14 +982,21 @@ private struct ChainPresetMenu: View {
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .medium))
                     .foregroundStyle(AppColors.neonPink)
+                    .allowsHitTesting(false)
             }
             .foregroundStyle(preset == nil && !isTutorialTarget ? AppColors.textMuted : AppColors.textPrimary)
-            .padding(.horizontal, 10).frame(height: 30)
-            .background(AppColors.controlPurple, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppColors.controlStrokeSoft, lineWidth: 1))
+            .padding(.horizontal, 4)
+            .frame(width: 120, height: 30, alignment: .trailing)
+            .background(isHovered ? AppColors.controlPurple.opacity(0.45) : Color.clear)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain).menuIndicator(.hidden)
         .disabled(!workspace.canLoadPreset(into: chain.id))
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
         .menuBarTutorialHighlight(isTutorialTarget)
         .accessibilityLabel("Preset for \(workspace.name(for: chain))")
         .help("Load a preset into \(workspace.name(for: chain))")
@@ -953,7 +1007,7 @@ private extension View {
     func menuBarTutorialHighlight(_ isHighlighted: Bool) -> some View {
         overlay {
             if isHighlighted {
-                RoundedRectangle(cornerRadius: 7)
+                Rectangle()
                     .stroke(AppColors.neonCyan.opacity(0.8), lineWidth: 1.25)
                     .padding(-3)
                     .allowsHitTesting(false)

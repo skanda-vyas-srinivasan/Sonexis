@@ -347,11 +347,9 @@ private struct SonexisDialogSheet: View {
             HStack(spacing: 10) {
                 Spacer()
                 ForEach(actions) { action in
-                    SonexisDialogButton(action: action) {
+                SonexisDialogButton(action: action) {
+                        action.action()
                         isPresented = false
-                        DispatchQueue.main.async {
-                            action.action()
-                        }
                     }
                 }
             }
