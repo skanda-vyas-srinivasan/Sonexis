@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CoreAudio
 @testable import Sonexis
 func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
@@ -102,6 +103,15 @@ expect(!processorA.processingEnabled && processorB.processingEnabled, "Global by
 try runtime.start(); settle(runtime)
 expect(runtime.state == .running, "All chains start")
 events=[]
+var automaticTransitionCount = 0
+let automaticTransitionObservation = runtime.$isTransitioning.dropFirst().sink { transitioning in
+    if transitioning { automaticTransitionCount += 1 }
+}
+let unchangedPollDeadline = Date().addingTimeInterval(1.2)
+while Date() < unchangedPollDeadline {
+    RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+}
+expect(automaticTransitionCount == 0, "Unchanged automatic routing poll must not disable menu controls")
 try runtime.refreshProcesses(); settle(runtime)
 expect(events.isEmpty, "Unchanged process list must not restart playback")
 processes[appA.id]=[30]

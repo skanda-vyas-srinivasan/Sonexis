@@ -69,11 +69,13 @@ let url = root.appendingPathComponent("combined.wav")
 
 runtime.startRecording(url: url)
 expect(runtime.isRecording, "Combined recording did not start")
+expect(runtime.recordingStartedAt != nil, "Combined recording did not expose its start time")
 for _ in 0..<60 {
     render(defaultProcessor, value: 0.1)
     render(appProcessor, value: 0.2)
 }
 runtime.stopRecording()
+expect(runtime.recordingStartedAt == nil, "Combined recording kept a stale start time after stopping")
 let deadline = Date().addingTimeInterval(5)
 while runtime.isFinalizingRecording && Date() < deadline {
     RunLoop.main.run(until: Date().addingTimeInterval(0.01))

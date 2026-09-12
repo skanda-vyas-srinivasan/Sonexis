@@ -9,6 +9,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private var makeContent: (() -> AnyView)?
+    private var dismissalSuspended = false
 
     func install(content: @escaping () -> AnyView) {
         makeContent = content
@@ -66,16 +67,38 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             return event
         }
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            guard self?.dismissalSuspended == false else { return }
             self?.close()
         }
     }
 
     private func shouldDismiss(for event: NSEvent) -> Bool {
+        if dismissalSuspended { return false }
         guard let eventWindow = event.window else { return true }
         if eventWindow === panel || eventWindow === statusItem?.button?.window { return false }
         // SwiftUI Menu presents an AppKit menu window. Closing the parent panel
         // during that window's mouse-down cancels or duplicates the menu action.
         return eventWindow.level.rawValue < NSWindow.Level.popUpMenu.rawValue
+    }
+
+    /// Runs Sonexis-owned file panels without letting either event monitor
+    /// dismiss the menu, then returns keyboard focus to the same menu panel.
+    func promptForRecordingURL() -> URL? {
+        guard let owner = panel, owner.isVisible else { return nil }
+        let savePanel = NSSavePanel()
+        savePanel.title = "Save Recording"
+        savePanel.nameFieldStringValue = "Sonexis Recording.wav"
+        savePanel.allowedFileTypes = ["wav"]
+        savePanel.canCreateDirectories = true
+
+        dismissalSuspended = true
+        defer {
+            dismissalSuspended = false
+            if panel === owner, owner.isVisible {
+                owner.makeKeyAndOrderFront(nil)
+            }
+        }
+        return savePanel.runModal() == .OK ? savePanel.url : nil
     }
 
     private func resize(to size: CGSize) {
@@ -104,6 +127,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         localMonitor = nil
         globalMonitor = nil
+        dismissalSuspended = false
         let previous = panel
         panel = nil
         previous?.orderOut(nil)

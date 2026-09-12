@@ -459,7 +459,8 @@ struct ChainWorkspaceView: View {
                     activeScreen = .beginner
                     menuBar.close()
                     openEditor()
-                }, close: { menuBar.close() }))
+                }, chooseRecordingURL: { menuBar.promptForRecordingURL() },
+                   close: { menuBar.close() }))
             }
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in workspace.refreshAndSave() }
@@ -739,6 +740,7 @@ struct ChainStrip: View {
 struct ChainMenuBarPanel: View {
     @ObservedObject var workspace: ChainWorkspace
     let openChain: (UUID) -> Void
+    let chooseRecordingURL: () -> URL?
     let close: () -> Void
     @State private var apps = AudioCaptureTarget.runningApps()
     @State private var hoveredChainID: UUID?
@@ -757,6 +759,12 @@ struct ChainMenuBarPanel: View {
                     .renderingMode(.template).resizable().scaledToFit().frame(width: 27, height: 27)
                     .foregroundStyle(palette.neonPink)
                 Spacer()
+                MenuBarRecordingControl(
+                    workspace: workspace,
+                    palette: palette,
+                    chooseRecordingURL: chooseRecordingURL
+                )
+                Rectangle().fill(palette.controlStrokeSoft).frame(width: 1, height: 24)
                 Button { workspace.togglePower() } label: {
                     Group {
                         if workspace.runtime.isTransitioning && workspace.runtime.state != .running {
@@ -991,6 +999,68 @@ struct ChainMenuBarPanel: View {
             }
         }
     }
+}
+
+private struct MenuBarRecordingControl: View {
+    @ObservedObject var workspace: ChainWorkspace
+    let palette: AppColorPalette
+    let chooseRecordingURL: () -> URL?
+
+    private var runtime: MultiChainAudioEngine { workspace.runtime }
+    private var isDisabled: Bool {
+        (runtime.state != .running && !runtime.isRecording) ||
+        runtime.isFinalizingRecording || workspace.tutorial.isActive
+    }
+
+    var body: some View {
+        Button(action: toggleRecording) {
+            Group {
+                if runtime.isFinalizingRecording {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 24, height: 24)
+                } else if runtime.isRecording {
+                    HStack(spacing: 5) {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(elapsedTime(at: context.date))
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .monospacedDigit()
+                        }
+                    }
+                    .foregroundStyle(palette.error)
+                    .frame(minWidth: 58)
+                    .frame(height: 28)
+                } else {
+                    Image(systemName: runtime.recordingWarningText == nil ? "record.circle" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(runtime.recordingWarningText == nil ? palette.neonPink : palette.warning)
+                        .frame(width: 34, height: 28)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled && !runtime.isFinalizingRecording ? 0.38 : 1)
+        .accessibilityLabel(runtime.isRecording ? "Stop Recording" : "Start Recording")
+        .accessibilityValue(runtime.isFinalizingRecording ? "Finishing" : (runtime.isRecording ? "Recording" : "Stopped"))
+    }
+
+    private func toggleRecording() {
+        if runtime.isRecording {
+            runtime.stopRecording()
+        } else if let url = chooseRecordingURL() {
+            runtime.startRecording(url: url)
+        }
+    }
+
+    private func elapsedTime(at date: Date) -> String {
+        let elapsed = max(0, Int(date.timeIntervalSince(runtime.recordingStartedAt ?? date)))
+        return String(format: "%d:%02d", elapsed / 60, elapsed % 60)
+    }
+
 }
 
 private struct MenuBarPanelTexture: View {

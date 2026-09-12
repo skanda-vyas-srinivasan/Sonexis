@@ -125,6 +125,7 @@ final class MultiChainAudioEngine: ObservableObject {
     // every chain at once rather than a single selected chain.
     @Published private(set) var isRecording = false
     @Published private(set) var isFinalizingRecording = false
+    @Published private(set) var recordingStartedAt: Date?
     @Published var recordingWarningText: String?
     @Published var recordingIssuePresented = false
     @Published private(set) var lastRecordingURL: URL?
@@ -400,10 +401,37 @@ final class MultiChainAudioEngine: ObservableObject {
     private func startProcessTimer() {
         guard processTimer == nil else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            try? self?.refreshProcesses()
+            self?.pollForProcessChanges()
         }
         processTimer = timer
         RunLoop.main.add(timer, forMode: .common)
+    }
+
+    /// Resolve process ownership away from the main thread without publishing
+    /// a transition every second. Only a real routing change reaches the normal
+    /// transition path, so menu controls stay stable while audio is running.
+    private func pollForProcessChanges() {
+        precondition(Thread.isMainThread)
+        guard state == .running, !isTransitioning else { return }
+        let polledDefinitions = definitions
+        let resolve = resolve
+        let session = session
+        lifecycleQueue.async { [weak self] in
+            guard let self,
+                  let plan = try? AudioChainRoutingPlan(chains: polledDefinitions, resolve: resolve),
+                  plan != session.plan else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.state == .running, !self.isTransitioning,
+                      self.hasSameRoutingTargets(as: polledDefinitions) else { return }
+                self.transition(refreshOnly: true)
+            }
+        }
+    }
+
+    private func hasSameRoutingTargets(as other: [AudioChainDefinition]) -> Bool {
+        definitions.count == other.count && zip(definitions, other).allSatisfy { current, polled in
+            current.id == polled.id && current.target?.id == polled.target?.id
+        }
     }
 
     func setGlobalBypass(_ bypassed: Bool) {
@@ -496,6 +524,7 @@ extension MultiChainAudioEngine {
                 }
             }
             isRecording = true
+            recordingStartedAt = Date()
             startMixerTimer()
         } catch {
             recordingWarningText = "Recording failed: \(error.localizedDescription)"
@@ -508,6 +537,7 @@ extension MultiChainAudioEngine {
         guard let session = combinedRecordingSession else { return }
         if !isFinalizingRecording {
             isRecording = false
+            recordingStartedAt = nil
             isFinalizingRecording = true
             stopMixerTimer()
             for chainID in currentRecordingInputIDs() { processors[chainID]?.recordingSink = nil }
