@@ -34,4 +34,28 @@ enum CanvasViewportLayout {
             y: min(max(point.y, minY), max(minY, visibleRect.maxY - size.height * 0.5 - 12))
         )
     }
+
+    /// Places a context panel next to the click instead of centering the panel
+    /// on it. Prefer below-right, flip at the viewport edges, then clamp as a
+    /// final safeguard for unusually small windows.
+    static func contextMenuPosition(
+        click: CGPoint,
+        size: CGSize,
+        visibleRect: CGRect,
+        gap: CGFloat = 8
+    ) -> CGPoint {
+        let halfWidth = size.width * 0.5
+        let halfHeight = size.height * 0.5
+        var position = CGPoint(
+            x: click.x + gap + halfWidth,
+            y: click.y + gap + halfHeight
+        )
+        if position.x + halfWidth > visibleRect.maxX - 12 {
+            position.x = click.x - gap - halfWidth
+        }
+        if position.y + halfHeight > visibleRect.maxY - 12 {
+            position.y = click.y - gap - halfHeight
+        }
+        return overlayPosition(position, size: size, visibleRect: visibleRect)
+    }
 }

@@ -349,7 +349,6 @@ struct CompactSlider: View {
             .contextMenu {
                 Button("Reset to Default") { resetToDefault() }
             }
-            .help("Drag to adjust \(label). Hold Shift for fine control. Option-click to reset. Arrow keys adjust when focused.")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(label)
             .accessibilityValue(format.displayText(for: value))
@@ -388,7 +387,6 @@ struct CompactSlider: View {
                             .fill(valueFieldFocused ? tint.opacity(0.75) : Color.clear)
                             .frame(height: 1)
                     }
-                    .help("Click to type exact \(label)")
 
                 if let unit = format.unitText {
                     Text(unit)

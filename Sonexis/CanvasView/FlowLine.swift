@@ -148,7 +148,7 @@ struct WireKey: Hashable {
 
 struct AutoWireSelection {
     let key: WireKey
-    let midpoint: CGPoint
+    let popoverAnchor: CGPoint
     let tint: Color
 }
 

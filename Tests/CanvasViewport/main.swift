@@ -54,6 +54,25 @@ for point in [CGPoint(x: 0, y: 0), CGPoint(x: 1200, y: 800), CGPoint(x: 600, y: 
                        width: menuSize.width, height: menuSize.height)
     expect(visible.insetBy(dx: 12, dy: 12).contains(frame), "Scrolled menu extends outside viewport")
 }
+let contextSize = CGSize(width: 196, height: 108)
+let centralClick = CGPoint(x: 600, y: 450)
+let centralMenu = CanvasViewportLayout.contextMenuPosition(
+    click: centralClick, size: contextSize, visibleRect: visible
+)
+expect(centralMenu == CGPoint(x: centralClick.x + 8 + contextSize.width / 2,
+                              y: centralClick.y + 8 + contextSize.height / 2),
+       "Context menu should open below-right of the click")
+let edgeClick = CGPoint(x: visible.maxX - 4, y: visible.maxY - 4)
+let edgeMenu = CanvasViewportLayout.contextMenuPosition(
+    click: edgeClick, size: contextSize, visibleRect: visible
+)
+expect(edgeMenu.x < edgeClick.x && edgeMenu.y < edgeClick.y,
+       "Context menu should flip left and up at the viewport edges")
+let edgeFrame = CGRect(x: edgeMenu.x - contextSize.width / 2,
+                       y: edgeMenu.y - contextSize.height / 2,
+                       width: contextSize.width, height: contextSize.height)
+expect(visible.insetBy(dx: 12, dy: 12).contains(edgeFrame),
+       "Flipped context menu must remain inside the visible canvas")
 print("PASS: \(cases) bundled-preset viewport/zoom cases; Brighten overflow, widening, empty/fitting canvas, scrolled menu coordinates")
 
 let dragged = points.dropLast() + [CGPoint(x: points.last!.x - 40, y: points.last!.y + 30)]

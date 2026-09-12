@@ -155,7 +155,6 @@ struct SonexisMenuBarPanel: View {
                         .frame(width: 34, height: 28)
                 }
                 .buttonStyle(.plain)
-                .help(audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)
                 .accessibilityLabel(audioEngine.isRunning ? "Stop Processing" : "Start Processing")
 
                 Rectangle().fill(palette.controlStrokeSoft).frame(width: 1, height: 24)
@@ -169,7 +168,6 @@ struct SonexisMenuBarPanel: View {
                         .frame(width: 34, height: 28)
                 }
                 .buttonStyle(.plain)
-                .help(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
                 .accessibilityLabel(audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects")
 
             }
@@ -191,7 +189,6 @@ struct SonexisMenuBarPanel: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(presetManager.presets.isEmpty)
-                .help(presetManager.presets.isEmpty ? "Save a preset in the editor first" : "Switch preset")
 
                 if showsPresets && !presetManager.presets.isEmpty {
                     ScrollView {

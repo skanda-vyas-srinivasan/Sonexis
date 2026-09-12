@@ -521,7 +521,6 @@ struct ChainStrip: View {
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .accessibilityLabel("Add app chain")
-            .help("Add an app chain")
             .tutorialTarget(.addAppChain)
             .padding(.trailing, 4)
             .disabled(!workspace.canAddChain)
@@ -582,7 +581,6 @@ struct ChainStrip: View {
             .disabled(!workspace.canSelectChain(chain.id))
             .accessibilityAddTraits(selected ? .isSelected : [])
             .accessibilityValue(enabled ? "Chain enabled" : "Chain disabled")
-            .help(chain.target == nil ? "Default effects for apps without their own chain" : "Edit \(workspace.name(for: chain)); other chains keep running")
             if chain.target != nil {
                 Button { workspace.remove(chain.id) } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
@@ -599,7 +597,6 @@ struct ChainStrip: View {
                 .padding(.trailing, 4)
                 .disabled(!workspace.canRemoveChain(chain.id))
                 .accessibilityLabel("Close \(workspace.name(for: chain)) chain")
-                .help("Close app chain")
                 .onHover { hovering in
                     withAnimation(.easeOut(duration: 0.1)) {
                         hoveredCloseID = hovering ? chain.id : (hoveredCloseID == chain.id ? nil : hoveredCloseID)
@@ -751,7 +748,7 @@ struct ChainMenuBarPanel: View {
                     .font(.system(size: 24))
                     .foregroundStyle(workspace.runtime.state == .running ? palette.success : palette.textMuted)
                     .shadow(color: workspace.runtime.state == .running ? palette.success.opacity(0.18) : .clear, radius: 8)
-                }.help(workspace.runtime.isTransitioning ? "Cancel pending audio operation" : "Start or stop all chains")
+                }
                 .accessibilityLabel("Power")
                 .accessibilityValue(workspace.runtime.isTransitioning ? "Pending" : (workspace.runtime.state == .running ? "On" : "Off"))
                 .disabled(!workspace.tutorial.step.allowsPowerControl)
@@ -803,7 +800,6 @@ struct ChainMenuBarPanel: View {
                                 .onHover { hovering in
                                     hoveredChainID = hovering ? chain.id : nil
                                 }
-                                .help("Open \(workspace.name(for: chain)) chain")
                                 .disabled(!workspace.canOpenChainFromMenu(chain.id))
                                 .menuBarTutorialHighlight(
                                     workspace.tutorial.step == .chainsOpenEditor &&
@@ -823,7 +819,6 @@ struct ChainMenuBarPanel: View {
                                     [.chainsDisable, .chainsEnable].contains(workspace.tutorial.step) &&
                                     workspace.tutorial.practiceChainID == chain.id
                                 )
-                                .help(chain.effectsEnabled ? "Disable Chain" : "Enable Chain")
                                 .accessibilityLabel(chain.effectsEnabled ? "Disable \(workspace.name(for: chain)) chain" : "Enable \(workspace.name(for: chain)) chain")
                             }
                             .contextMenu {
@@ -899,7 +894,6 @@ struct ChainMenuBarPanel: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .disabled(!workspace.canAddChain)
-            .help(workspace.isRecording ? "Stop recording before adding a chain" : "Add a running app")
             .padding(.vertical, 8)
             Rectangle().fill(palette.controlStrokeSoft.opacity(0.72)).frame(height: 1)
             HStack {
@@ -998,7 +992,6 @@ private struct ChainPresetMenu: View {
         }
         .menuBarTutorialHighlight(isTutorialTarget)
         .accessibilityLabel("Preset for \(workspace.name(for: chain))")
-        .help("Load a preset into \(workspace.name(for: chain))")
     }
 }
 

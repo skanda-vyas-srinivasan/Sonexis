@@ -57,6 +57,7 @@ struct CanvasView: View {
     @State private var selectionDragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedWireID: UUID?
     @State private var selectedAutoWire: AutoWireSelection?
+    @State private var wireGainPopoverAnchor: CGPoint?
     @State private var autoGainOverrides: [WireKey: Double] = [:]
     @State private var pluginStatusToken = 0
 
@@ -271,9 +272,6 @@ struct CanvasView: View {
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
             .disabled(tutorial.isBuildStep && ![.buildWiringManual, .buildReturnStereoAuto].contains(tutorial.step))
-            .help(wiringMode == .automatic ?
-                  "Automatic: Effects flow left-to-right by position." :
-                  "Manual: Pure manual wiring. Option+drag to connect.")
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -318,11 +316,6 @@ struct CanvasView: View {
                     .toggleStyle(.switch)
                     .disabled(wiringMode == .automatic || tutorial.isBuildStep)
                     .opacity(wiringMode == .automatic || tutorial.isBuildStep ? 0.4 : 1.0)
-                    .help(wiringMode == .automatic ?
-                          "Automatic mode handles all connections." :
-                          (autoConnectEnd ?
-                           "Auto-connect End: On - Last nodes auto-connect to End." :
-                           "Auto-connect End: Off - Manually connect to End."))
                     .onChange(of: autoConnectEnd) { _ in
                         guard !isRestoringSnapshot else { return }
                         applyChainToEngine()
@@ -526,14 +519,20 @@ struct CanvasView: View {
                             x: (wire.from.x + wire.to.x) * 0.5,
                             y: (wire.from.y + wire.to.y) * 0.5 - 28
                         )
+                        let anchor = wireGainPopoverAnchor ?? midpoint
                         GainPopoverView(
                             tint: AppColors.neonCyan,
                             value: binding
                         ) {
                             selectedWireID = nil
+                            wireGainPopoverAnchor = nil
                             tutorial.didFinishWireGain()
                         }
-                        .position(CanvasViewportLayout.overlayPosition(midpoint, size: CGSize(width: 180, height: 128), visibleRect: visibleCanvasRect))
+                        .position(CanvasViewportLayout.contextMenuPosition(
+                            click: anchor,
+                            size: CGSize(width: 180, height: 128),
+                            visibleRect: visibleCanvasRect
+                        ))
                         .zIndex(5)
                     } else if let autoWire = selectedAutoWire,
                               let binding = autoGainBinding(for: autoWire.key) {
@@ -542,8 +541,13 @@ struct CanvasView: View {
                             value: binding
                         ) {
                             selectedAutoWire = nil
+                            wireGainPopoverAnchor = nil
                         }
-                        .position(CanvasViewportLayout.overlayPosition(autoWire.midpoint, size: CGSize(width: 180, height: 128), visibleRect: visibleCanvasRect))
+                        .position(CanvasViewportLayout.contextMenuPosition(
+                            click: autoWire.popoverAnchor,
+                            size: CGSize(width: 180, height: 128),
+                            visibleRect: visibleCanvasRect
+                        ))
                         .zIndex(5)
                     }
 
@@ -1947,16 +1951,15 @@ struct CanvasView: View {
     }
 
     private func menuAdjusted(_ menu: CustomContextMenu) -> CustomContextMenu {
-        let halfWidth = menu.size.width * 0.5
-        var x = menu.anchor.x + halfWidth + 12
-        if x + halfWidth > visibleCanvasRect.maxX - 12 {
-            x = menu.anchor.x - halfWidth - 12
-        }
-        return menuAtPoint(menu, point: CGPoint(x: x, y: menu.anchor.y))
+        menuAtPoint(menu, point: menu.position)
     }
 
     private func menuAtPoint(_ menu: CustomContextMenu, point: CGPoint) -> CustomContextMenu {
-        let position = CanvasViewportLayout.overlayPosition(point, size: menu.size, visibleRect: visibleCanvasRect)
+        let position = CanvasViewportLayout.contextMenuPosition(
+            click: point,
+            size: menu.size,
+            visibleRect: visibleCanvasRect
+        )
         return CustomContextMenu(anchor: menu.anchor, position: position, tint: menu.tint, items: menu.items)
     }
 
@@ -2080,6 +2083,7 @@ struct CanvasView: View {
                             action: {
                                 selectedAutoWire = nil
                                 selectedWireID = hit.id
+                                wireGainPopoverAnchor = point
                             }
                         )
                     ]
@@ -2110,9 +2114,10 @@ struct CanvasView: View {
                                 selectedWireID = nil
                                 selectedAutoWire = AutoWireSelection(
                                     key: wireKey,
-                                    midpoint: midpoint,
+                                    popoverAnchor: point,
                                     tint: AppColors.neonCyan
                                 )
+                                wireGainPopoverAnchor = point
                             }
                         )
                     ]

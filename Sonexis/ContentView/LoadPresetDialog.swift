@@ -266,7 +266,6 @@ private struct LoadPresetRow: View {
                 Button("Delete", role: .destructive, action: onDelete)
             }
         }
-        .help(canManage ? "\(preset.name) — Click to load; right-click for Rename, Export, or Delete" : preset.name)
         .background(isHovered ? AppColors.controlPurpleRaised.opacity(0.38) : AppColors.deepBlack.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .opacity(isDisabled ? 0.42 : 1)

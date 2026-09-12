@@ -150,7 +150,6 @@ struct CaptureTargetMenu: View {
         }
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .help(audioEngine.captureTarget.map { "Only \($0.name) receives effects. Other apps play normally." } ?? "Apply effects to all audio")
         .onReceive(refresh) { _ in apps = AudioCaptureTarget.runningApps() }
     }
 }

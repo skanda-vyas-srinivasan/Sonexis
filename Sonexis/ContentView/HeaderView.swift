@@ -57,7 +57,6 @@ struct HeaderView<SettingsOverlay: View>: View {
                         if running { tutorial.advanceIf(.buildPower) }
                     }
                     .opacity(powerLockedByTutorial ? 0.45 : 1)
-                    .help(powerLockedByTutorial ? "Power is controlled by this tutorial" : (audioEngine.isPowerTransitioning ? "Cancel pending audio operation" : (audioEngine.isRunning ? "Stop Processing" : audioEngine.startHelpText)))
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(
@@ -86,7 +85,6 @@ struct HeaderView<SettingsOverlay: View>: View {
                 .buttonStyle(.plain)
                 .disabled(audioEngine.globalBypassActive || tutorial.isActive)
                 .tutorialTarget(.chainBypass)
-                .help(audioEngine.globalBypassActive ? "Global bypass is enabled in the menu bar" : (audioEngine.processingEnabled ? "Disable Effects" : "Enable Effects"))
 
                 Divider()
                     .frame(height: 30)
@@ -114,7 +112,6 @@ struct HeaderView<SettingsOverlay: View>: View {
                 .buttonStyle(.plain)
                 .disabled(recordDisabled)
                 .opacity(recordDisabled ? 0.4 : 1.0)
-                .help(runtime.recordingWarningText ?? (runtime.isFinalizingRecording ? "Finishing queued recording writes" : (runtime.isRecording ? "Stop Recording" : "Record combined output of all active chains")))
                 .background(
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -182,7 +179,6 @@ struct HeaderView<SettingsOverlay: View>: View {
                     }
                     .foregroundColor(AppColors.warning)
                     .frame(maxWidth: 260, alignment: .leading)
-                    .help("The Process Tap output ring underflowed. This means Sonexis did not produce processed audio fast enough for playback.")
                 }
 
                 // Error message if any
@@ -261,8 +257,13 @@ struct HeaderView<SettingsOverlay: View>: View {
                         }
                     }
                     .animation(.easeOut(duration: 0.22), value: presetDisplayName)
-                    .help([presetDisplayName, isPresetModified ? "Unsaved changes" : nil, saveStatusText]
-                        .compactMap { $0 }.joined(separator: " — "))
+
+                    if hasCurrentPreset {
+                        PresetUnlinkButton(
+                            isEnabled: !tutorial.isActive,
+                            action: onUnlinkPreset
+                        )
+                    }
 
                     Divider()
                         .frame(height: 26)
@@ -346,6 +347,43 @@ struct HeaderView<SettingsOverlay: View>: View {
         panel.allowedFileTypes = ["wav"]
         panel.canCreateDirectories = true
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+private struct PresetUnlinkButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: "link.slash")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Unlink")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(isHovered ? AppColors.neonPink : AppColors.textSecondary)
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(isHovered ? AppColors.controlPurpleRaised.opacity(0.52) : AppColors.controlPurple.opacity(0.24))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(AppColors.neonPink)
+                    .frame(height: 1)
+                    .opacity(isHovered ? 1 : 0.34)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.42)
+        .accessibilityLabel("Unlink current preset")
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
@@ -447,7 +485,6 @@ private struct PresetSaveSplitButton: View {
         .onDisappear { menuEvents.stop() }
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.42)
-        .help(hasCurrentPreset ? "Save preset" : "Save as preset")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.14)) {
                 isHovered = hovering
@@ -490,7 +527,6 @@ private struct PresetToolbarButton: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.42)
-        .help("\(title) preset")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.14)) {
                 isHovered = hovering
@@ -515,7 +551,6 @@ private struct AudioSettingsButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(isPresented ? "Close audio settings" : "Audio settings")
     }
 }
 
@@ -583,7 +618,6 @@ struct AudioSettingsToolbarStrip: View {
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
-            .help("Reset Input Gain, Output Gain, and Ceiling")
             .disabled(isReadOnly)
         }
         .padding(.horizontal, 16)
@@ -668,7 +702,6 @@ private struct CeilingToggleRow: View {
                 .tint(AppColors.warning)
         }
         .fixedSize(horizontal: true, vertical: false)
-        .help(isOn ? "Disable output ceiling" : "Enable output ceiling")
     }
 }
 
@@ -739,7 +772,6 @@ private struct ThemeCompactButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(theme.displayName)
     }
 }
 
@@ -772,7 +804,6 @@ private struct OutputMeterSection: View {
         }
         .frame(width: 176, height: 32)
         .opacity(isActive ? 1 : 0.58)
-        .help("Processed output level after Sonexis effects.")
     }
 }
 

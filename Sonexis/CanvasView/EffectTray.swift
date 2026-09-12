@@ -256,7 +256,6 @@ struct EffectTray: View {
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
-            .help("Rescan Audio Units")
             .opacity(activeTab == .plugins ? 1 : 0)
             .disabled(activeTab != .plugins)
         }
@@ -658,7 +657,6 @@ private struct FavoriteIconButton: View {
                 .frame(width: 22, height: 22)
         }
         .buttonStyle(.plain)
-        .help(isFavorite ? "Remove favorite" : "Add favorite")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) {
                 isHovered = hovering

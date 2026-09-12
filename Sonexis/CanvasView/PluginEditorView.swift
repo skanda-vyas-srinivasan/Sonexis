@@ -20,7 +20,6 @@ struct PluginEditorFallbackView: View {
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .buttonStyle(.plain)
-                .help("Refresh")
             }
             .padding(12)
             .background(AppColors.darkPurple)
