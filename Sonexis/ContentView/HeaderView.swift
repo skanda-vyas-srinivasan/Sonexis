@@ -235,10 +235,16 @@ struct HeaderView<SettingsOverlay: View>: View {
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 if presetDisplayName != nil && isPresetModified {
-                                    Text("· Modified")
+                                    Text("Modified")
                                         .font(.system(size: 10, weight: .medium, design: .rounded))
                                         .foregroundColor(AppColors.warning)
                                         .fixedSize(horizontal: true, vertical: false)
+                                }
+                                if hasCurrentPreset {
+                                    PresetUnlinkButton(
+                                        isEnabled: !tutorial.isActive,
+                                        action: onUnlinkPreset
+                                    )
                                 }
                             }
                             .frame(height: 18)
@@ -257,13 +263,6 @@ struct HeaderView<SettingsOverlay: View>: View {
                         }
                     }
                     .animation(.easeOut(duration: 0.22), value: presetDisplayName)
-
-                    if hasCurrentPreset {
-                        PresetUnlinkButton(
-                            isEnabled: !tutorial.isActive,
-                            action: onUnlinkPreset
-                        )
-                    }
 
                     Divider()
                         .frame(height: 26)
@@ -357,21 +356,20 @@ private struct PresetUnlinkButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: "link.slash")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                 Text("Unlink")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
             }
-            .foregroundColor(isHovered ? AppColors.neonPink : AppColors.textSecondary)
-            .padding(.horizontal, 8)
-            .frame(height: 24)
-            .background(isHovered ? AppColors.controlPurpleRaised.opacity(0.52) : AppColors.controlPurple.opacity(0.24))
+            .foregroundColor(AppColors.neonPink.opacity(isHovered ? 1 : 0.72))
+            .padding(.horizontal, 3)
+            .frame(height: 18)
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(AppColors.neonPink)
                     .frame(height: 1)
-                    .opacity(isHovered ? 1 : 0.34)
+                    .opacity(isHovered ? 1 : 0)
             }
             .contentShape(Rectangle())
         }

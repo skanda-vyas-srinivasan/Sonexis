@@ -218,16 +218,29 @@ final class MultiChainAudioEngine: ObservableObject {
 
     /// Capture editor changes without reapplying graphs or restarting workers.
     func captureDefinitions(excluding suspended: Set<UUID> = []) {
-        for index in definitions.indices where !suspended.contains(definitions[index].id) {
-            guard let processor = processors[definitions[index].id] else { continue }
+        var captured = definitions
+        for index in captured.indices where !suspended.contains(captured[index].id) {
+            guard let processor = processors[captured[index].id] else { continue }
             if let graph = processor.pendingGraphLoadRequest?.snapshot ?? processor.currentGraphSnapshot {
-                definitions[index].graph = graph
+                captured[index].graph = graph
             }
-            if !globallyBypassed { definitions[index].effectsEnabled = processor.processingEnabled }
-            definitions[index].inputTrimDB = processor.processTapInputTrimDB
-            definitions[index].outputMakeupDB = processor.processTapOutputMakeupDB
-            definitions[index].outputCeilingEnabled = processor.processTapOutputCeilingEnabled
+            if !globallyBypassed { captured[index].effectsEnabled = processor.processingEnabled }
+            captured[index].inputTrimDB = processor.processTapInputTrimDB
+            captured[index].outputMakeupDB = processor.processTapOutputMakeupDB
+            captured[index].outputCeilingEnabled = processor.processTapOutputCeilingEnabled
         }
+        // The periodic persistence refresh must not redraw the entire menu bar
+        // when every captured value is unchanged.
+        if let capturedData = Self.persistenceData(for: captured),
+           let currentData = Self.persistenceData(for: definitions),
+           capturedData == currentData { return }
+        definitions = captured
+    }
+
+    private static func persistenceData(for definitions: [AudioChainDefinition]) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(definitions)
     }
 
     func setPresetID(_ presetID: UUID?, chainID: UUID) {

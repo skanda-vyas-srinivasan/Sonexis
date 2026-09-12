@@ -488,6 +488,7 @@ struct ChainStrip: View {
     @State private var removingAll = false
     @State private var hoveredID: UUID?
     @State private var hoveredCloseID: UUID?
+    @State private var isAddHovered = false
     @State private var draggingID: UUID?
     @State private var dragTranslation: CGFloat = 0
     @State private var dragCompensation: CGFloat = 0
@@ -509,17 +510,35 @@ struct ChainStrip: View {
             }
             Menu {
                 ForEach(apps.filter { app in !workspace.chains.contains { $0.target?.id == app.id } }) { app in
-                    Button(app.name) { workspace.add(app) }
+                    Button { workspace.add(app) } label: {
+                        Label {
+                            Text(app.name)
+                        } icon: {
+                            Image(nsImage: AppIconCache.shared.icon(for: app.bundlePath))
+                                .renderingMode(.original)
+                        }
+                    }
                 }
                 if apps.allSatisfy({ app in workspace.chains.contains { $0.target?.id == app.id } }) {
                     Text("Open another app to add its chain")
                 }
             } label: {
                 Image(systemName: "plus").font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary).frame(width: 40, height: 40)
+                    .foregroundStyle(isAddHovered ? AppColors.neonPink : AppColors.textSecondary)
+                    .frame(width: 40, height: 40)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(AppColors.neonPink)
+                            .frame(width: 14, height: 1)
+                            .opacity(isAddHovered ? 1 : 0)
+                            .offset(y: -7)
+                    }
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .onHover { hovering in
+                isAddHovered = hovering && workspace.canAddChain
+            }
             .accessibilityLabel("Add app chain")
             .tutorialTarget(.addAppChain)
             .padding(.trailing, 4)
@@ -537,7 +556,10 @@ struct ChainStrip: View {
             Button("Close All App Tabs", role: .destructive) { removingAll = true }
                 .disabled(!canCloseApps)
         }
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in apps = AudioCaptureTarget.runningApps() }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            let refreshed = AudioCaptureTarget.runningApps()
+            if refreshed != apps { apps = refreshed }
+        }
         .sonexisDialog("Close all app tabs?",
             message: "Their chains will be removed and all apps will use Default.",
             tone: .warning,
@@ -558,16 +580,16 @@ struct ChainStrip: View {
             Button { workspace.select(chain.id) } label: {
                 HStack(spacing: 7) {
                     if let target = chain.target {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: target.bundlePath))
-                            .resizable().frame(width: 16, height: 16)
+                        Image(nsImage: AppIconCache.shared.icon(for: target.bundlePath))
+                            .renderingMode(.original)
+                            .resizable()
+                            .frame(width: 16, height: 16)
                     } else {
                         Image(systemName: "speaker.wave.2")
                     }
                     Text(workspace.name(for: chain)).lineLimit(1).truncationMode(.tail)
                         .frame(maxWidth: 160)
-                    if workspace.runtime.isRecording {
-                        Image(systemName: "circle.fill").font(.system(size: 6)).foregroundStyle(AppColors.error)
-                    } else if let target = chain.target, !apps.contains(where: { $0.id == target.id }) {
+                    if let target = chain.target, !apps.contains(where: { $0.id == target.id }) {
                         Image(systemName: "moon").font(.system(size: 10)).foregroundStyle(AppColors.textMuted)
                     }
                 }
@@ -598,9 +620,7 @@ struct ChainStrip: View {
                 .disabled(!workspace.canRemoveChain(chain.id))
                 .accessibilityLabel("Close \(workspace.name(for: chain)) chain")
                 .onHover { hovering in
-                    withAnimation(.easeOut(duration: 0.1)) {
-                        hoveredCloseID = hovering ? chain.id : (hoveredCloseID == chain.id ? nil : hoveredCloseID)
-                    }
+                    hoveredCloseID = hovering ? chain.id : (hoveredCloseID == chain.id ? nil : hoveredCloseID)
                 }
             }
         }
@@ -733,7 +753,7 @@ struct ChainMenuBarPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(nsImage: NSImage(named: "SonexisMark") ?? NSImage())
+                Image("SonexisMark")
                     .renderingMode(.template).resizable().scaledToFit().frame(width: 27, height: 27)
                     .foregroundStyle(palette.neonPink)
                 Spacer()
@@ -753,8 +773,14 @@ struct ChainMenuBarPanel: View {
                 .accessibilityValue(workspace.runtime.isTransitioning ? "Pending" : (workspace.runtime.state == .running ? "On" : "Off"))
                 .disabled(!workspace.tutorial.step.allowsPowerControl)
             }
-            .frame(height: 34)
-            .padding(.bottom, 8)
+            .frame(height: 38)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(palette.controlStrokeSoft.opacity(0.62)).frame(height: 1)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Rectangle().fill(palette.neonPink.opacity(0.72)).frame(width: 38, height: 1)
+            }
+            .padding(.bottom, 6)
             if let instruction = workspace.tutorial.menuInstruction {
                 Text(instruction)
                     .font(.system(size: 12))
@@ -776,13 +802,12 @@ struct ChainMenuBarPanel: View {
                             HStack(spacing: 8) {
                                 Button { openChain(chain.id) } label: {
                                     HStack(spacing: 8) {
-                                        if let target = chain.target {
-                                            Image(nsImage: NSWorkspace.shared.icon(forFile: target.bundlePath))
-                                                .renderingMode(.original).resizable().frame(width: 18, height: 18)
-                                        } else {
-                                            Image(systemName: "speaker.wave.2").frame(width: 18)
-                                        }
-                                        Text(workspace.name(for: chain)).fontWeight(.medium).lineLimit(1)
+                                        MenuBarChainIcon(chain: chain, palette: palette)
+                                        Text(workspace.name(for: chain))
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .layoutPriority(1)
                                             .foregroundStyle(hoveredChainID == chain.id ? palette.textPrimary : palette.textSecondary)
                                             .overlay(alignment: .bottomLeading) {
                                                 if hoveredChainID == chain.id {
@@ -794,13 +819,14 @@ struct ChainMenuBarPanel: View {
                                             }
                                         Spacer(minLength: 0)
                                     }
+                                    .frame(minWidth: 132, maxWidth: .infinity, alignment: .leading)
                                     .frame(height: 52)
                                     .contentShape(Rectangle())
                                 }
-                                .onHover { hovering in
-                                    hoveredChainID = hovering ? chain.id : nil
-                                }
                                 .disabled(!workspace.canOpenChainFromMenu(chain.id))
+                                .onHover { hovering in
+                                    hoveredChainID = hovering ? chain.id : (hoveredChainID == chain.id ? nil : hoveredChainID)
+                                }
                                 .menuBarTutorialHighlight(
                                     workspace.tutorial.step == .chainsOpenEditor &&
                                     workspace.tutorial.practiceChainID == chain.id
@@ -808,7 +834,8 @@ struct ChainMenuBarPanel: View {
                                 ChainPresetMenu(workspace: workspace, presets: workspace.presets, chain: chain)
                                 Button { workspace.toggleEffects(chain.id) } label: {
                                     Image(systemName: "slider.horizontal.3")
-                                        .foregroundStyle(chain.effectsEnabled && !workspace.runtime.globallyBypassed ? palette.neonPink : palette.textMuted)
+                                        .foregroundStyle(hoveredToggleID == chain.id ? palette.neonPink :
+                                            (chain.effectsEnabled && !workspace.runtime.globallyBypassed ? palette.neonCyan : palette.textMuted))
                                         .frame(width: 24, height: 24)
                                         .contentShape(Rectangle())
                                 }
@@ -821,6 +848,7 @@ struct ChainMenuBarPanel: View {
                                 )
                                 .accessibilityLabel(chain.effectsEnabled ? "Disable \(workspace.name(for: chain)) chain" : "Enable \(workspace.name(for: chain)) chain")
                             }
+                            .padding(.horizontal, 4)
                             .contextMenu {
                                 Button("Remove Chain", role: .destructive) {
                                     workspace.remove(chain.id)
@@ -828,7 +856,8 @@ struct ChainMenuBarPanel: View {
                                 .disabled(!workspace.canRemoveChain(chain.id))
                             }
                             if index < workspace.chains.count - 1 {
-                                Rectangle().fill(palette.controlStrokeSoft.opacity(0.55)).frame(height: 1)
+                                Rectangle().fill(palette.controlStrokeSoft.opacity(0.48)).frame(height: 1)
+                                    .padding(.horizontal, 8)
                             }
                         }
                         .id(chain.id)
@@ -862,7 +891,7 @@ struct ChainMenuBarPanel: View {
                         Label {
                             Text(app.name)
                         } icon: {
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: app.bundlePath))
+                            Image(nsImage: AppIconCache.shared.icon(for: app.bundlePath))
                         }
                     }
                 }
@@ -877,18 +906,20 @@ struct ChainMenuBarPanel: View {
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(isAddChainHovered ? palette.textPrimary : palette.textSecondary)
-                .frame(width: 100, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 44, alignment: .center)
                 .overlay(alignment: .bottom) {
                     Rectangle()
                         .fill(palette.neonPink)
                         .frame(width: 58, height: 1)
-                        .opacity(isAddChainHovered ? 1 : 0)
+                        .opacity(isAddChainHovered ? 1 : 0.22)
                         .offset(y: -7)
                 }
                 .contentShape(Rectangle())
-                .onHover { hovering in
-                    isAddChainHovered = hovering
+                .background {
+                    MenuBarHoverReader { hovering in
+                        isAddChainHovered = hovering && workspace.canAddChain
+                    }
                 }
             }
             .menuStyle(.borderlessButton)
@@ -929,16 +960,165 @@ struct ChainMenuBarPanel: View {
         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(palette.textPrimary)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(width: 272)
-        .background(palette.panelPurple)
+        .frame(width: 360)
+        .background {
+            ZStack {
+                palette.panelPurple
+                MenuBarPanelTexture(palette: palette)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(palette.controlStrokeSoft.opacity(0.78), lineWidth: 1)
                 .allowsHitTesting(false)
         }
+        .overlay(alignment: .topLeading) {
+            Rectangle()
+                .fill(palette.neonPink.opacity(0.78))
+                .frame(width: 46, height: 1)
+                .padding(.leading, 12)
+                .allowsHitTesting(false)
+        }
         .preferredColorScheme(.dark)
+        .onAppear {
+            AppIconCache.shared.preload(apps.map(\.bundlePath))
+        }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            apps = AudioCaptureTarget.runningApps()
+            let refreshed = AudioCaptureTarget.runningApps()
+            if refreshed != apps {
+                apps = refreshed
+                AppIconCache.shared.preload(refreshed.map(\.bundlePath))
+            }
+        }
+    }
+}
+
+private struct MenuBarPanelTexture: View {
+    let palette: AppColorPalette
+
+    var body: some View {
+        Canvas { context, size in
+            var grid = Path()
+            let spacing: CGFloat = 28
+            for x in stride(from: CGFloat(0), through: size.width, by: spacing) {
+                grid.move(to: CGPoint(x: x, y: 0))
+                grid.addLine(to: CGPoint(x: x, y: size.height))
+            }
+            for y in stride(from: CGFloat(0), through: size.height, by: spacing) {
+                grid.move(to: CGPoint(x: 0, y: y))
+                grid.addLine(to: CGPoint(x: size.width, y: y))
+            }
+            context.stroke(grid, with: .color(palette.controlStrokeSoft.opacity(0.10)), lineWidth: 0.5)
+
+            var upperWave = Path()
+            upperWave.move(to: CGPoint(x: -12, y: size.height * 0.30))
+            upperWave.addCurve(
+                to: CGPoint(x: size.width + 12, y: size.height * 0.25),
+                control1: CGPoint(x: size.width * 0.28, y: size.height * 0.20),
+                control2: CGPoint(x: size.width * 0.64, y: size.height * 0.38)
+            )
+            context.stroke(upperWave, with: .color(palette.neonCyan.opacity(0.075)), lineWidth: 1)
+
+            var lowerWave = Path()
+            lowerWave.move(to: CGPoint(x: -12, y: size.height * 0.74))
+            lowerWave.addCurve(
+                to: CGPoint(x: size.width + 12, y: size.height * 0.79),
+                control1: CGPoint(x: size.width * 0.34, y: size.height * 0.86),
+                control2: CGPoint(x: size.width * 0.70, y: size.height * 0.66)
+            )
+            context.stroke(lowerWave, with: .color(palette.neonPink.opacity(0.065)), lineWidth: 1)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct MenuBarChainIcon: View {
+    let chain: AudioChainDefinition
+    let palette: AppColorPalette
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(palette.controlPurple.opacity(0.42))
+                .frame(width: 28, height: 28)
+                .overlay {
+                    Rectangle().stroke(palette.controlStrokeSoft.opacity(0.52), lineWidth: 1)
+            }
+            if let target = chain.target {
+                Image(nsImage: AppIconCache.shared.icon(for: target.bundlePath))
+                    .renderingMode(.original)
+                    .resizable()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: "speaker.wave.2")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(palette.neonCyan)
+            }
+        }
+        .frame(width: 28, height: 28)
+    }
+}
+
+private final class AppIconCache {
+    static let shared = AppIconCache()
+    private var icons: [String: NSImage] = [:]
+
+    func icon(for path: String) -> NSImage {
+        if let icon = icons[path] { return icon }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        icons[path] = icon
+        return icon
+    }
+
+    func preload(_ paths: [String]) {
+        for path in Set(paths) where icons[path] == nil {
+            icons[path] = NSWorkspace.shared.icon(forFile: path)
+        }
+    }
+}
+
+/// AppKit tracking remains stable when SwiftUI `Menu` temporarily moves focus
+/// into its native menu window. It observes hover without intercepting clicks.
+private struct MenuBarHoverReader: NSViewRepresentable {
+    let onChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingView, context: Context) {
+        nsView.onChange = onChange
+    }
+
+    final class TrackingView: NSView {
+        var onChange: ((Bool) -> Void)?
+        private var area: NSTrackingArea?
+        private var isHovering = false
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let area { removeTrackingArea(area) }
+            let next = NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(next)
+            area = next
+        }
+
+        override func mouseEntered(with event: NSEvent) { setHovering(true) }
+        override func mouseExited(with event: NSEvent) { setHovering(false) }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        private func setHovering(_ hovering: Bool) {
+            guard hovering != isHovering else { return }
+            isHovering = hovering
+            onChange?(hovering)
         }
     }
 }
@@ -971,25 +1151,38 @@ private struct ChainPresetMenu: View {
             if presets.presets.isEmpty { Text("No saved presets") }
         } label: {
             HStack(spacing: 6) {
-                Text(preset?.name ?? "Choose preset").lineLimit(1).truncationMode(.tail)
+                Text(preset?.name ?? "Choose preset")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .overlay(alignment: .bottomLeading) {
+                        Rectangle()
+                            .fill(AppColors.neonPink)
+                            .frame(height: 1)
+                            .opacity(isHovered ? 1 : 0)
+                            .offset(y: 2)
+                    }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .medium))
                     .foregroundStyle(AppColors.neonPink)
                     .allowsHitTesting(false)
+                    .offset(x: isHovered ? 1 : 0)
             }
             .foregroundStyle(preset == nil && !isTutorialTarget ? AppColors.textMuted : AppColors.textPrimary)
             .padding(.horizontal, 4)
-            .frame(width: 120, height: 30, alignment: .trailing)
+            .frame(width: 156, height: 30, alignment: .trailing)
             .background(isHovered ? AppColors.controlPurple.opacity(0.45) : Color.clear)
             .contentShape(Rectangle())
+            .background {
+                MenuBarHoverReader { hovering in
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        isHovered = hovering
+                    }
+                }
+            }
         }
         .buttonStyle(.plain).menuIndicator(.hidden)
         .disabled(!workspace.canLoadPreset(into: chain.id))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                isHovered = hovering
-            }
-        }
         .menuBarTutorialHighlight(isTutorialTarget)
         .accessibilityLabel("Preset for \(workspace.name(for: chain))")
     }

@@ -76,6 +76,7 @@ struct CanvasView: View {
     @State private var nodeScale: CGFloat = 1.0
     @State private var nodeStartScale: CGFloat = 1.0
     @State private var customContextMenu: CustomContextMenu?
+    @State private var wireContextMenu: CustomContextMenu?
     @State private var isRestoringSnapshot = false
     @State private var isCanvasHovering = false
     @State private var isOptionHeld = false
@@ -91,6 +92,7 @@ struct CanvasView: View {
     @State private var didPrepareAdvancedTutorialCanvas = false
     @State private var expandedControlPanelLifts: [UUID: CGFloat] = [:]
     private let connectionSnapRadius: CGFloat = 120
+    private let wireContextMenuOverlap: CGFloat = 18
     private let effectEndpointVisualSize = CGSize(width: 110, height: 110)
     private let terminalEndpointVisualSize = CGSize(width: 60, height: 60)
     private let arrowFpsOptions: [Double] = [0, 12, 20, 24, 30, 40]
@@ -510,6 +512,20 @@ struct CanvasView: View {
                             path.addLine(to: activeConnectionPoint)
                         }
                         .stroke(Color.blue.opacity(0.7), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    }
+
+                    // Keep the initial wire menu in the same document
+                    // coordinate space as the correctly placed gain editor.
+                    if let menu = wireContextMenu {
+                        Color.black.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture { dismissCustomContextMenu() }
+                            .zIndex(CanvasLayerZIndex.floatingBackdrop)
+
+                        CustomContextMenuView(menu: menu) {
+                            dismissCustomContextMenu()
+                        }
+                        .zIndex(CanvasLayerZIndex.floatingMenu)
                     }
 
                     if let wireID = selectedWireID,
@@ -1083,6 +1099,7 @@ struct CanvasView: View {
             }
             if step != .buildRightClick && step != .buildActionMenu {
                 customContextMenu = nil
+                wireContextMenu = nil
             }
             if step != .buildWireLevels {
                 selectedWireID = nil
@@ -1186,6 +1203,7 @@ struct CanvasView: View {
 
     private func dismissCustomContextMenu() {
         customContextMenu = nil
+        wireContextMenu = nil
         tutorial.advanceIf(.buildCloseContextMenu)
     }
 
@@ -1224,6 +1242,7 @@ struct CanvasView: View {
         selectedWireID = nil
         selectedAutoWire = nil
         customContextMenu = nil
+        wireContextMenu = nil
         activeConnectionFromID = nil
         activeConnectionPoint = .zero
         lassoStart = nil
@@ -1954,11 +1973,16 @@ struct CanvasView: View {
         menuAtPoint(menu, point: menu.position)
     }
 
-    private func menuAtPoint(_ menu: CustomContextMenu, point: CGPoint) -> CustomContextMenu {
+    private func menuAtPoint(
+        _ menu: CustomContextMenu,
+        point: CGPoint,
+        gap: CGFloat = 8
+    ) -> CustomContextMenu {
         let position = CanvasViewportLayout.contextMenuPosition(
             click: point,
             size: menu.size,
-            visibleRect: visibleCanvasRect
+            visibleRect: visibleCanvasRect,
+            gap: gap
         )
         return CustomContextMenu(anchor: menu.anchor, position: position, tint: menu.tint, items: menu.items)
     }
@@ -2055,6 +2079,7 @@ struct CanvasView: View {
             }
             let tint = accentPalette[hitNode.accentIndex % accentPalette.count].fill
             let menu = CustomContextMenu(anchor: displayNodePosition(hitNode, in: size), position: point, tint: tint, items: items)
+            wireContextMenu = nil
             customContextMenu = menuAdjusted(menu)
             tutorial.advanceIf(.buildRightClick)
             return
@@ -2088,7 +2113,8 @@ struct CanvasView: View {
                         )
                     ]
                 )
-                customContextMenu = menuAtPoint(menu, point: point)
+                customContextMenu = nil
+                wireContextMenu = menuAtPoint(menu, point: point, gap: -wireContextMenuOverlap)
                 return
             }
         } else {
@@ -2122,7 +2148,8 @@ struct CanvasView: View {
                         )
                     ]
                 )
-                customContextMenu = menuAtPoint(menu, point: point)
+                customContextMenu = nil
+                wireContextMenu = menuAtPoint(menu, point: point, gap: -wireContextMenuOverlap)
                 return
             }
         }
@@ -2143,6 +2170,7 @@ struct CanvasView: View {
                         )
                     ]
                 )
+                wireContextMenu = nil
                 customContextMenu = menuAdjusted(menu)
                 return
             }
@@ -2161,6 +2189,7 @@ struct CanvasView: View {
                         )
                     ]
                 )
+                wireContextMenu = nil
                 customContextMenu = menuAdjusted(menu)
                 return
             }
@@ -2185,11 +2214,13 @@ struct CanvasView: View {
                     )
                 ]
             )
+            wireContextMenu = nil
             customContextMenu = menuAtPoint(menu, point: point)
             return
         }
 
         customContextMenu = nil
+        wireContextMenu = nil
     }
 
     private func distanceToSegment(_ p: CGPoint, _ v: CGPoint, _ w: CGPoint) -> CGFloat {
@@ -2281,6 +2312,7 @@ struct CanvasView: View {
         activeConnectionFromID = nil
         activeConnectionPoint = .zero
         customContextMenu = nil
+        wireContextMenu = nil
         nextAccentIndex = 0
     }
 

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 @testable import Sonexis
 func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() { fatalError(message) } }
@@ -393,3 +394,99 @@ retryLesson.shutdown()
 expect(!TutorialStep.buildAddBass.allowsPowerControl && !TutorialStep.advancedIntro.allowsPowerControl,
        "Other tutorial Power locks stay unchanged")
 print("PASS: pending entry waits for settled state; failed tutorial start remains retryable; other lesson locks unchanged")
+
+// Exercise the tab model under repeated UI-style mutations. Reordering must
+// remain visual-only: processors, graphs, Default ownership and persistence
+// cannot drift as tabs move around.
+let tabStressDirectory = directory.appendingPathComponent("tab-stress")
+let tabStress = ChainWorkspace(directory: tabStressDirectory, runtime: runtime())
+let tabDefaultID = tabStress.selectedID
+let stressTargets = (0..<10).map { index in
+    AudioCaptureTarget(
+        bundleID: "test.tab.\(index)",
+        name: "Stress App \(index)",
+        bundlePath: "/StressApp\(index).app"
+    )
+}
+for (index, target) in stressTargets.enumerated() {
+    tabStress.add(target)
+    let processor = tabStress.selectedProcessor!
+    var stressGraph = processor.currentGraphSnapshot!
+    stressGraph.nodes = [BeginnerNode(type: index.isMultiple(of: 2) ? .clarity : .bassBoost)]
+    processor.applyIndependentGraph(stressGraph)
+    tabStress.capture()
+}
+expect(tabStress.chains.count == 11 && tabStress.chains.first?.id == tabDefaultID,
+       "Rapid tab additions preserve exactly one leading Default")
+let stressIDs = tabStress.chains.compactMap { $0.target == nil ? nil : $0.id }
+let stressProcessors = Dictionary(uniqueKeysWithValues: stressIDs.compactMap { id in
+    tabStress.runtime.processors[id].map { (id, $0) }
+})
+
+for iteration in 0..<120 {
+    let moving = stressIDs[iteration % stressIDs.count]
+    let destination = stressIDs[(iteration * 7 + 3) % stressIDs.count]
+    if moving != destination { tabStress.moveAppChain(moving, toPositionOf: destination) }
+    tabStress.select(stressIDs[(iteration * 3) % stressIDs.count])
+    if iteration.isMultiple(of: 5) { tabStress.toggleEffects(stressIDs[(iteration * 3) % stressIDs.count]) }
+    expect(tabStress.chains.first?.id == tabDefaultID, "Tab stress moved Default away from the first position")
+    expect(Set(tabStress.chains.map(\.id)) == Set([tabDefaultID] + stressIDs),
+           "Tab stress duplicated or lost a chain")
+    for id in stressIDs {
+        expect(tabStress.runtime.processors[id] === stressProcessors[id],
+               "Tab reorder replaced an active processor")
+    }
+}
+
+let countBeforeDuplicate = tabStress.chains.count
+let duplicateTarget = AudioCaptureTarget(
+    bundleID: stressTargets[4].bundleID,
+    name: "Renamed duplicate",
+    bundlePath: "/DifferentPath.app"
+)
+tabStress.add(duplicateTarget)
+expect(tabStress.chains.count == countBeforeDuplicate,
+       "Adding an existing application created a duplicate tab")
+expect(tabStress.selectedID == stressIDs[4],
+       "Adding an existing application should focus its existing tab")
+
+tabStress.capture()
+tabStress.store.flush()
+let orderBeforeRestart = tabStress.chains.map(\.id)
+let restoredTabStress = ChainWorkspace(directory: tabStressDirectory, runtime: runtime())
+expect(restoredTabStress.chains.map(\.id) == orderBeforeRestart,
+       "Rapidly reordered tabs did not preserve their final order")
+for chain in restoredTabStress.chains where chain.target != nil {
+    expect(restoredTabStress.runtime.processors[chain.id]?.currentGraphSnapshot?.nodes.count == 1,
+           "A tab lost its graph across restart")
+}
+
+for id in restoredTabStress.chains.compactMap({ $0.target == nil ? nil : $0.id }).prefix(5) {
+    restoredTabStress.remove(id)
+}
+expect(restoredTabStress.chains.count == 6 && restoredTabStress.chains.first?.id == tabDefaultID,
+       "Repeated tab removal damaged Default or removed the wrong count")
+restoredTabStress.removeAllAppChains()
+expect(restoredTabStress.chains.count == 1 && restoredTabStress.selectedID == tabDefaultID,
+       "Close All did not converge to the original Default after tab stress")
+restoredTabStress.store.flush()
+let finalTabDocument = try ChainWorkspaceStore(directory: tabStressDirectory).load()!
+expect(finalTabDocument.chains.count == 1 && finalTabDocument.selectedID == tabDefaultID,
+       "Tab stress result did not persist")
+tabStress.shutdown()
+restoredTabStress.shutdown()
+print("PASS: 120 tab reorder/select/toggle cycles, duplicate add, restart, repeated removal and Close All")
+
+let refreshRuntime = runtime()
+let refreshChain = ChainWorkspace.emptyChain(target: nil)
+try refreshRuntime.configure([refreshChain])
+refreshRuntime.captureDefinitions()
+var refreshNotifications = 0
+let refreshObservation = refreshRuntime.objectWillChange.sink { refreshNotifications += 1 }
+refreshRuntime.captureDefinitions()
+expect(refreshNotifications == 0, "An unchanged autosave capture republished the menu-bar chain list")
+refreshRuntime.processors[refreshChain.id]!.processTapInputTrimDB = -12
+refreshRuntime.captureDefinitions()
+expect(refreshNotifications == 1, "A real captured chain change was not published exactly once")
+withExtendedLifetime(refreshObservation) {}
+print("PASS: unchanged autosave capture does not redraw the menu bar; real changes still publish")

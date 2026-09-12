@@ -60,7 +60,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         onOpen?()
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self else { return event }
-            if event.window !== self.panel && event.window !== self.statusItem?.button?.window {
+            if self.shouldDismiss(for: event) {
                 self.close()
             }
             return event
@@ -68,6 +68,14 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.close()
         }
+    }
+
+    private func shouldDismiss(for event: NSEvent) -> Bool {
+        guard let eventWindow = event.window else { return true }
+        if eventWindow === panel || eventWindow === statusItem?.button?.window { return false }
+        // SwiftUI Menu presents an AppKit menu window. Closing the parent panel
+        // during that window's mouse-down cancels or duplicates the menu action.
+        return eventWindow.level.rawValue < NSWindow.Level.popUpMenu.rawValue
     }
 
     private func resize(to size: CGSize) {
@@ -90,8 +98,6 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         if panel.frame != frame { panel.setFrame(frame, display: panel.isVisible) }
         return true
     }
-
-    func windowDidResignKey(_ notification: Notification) { close() }
 
     func close() {
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }

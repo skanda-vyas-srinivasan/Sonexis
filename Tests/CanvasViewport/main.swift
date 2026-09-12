@@ -62,6 +62,12 @@ let centralMenu = CanvasViewportLayout.contextMenuPosition(
 expect(centralMenu == CGPoint(x: centralClick.x + 8 + contextSize.width / 2,
                               y: centralClick.y + 8 + contextSize.height / 2),
        "Context menu should open below-right of the click")
+let attachedWireMenu = CanvasViewportLayout.contextMenuPosition(
+    click: centralClick, size: contextSize, visibleRect: visible, gap: -18
+)
+expect(attachedWireMenu == CGPoint(x: centralClick.x - 18 + contextSize.width / 2,
+                                   y: centralClick.y - 18 + contextSize.height / 2),
+       "Wire context menu should place its first action beneath the click")
 let edgeClick = CGPoint(x: visible.maxX - 4, y: visible.maxY - 4)
 let edgeMenu = CanvasViewportLayout.contextMenuPosition(
     click: edgeClick, size: contextSize, visibleRect: visible

@@ -337,22 +337,22 @@ struct GainPopoverView: View {
                 .monospacedDigit()
                 .foregroundColor(tint.opacity(0.86))
                 .frame(maxWidth: .infinity)
-            Button("Done") {
-                onDone()
+            Button(action: onDone) {
+                Text("Done")
+                    .font(itemFont)
+                    .foregroundColor(AppColors.textPrimary)
+                    .frame(width: 160, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(AppColors.controlPurple.opacity(0.55))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(AppColors.controlStrokeSoft.opacity(0.5), lineWidth: 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
-            .font(itemFont)
-            .foregroundColor(AppColors.textPrimary)
-            .frame(width: 160, height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(AppColors.controlPurple.opacity(0.55))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(AppColors.controlStrokeSoft.opacity(0.5), lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .padding(10)
         .sonexisFloatingPanel(tint: tint, cornerRadius: 8, glowOpacity: 0)
