@@ -18,4 +18,4 @@ Requires macOS 14.4 or later.
 
 ## License
 
-Proprietary software. Copyright © 2026 Skanda Vyas Srinivasan. All rights reserved.
+Sonexis is licensed under the [GNU General Public License, version 2 or later](External/rubberband/COPYING).
