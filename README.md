@@ -1,13 +1,17 @@
 # Sonexis
 
 <p align="center">
-  <img src="docs/logo.png" width="128">
+  <img src="Branding/sonexis-mark.png" width="128" alt="Sonexis logo">
 </p>
 
 <p align="center">
-  Shape your system audio.
+  <strong>Shape your system audio.</strong>
 </p>
 
-<p align="center">
-  <a href="https://sonexis.ink">Website</a> •
-</p>
+Sonexis is a native macOS audio processor that captures system sound and applies effects in real time—without requiring a virtual audio device.
+
+Build visual effect chains with EQ, compression, reverb, modulation, pitch, saturation, and third-party Audio Unit plug-ins. Create independent chains for individual apps, use a default chain for everything else, save reusable presets, control playback from the menu bar, and record the processed output.
+
+Requires macOS 14.4 or later.
+
+[Website](https://sonexis.ink)
