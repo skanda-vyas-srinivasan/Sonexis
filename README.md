@@ -15,3 +15,7 @@ Build visual effect chains with EQ, compression, reverb, modulation, pitch, satu
 Requires macOS 14.4 or later.
 
 [Website](https://sonexis.ink)
+
+## License
+
+Proprietary software. Copyright © 2026 Skanda Vyas Srinivasan. All rights reserved.
