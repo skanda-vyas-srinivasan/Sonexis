@@ -32,6 +32,8 @@ Then run:
 Scripts/test-all.sh
 ```
 
+CI reports the same coverage as separate functional checks for lifecycle and capture, graph and routing, DSP, persistence and workspace, recording, and UI logic. To run one group locally, use `Scripts/test-group.sh <group>`; running `Scripts/test-group.sh` without an argument prints the available group names.
+
 The standalone test executables import and link the Debug application module. If the compiler reports that the module was produced by another Swift version, rebuild the Debug app with the active Xcode installation before rerunning the scripts.
 
 ## Design boundaries

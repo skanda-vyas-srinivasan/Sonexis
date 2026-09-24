@@ -12,7 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  macos:
+  build:
+    name: Build
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -21,13 +22,90 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Debug app
         run: |
-          xcodebuild \
-            -project Sonexis.xcodeproj \
-            -scheme Sonexis \
-            -configuration Debug \
-            -destination 'platform=macOS' \
-            -derivedDataPath .build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-      - name: Run offline regression suites
-        run: Scripts/test-all.sh
+          if xcodebuild \
+              -project Sonexis.xcodeproj \
+              -scheme Sonexis \
+              -configuration Debug \
+              -destination 'platform=macOS' \
+              -derivedDataPath .build/DerivedData \
+              CODE_SIGNING_ALLOWED=NO \
+              build; then
+            echo '## Build ✅' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Debug app compiled with Xcode 16.4 and code signing disabled.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::error title=Debug build failed::Open the build log above for the compiler diagnostics.'
+            echo '## Build ❌' >> "$GITHUB_STEP_SUMMARY"
+            echo 'The Debug app did not compile. See the failed step for compiler diagnostics.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Package Debug products
+        run: tar -czf sonexis-debug-products.tar.gz -C .build/DerivedData/Build/Products Debug
+      - name: Upload Debug products
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonexis-debug-products
+          path: sonexis-debug-products.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  tests:
+    name: Tests — ${{ matrix.name }}
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: lifecycle-capture
+            name: Lifecycle and capture
+          - group: graph-routing
+            name: Graph and routing
+          - group: dsp
+            name: DSP
+          - group: persistence-workspace
+            name: Persistence and workspace
+          - group: recording
+            name: Recording
+          - group: ui-logic
+            name: UI logic
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Debug products
+        uses: actions/download-artifact@v7
+        with:
+          name: sonexis-debug-products
+      - name: Restore Debug products
+        run: |
+          mkdir -p .build/DerivedData/Build/Products
+          tar -xzf sonexis-debug-products.tar.gz -C .build/DerivedData/Build/Products
+      - name: Run ${{ matrix.name }} tests
+        run: |
+          if /bin/sh Scripts/test-group.sh '${{ matrix.group }}'; then
+            echo '## ${{ matrix.name }} ✅' >> "$GITHUB_STEP_SUMMARY"
+            echo 'All tests in this functional group passed.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::error title=${{ matrix.name }} tests failed::See the test output above for the failing suite and assertion.'
+            echo '## ${{ matrix.name }} ❌' >> "$GITHUB_STEP_SUMMARY"
+            echo 'At least one test in this functional group failed. See the failed step for details.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  result:
+    name: CI result
+    if: always()
+    needs: [build, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm required jobs passed
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.tests.result }}
+        run: |
+          if [[ "$BUILD_RESULT" != success || "$TEST_RESULT" != success ]]; then
+            echo '::error title=CI failed::The build or at least one functional test group failed.'
+            exit 1
+          fi
+          echo 'Build and all six functional test groups passed.'
