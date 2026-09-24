@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Viewport geometry only: resizing must never rewrite graph coordinates or wiring.
 enum CanvasViewportLayout {

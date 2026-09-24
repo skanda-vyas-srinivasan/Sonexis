@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreAudio
 import SwiftUI
 

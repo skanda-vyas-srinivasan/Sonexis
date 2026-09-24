@@ -74,15 +74,8 @@ extension CanvasView {
                 rightEndID: rightEndNodeID,
                 autoConnectEnd: autoConnectEnd
             )
-            // Debug overlay removed.
         } else {
             let path = chainPath(for: nil)
-            if wiringMode == .automatic {
-                // Debug output removed.
-            } else {
-                let edges = manualGraphEdges(lane: nil)
-                // Debug output removed.
-            }
             if wiringMode == .manual {
                 audioEngine.updateEffectGraph(
                     nodes: effectChain,
@@ -91,7 +84,6 @@ extension CanvasView {
                     endID: endNodeID,
                     autoConnectEnd: autoConnectEnd
                 )
-                // Debug overlay removed.
             } else {
                 if autoGainOverrides.isEmpty {
                     audioEngine.updateEffectChain(path)
@@ -104,7 +96,6 @@ extension CanvasView {
                         endID: endNodeID
                     )
                 }
-                // Debug overlay removed.
             }
         }
         audioEngine.updateGraphSnapshot(currentGraphSnapshot())
