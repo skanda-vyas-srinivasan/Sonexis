@@ -11,7 +11,7 @@ Thank you for helping improve Sonexis. This guide describes the path from an ide
 
 ## Development setup
 
-You need macOS 14.4 or later and Xcode with a compatible macOS SDK. Clone the repository normally; all required source dependencies are vendored.
+You need macOS 14.4 or later and Xcode 16 or later with a compatible macOS SDK. Clone the repository normally; all required source dependencies are vendored.
 
 Build a testable Debug product:
 

@@ -16,7 +16,7 @@ Build visual effect chains with EQ, compression, reverb, modulation, pitch, satu
 
 - macOS 14.4 or later
 - Apple Silicon or Intel Mac
-- Xcode with the macOS 14.4 SDK or later
+- Xcode 16 or later with the macOS 14.4 SDK or later
 - Screen & System Audio Recording permission when running the app
 
 ## Build
