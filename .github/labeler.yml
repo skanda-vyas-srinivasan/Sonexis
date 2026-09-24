@@ -1,0 +1,117 @@
+"area: audio-engine":
+  - changed-files:
+      - any-glob-to-any-file: "Sonexis/AudioEngine/**"
+
+"area: capture-routing":
+  - changed-files:
+      - any-glob-to-any-file: "Sonexis/ProcessTapEngine/**"
+
+"area: persistence":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/Models/**"
+          - "Sonexis/PresetManager.swift"
+          - "Sonexis/WorkspaceStore.swift"
+          - "Sonexis/StarterPresets.json"
+
+"area: ui":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/CanvasView/**"
+          - "Sonexis/ContentView/**"
+          - "Sonexis/SharedUI/**"
+          - "Sonexis/Assets.xcassets/**"
+          - "Sonexis/EditorWindowController.swift"
+          - "Sonexis/MenuBarController.swift"
+          - "Sonexis/SonexisApp.swift"
+
+"area: plugins":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/AudioEngine/AUPluginInstance.swift"
+          - "Sonexis/AudioEngine/PluginEditorWindowController.swift"
+          - "Sonexis/AudioEngine/PluginHost.swift"
+          - "Sonexis/AudioEngine/PluginInstance.swift"
+          - "Sonexis/CanvasView/PluginEditorView.swift"
+          - "Sonexis/Models/PluginManager.swift"
+          - "Sonexis/Models/PluginModels.swift"
+          - "Sonexis/Models/PluginReference.swift"
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Tests/**"
+          - "Scripts/test-*.sh"
+
+"area: documentation":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "LICENSE"
+
+"area: build-release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "Sonexis.xcodeproj/**"
+          - "Sonexis/Info.plist"
+          - "Sonexis/Sonexis.entitlements"
+          - "Scripts/audit-*"
+          - "Scripts/build-*"
+          - "Scripts/package-*"
+
+"area: dependency":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "External/**"
+          - "Sonexis/Wrappers/**"
+
+"risk: elevated":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/AudioEngine/**"
+          - "Sonexis/ProcessTapEngine/**"
+          - "Sonexis/Models/**"
+          - "Sonexis/PresetManager.swift"
+          - "Sonexis/WorkspaceStore.swift"
+          - "Sonexis/StarterPresets.json"
+          - "Sonexis/Info.plist"
+          - "Sonexis/Sonexis.entitlements"
+          - "Sonexis/Wrappers/**"
+          - "Sonexis.xcodeproj/**"
+          - "External/**"
+
+"validation: manual-audio":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/AudioEngine/**"
+          - "Sonexis/ProcessTapEngine/**"
+          - "Sonexis/Wrappers/**"
+
+"validation: manual-ui":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/CanvasView/**"
+          - "Sonexis/ContentView/**"
+          - "Sonexis/SharedUI/**"
+          - "Sonexis/Assets.xcassets/**"
+          - "Sonexis/EditorWindowController.swift"
+          - "Sonexis/MenuBarController.swift"
+          - "Sonexis/SonexisApp.swift"
+
+"validation: migration-review":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Sonexis/Models/**"
+          - "Sonexis/PresetManager.swift"
+          - "Sonexis/WorkspaceStore.swift"
+          - "Sonexis/StarterPresets.json"
+
+"validation: security-review":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - "External/**"
+          - "Sonexis/Info.plist"
+          - "Sonexis/Sonexis.entitlements"
+          - "Sonexis/Wrappers/**"

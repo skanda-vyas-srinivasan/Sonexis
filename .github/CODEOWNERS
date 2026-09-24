@@ -1,0 +1,15 @@
+# Require maintainer attention for changes with audio, data-compatibility,
+# permission, dependency, or CI consequences. Enforcement requires the
+# repository ruleset to require code-owner approval.
+/Sonexis/AudioEngine/ @skanda-vyas-srinivasan
+/Sonexis/ProcessTapEngine/ @skanda-vyas-srinivasan
+/Sonexis/Models/ @skanda-vyas-srinivasan
+/Sonexis/PresetManager.swift @skanda-vyas-srinivasan
+/Sonexis/WorkspaceStore.swift @skanda-vyas-srinivasan
+/Sonexis/StarterPresets.json @skanda-vyas-srinivasan
+/Sonexis/Info.plist @skanda-vyas-srinivasan
+/Sonexis/Sonexis.entitlements @skanda-vyas-srinivasan
+/Sonexis/Wrappers/ @skanda-vyas-srinivasan
+/Sonexis.xcodeproj/ @skanda-vyas-srinivasan
+/External/ @skanda-vyas-srinivasan
+/.github/workflows/ @skanda-vyas-srinivasan

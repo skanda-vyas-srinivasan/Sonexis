@@ -186,7 +186,7 @@ class AudioEngine: ObservableObject {
         }
     }
 
-    // Pitch Shift effect (Nightcore) - now uses AVAudioUnitTimePitch
+    // Legacy global pitch controls. Node-based pitch processing uses Rubber Band.
     @Published var nightcoreEnabled = false {
         didSet {
             if !nightcoreEnabled && !clarityEnabled {
@@ -203,7 +203,6 @@ class AudioEngine: ObservableObject {
 
     @Published var bassBoostEnabled = false {
         didSet {
-            // Debug output removed.
             if !bassBoostEnabled {
                 resetBassBoostState()
             }

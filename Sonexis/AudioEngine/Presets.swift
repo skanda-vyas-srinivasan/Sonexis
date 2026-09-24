@@ -365,8 +365,6 @@ extension AudioEngine {
                 break
             }
         }
-
-        // Debug output removed.
     }
 
     func updateEffectChain(_ chain: [BeginnerNode]) {
@@ -415,7 +413,6 @@ extension AudioEngine {
                 self.effectLevels = [:]
             }
         }
-        // Debug output removed.
     }
 
     func updateEffectGraph(

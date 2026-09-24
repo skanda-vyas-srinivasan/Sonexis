@@ -1,0 +1,37 @@
+name: Pull request policy
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  description-and-risk:
+    name: Description and risk
+    runs-on: ubuntu-latest
+    env:
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - name: Require a meaningful change description
+        shell: bash
+        run: |
+          description=$(printf '%s\n' "$PR_BODY" | awk '
+            /^## What changed[[:space:]]*$/ { capture = 1; next }
+            capture && /^## / { exit }
+            capture && $0 !~ /^[[:space:]]*<!--[[:print:]]*-->[[:space:]]*$/ { print }
+          ')
+          character_count=$(printf '%s' "$description" | tr -d '[:space:]' | wc -c | tr -d '[:space:]')
+          if [[ "$character_count" -lt 40 ]]; then
+            echo "::error title=Change description too short::Write at least one useful sentence under 'What changed' (minimum 40 non-whitespace characters; found $character_count)."
+            exit 1
+          fi
+      - name: Require a declared risk level
+        shell: bash
+        run: |
+          risk_count=$(printf '%s\n' "$PR_BODY" | grep -Eic '^Risk level:[[:space:]]*(Low|Medium|High)[[:space:]]*$' || true)
+          if [[ "$risk_count" -ne 1 ]]; then
+            echo '::error title=Risk level missing::Add exactly one line to the PR description: Risk level: Low, Risk level: Medium, or Risk level: High.'
+            exit 1
+          fi

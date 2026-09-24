@@ -441,33 +441,6 @@ extension View {
     }
 }
 
-struct AnimatedGrid: View {
-    let intensity: Double
-
-    var body: some View {
-        TimelineView(.animation) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            let offset = CGFloat(time.truncatingRemainder(dividingBy: 30))
-            Canvas { context, size in
-                let spacing: CGFloat = 30
-                var path = Path()
-                for x in stride(from: -offset, through: size.width, by: spacing) {
-                    path.move(to: CGPoint(x: x, y: 0))
-                    path.addLine(to: CGPoint(x: x, y: size.height))
-                }
-                for y in stride(from: -offset, through: size.height, by: spacing) {
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: size.width, y: y))
-                }
-                context.stroke(
-                    path,
-                    with: .color(AppColors.gridLines.opacity(0.6 + 0.4 * intensity)),
-                    lineWidth: 1
-                )
-            }
-        }
-    }
-}
 
 final class GridPathCache: ObservableObject {
     private var cachedSize: CGSize = .zero
@@ -523,36 +496,6 @@ struct ScanlinesOverlay: View {
     }
 }
 
-struct GlitchOverlay: View {
-    @State private var phase: CGFloat = 0
-    let onComplete: () -> Void
-
-    var body: some View {
-        ZStack {
-            Color.white.opacity(0.25 * (1 - phase))
-
-            VStack(spacing: 6) {
-                ForEach(0..<5, id: \.self) { index in
-                    Rectangle()
-                        .fill(AppColors.neonCyan.opacity(0.12 + Double(index) * 0.04))
-                        .frame(height: 18)
-                        .offset(x: phase * CGFloat(12 + index * 6))
-                        .blur(radius: 1.5)
-                }
-            }
-            .padding(.horizontal, 40)
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.15)) {
-                phase = 1
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                onComplete()
-            }
-        }
-    }
-}
 
 extension Color {
     init(hex: String) {

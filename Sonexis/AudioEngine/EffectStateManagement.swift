@@ -56,7 +56,6 @@ extension AudioEngine {
                 gainDb: gainDb,
                 q: 0.8
             )
-            // Debug output removed.
         }
     }
 
@@ -72,7 +71,6 @@ extension AudioEngine {
                 gainDb: gainDb,
                 q: 0.7
             )
-            // Debug output removed.
         }
     }
 
@@ -88,7 +86,6 @@ extension AudioEngine {
                 gainDb: gainDb,
                 q: 1.5
             )
-            // Debug output removed.
         }
     }
 
