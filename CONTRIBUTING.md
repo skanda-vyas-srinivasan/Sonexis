@@ -104,4 +104,12 @@ A good pull request includes:
 - screenshots for visible changes;
 - known limits or checks that require hardware/manual verification.
 
+### Classification and review depth
+
+Pull requests are labeled automatically from their changed paths. Area labels identify the affected subsystem; `validation:` labels identify checks that automation cannot complete; and `risk: elevated` flags changes involving audio processing, capture, persisted data, permissions, dependencies, or project configuration.
+
+Path labels are a review aid, not a substitute for judgment. In the pull request template, select one overall risk level and describe any mismatch between the automatic labels and the actual behavior change. Contributors should report the manual checks they performed and explicitly list relevant scenarios they could not test.
+
+Changes carrying `validation: manual-audio`, `validation: manual-ui`, `validation: migration-review`, or `validation: security-review` require the corresponding maintainer review before release. Code ownership automatically requests maintainer review for the most sensitive paths when code-owner reviews are enabled in the repository ruleset.
+
 By contributing, you agree that your contribution is licensed under GPL-2.0-or-later, the same terms as the project.

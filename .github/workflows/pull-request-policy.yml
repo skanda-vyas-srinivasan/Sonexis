@@ -1,0 +1,23 @@
+name: Pull request policy
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  risk-declaration:
+    runs-on: ubuntu-latest
+    env:
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - name: Require one declared risk level
+        shell: bash
+        run: |
+          checked_count=$(printf '%s\n' "$PR_BODY" | grep -Ec '^- \[[xX]\] (Low|Medium|High) —' || true)
+          if [[ "$checked_count" -ne 1 ]]; then
+            echo "Select exactly one risk level in the pull request template."
+            exit 1
+          fi
