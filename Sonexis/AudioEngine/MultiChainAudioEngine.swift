@@ -20,7 +20,7 @@ struct AudioChainRoutingPlan: Equatable {
     init(chains: [AudioChainDefinition], resolve: (AudioCaptureTarget) throws -> Set<AudioObjectID>) throws {
         guard chains.filter({ $0.target == nil }).count == 1,
               Set(chains.map(\.id)).count == chains.count else {
-            throw PrototypeError(message: "Chains need unique IDs and exactly one default chain")
+            throw SonexisError(message: "Chains need unique IDs and exactly one default chain")
         }
         var targets = Set<String>()
         var assigned = Set<AudioObjectID>()
@@ -28,11 +28,11 @@ struct AudioChainRoutingPlan: Equatable {
         for chain in chains where chain.target != nil {
             let target = chain.target!
             guard targets.insert(target.bundleID).inserted else {
-                throw PrototypeError(message: "An app can only have one chain")
+                throw SonexisError(message: "An app can only have one chain")
             }
             let ids = try resolve(target).subtracting([kAudioObjectUnknown])
             guard assigned.isDisjoint(with: ids) else {
-                throw PrototypeError(message: "An audio process matched more than one app chain")
+                throw SonexisError(message: "An audio process matched more than one app chain")
             }
             assigned.formUnion(ids)
             selections[chain.id] = .only(ids)
@@ -144,6 +144,7 @@ final class MultiChainAudioEngine: ObservableObject {
     private let recordingPrerollChunks = 12
     private var mixerTimer: DispatchSourceTimer?
     private let mixerQueue = DispatchQueue(label: "Sonexis.CombinedRecordingMixer", qos: .userInitiated)
+    private let schedulesRecordingMixerTimer: Bool
     private let resolve: Resolver
     private let makePipeline: PipelineFactory
     private let lifecycleQueue: DispatchQueue
@@ -154,11 +155,13 @@ final class MultiChainAudioEngine: ObservableObject {
 
     init(resolve: @escaping Resolver = { Set(try $0.processObjectIDs(excluding: kAudioObjectUnknown)) },
          makePipeline: PipelineFactory? = nil,
-         operationTimeout: TimeInterval = 10) {
+         operationTimeout: TimeInterval = 10,
+         schedulesRecordingMixerTimer: Bool = true) {
         let queue = DispatchQueue(label: "Sonexis.AudioLifecycle", qos: .userInitiated)
         self.lifecycleQueue = queue
         self.resolve = resolve
         self.operationTimeout = operationTimeout
+        self.schedulesRecordingMixerTimer = schedulesRecordingMixerTimer
         self.makePipeline = makePipeline ?? {
             ProcessTapDSPEngine(audioProcessor: $0, fixedSelection: $1, lifecycleQueue: queue)
         }
@@ -199,14 +202,17 @@ final class MultiChainAudioEngine: ObservableObject {
     func configure(_ next: [AudioChainDefinition], rollbackOnAudioFailure: Bool = true,
                    completion: ((Bool) -> Void)? = nil) throws {
         precondition(Thread.isMainThread)
-        guard !isTransitioning else { throw PrototypeError(message: "Wait for the audio transition to finish.") }
+        guard !isTransitioning else { throw SonexisError(message: "Wait for the audio transition to finish.") }
+        var validatedNext = next
+        for index in validatedNext.indices {
+            validatedNext[index].graph = try validatedNext[index].graph.validatedForProcessing()
+        }
         // Structural checks never query HAL on the UI thread.
-        _ = try AudioChainRoutingPlan(chains: next, resolve: { _ in [] })
-        for chain in next { try chain.graph.validateForIndependentProcessing() }
+        _ = try AudioChainRoutingPlan(chains: validatedNext, resolve: { _ in [] })
         let previous = definitions
         let previousProcessors = processors
         let wasRunning = state == .running
-        install(next, reusing: previousProcessors)
+        install(validatedNext, reusing: previousProcessors)
         if wasRunning {
             let restore: (() -> Void)? = rollbackOnAudioFailure ? { [weak self] in
                 guard let self else { return }
@@ -373,7 +379,7 @@ final class MultiChainAudioEngine: ObservableObject {
         lifecycleQueue.async { [weak self] in
             var failure: Error?
             do {
-                guard !token.isCancelled else { throw PrototypeError(message: "Audio operation cancelled") }
+                guard !token.isCancelled else { throw SonexisError(message: "Audio operation cancelled") }
                 let plan = try AudioChainRoutingPlan(chains: definitions, resolve: resolve)
                 if !refreshOnly || plan != session.plan {
                     session.stop()
@@ -382,7 +388,7 @@ final class MultiChainAudioEngine: ObservableObject {
                         for chain in definitions {
                             if token.isCancelled { break }
                             guard let processor = processors[chain.id], let selection = plan.selections[chain.id] else {
-                                throw PrototypeError(message: "Chain processor or route is missing")
+                                throw SonexisError(message: "Chain processor or route is missing")
                             }
                             let pipeline = factory(processor, selection)
                             session.pipelines.append(pipeline)
@@ -453,9 +459,9 @@ final class MultiChainAudioEngine: ObservableObject {
 
     func updateGraph(_ graph: GraphSnapshot, chainID: UUID) throws {
         precondition(Thread.isMainThread)
-        try graph.validateForIndependentProcessing()
+        let graph = try graph.validatedForProcessing()
         guard let index = definitions.firstIndex(where: { $0.id == chainID }), let processor = processors[chainID] else {
-            throw PrototypeError(message: "Unknown chain")
+            throw SonexisError(message: "Unknown chain")
         }
         processor.applyIndependentGraph(graph)
         definitions[index].graph = graph
@@ -525,7 +531,7 @@ extension MultiChainAudioEngine {
             }
             isRecording = true
             recordingStartedAt = Date()
-            startMixerTimer()
+            if schedulesRecordingMixerTimer { startMixerTimer() }
         } catch {
             recordingWarningText = "Recording failed: \(error.localizedDescription)"
             recordingIssuePresented = true
@@ -676,24 +682,14 @@ extension MultiChainAudioEngine {
     }
 }
 
-extension GraphSnapshot {
-    func validateForIndependentProcessing() throws {
-        guard Set(nodes.map(\.id)).count == nodes.count else {
-            throw PrototypeError(message: "A chain contains duplicate node IDs")
-        }
-        if graphMode == .split {
-            guard leftStartNodeID != nil, leftEndNodeID != nil,
-                  rightStartNodeID != nil, rightEndNodeID != nil else {
-                throw PrototypeError(message: "A split chain is missing its endpoints")
-            }
-        }
-    }
-}
-
 extension AudioEngine {
     /// Load a graph without mounting a canvas. Each engine owns its own mutable
     /// node state and plugin host, even if presets reuse the same node UUIDs.
     func applyIndependentGraph(_ graph: GraphSnapshot) {
+        guard let graph = try? graph.validatedForProcessing() else {
+            errorMessage = "The graph could not be loaded because its structure is invalid."
+            return
+        }
         // This is an authoritative headless load. A prior visual-load request
         // must not overwrite this graph during the next workspace capture.
         pendingGraphLoadRequest = nil

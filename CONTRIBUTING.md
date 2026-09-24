@@ -6,6 +6,7 @@ Thank you for helping improve Sonexis. This guide describes the path from an ide
 
 - Search existing issues before opening a new one.
 - Use an issue to discuss substantial features, UX changes, new effects, persistence changes, or audio-routing changes before implementation.
+- Use the **Contributor task** form for maintainer-scoped work that is ready to implement. It asks for evidence, boundaries, acceptance criteria, and a validation plan.
 - Small fixes, documentation improvements, and focused test additions may go directly to a pull request.
 - Keep changes narrow. Avoid combining cleanup, visual redesign, and behavior changes in one pull request.
 
@@ -33,6 +34,14 @@ Scripts/test-all.sh
 ```
 
 CI reports the same coverage as separate functional checks for lifecycle and capture, graph and routing, DSP, persistence and workspace, recording, and UI logic. To run one group locally, use `Scripts/test-group.sh <group>`; running `Scripts/test-group.sh` without an argument prints the available group names.
+
+The ordinary offline suite does not enable Thread Sanitizer. Run the focused graph-edit and Audio Unit lifecycle handoff checks with TSan separately:
+
+```sh
+Scripts/test-concurrency-tsan.sh
+```
+
+This builds the Sonexis Debug product in a separate TSan-instrumented Derived Data directory, compiles both standalone harnesses with TSan, and runs `GraphTransitionIntegration` plus the fake-runtime `AudioUnitLifecycle` protocol test. The latter verifies Sonexis lifecycle generation and handoff behavior, not compatibility or internal thread safety of arbitrary third-party Audio Units.
 
 The standalone test executables import and link the Debug application module. If the compiler reports that the module was produced by another Swift version, rebuild the Debug app with the active Xcode installation before rerunning the scripts.
 

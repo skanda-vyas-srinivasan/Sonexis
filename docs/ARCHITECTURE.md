@@ -39,7 +39,17 @@ The Default chain handles audio not claimed by an enabled app-specific chain. An
 
 ### Graph and effects
 
-`Sonexis/AudioEngine/` compiles graph state, routes buffers, hosts Audio Units, applies built-in effects, and records final output. UI-owned models are converted into processing snapshots before callback-time use. Stateful DSP must be scoped by node identity and cleared when nodes disappear.
+`AudioEngine` is the main-thread `ObservableObject` facade. It owns published UI state, device and pipeline orchestration, editable graph models, graph validation, routing-plan compilation, and processing-snapshot publication. It does not own mutable DSP dictionaries or graph-rendering buffers.
+
+`AudioGraphProcessor` is the single processing-worker owner. It owns per-node DSP state, graph execution, reusable worker buffers, graph-output transitions, DSP fault counters, and the prepared plug-in render-state references embedded in each snapshot. Graph edits publish immutable processing snapshots plus bounded reset and node-retirement commands. The worker consumes them at block boundaries. Main-thread code must not inspect, mutate, or release worker-owned DSP objects.
+
+### Audio Unit handoff
+
+Audio Unit lifecycle work is separate from live rendering. Each `AUPluginInstance` serializes preparation requests, and each request creates a distinct `AUPreparedRenderState`. Instantiation, persisted-state loading, format negotiation, render-resource allocation, scratch allocation, and warm-up all finish before that state can be published. The processing worker never performs those operations and never acquires the plug-in lifecycle, UI, editor, or state-serialization locks.
+
+A completed state becomes eligible for rendering only when `AudioEngine` includes its retained reference in a new immutable `ProcessingSnapshot`. That snapshot is acquired at a block boundary. An in-flight block retains its snapshot, so replacing or removing a plug-in cannot destroy the state it is using. Final third-party state release is deferred to a utility lifecycle queue instead of running on the processing worker. A failed preparation keeps the previous prepared state published when one exists; without a prepared state, the graph follows its existing dry/bypassed behavior and the failure is exposed through plug-in status.
+
+Parameter writes use the Audio Unit parameter API against the currently published generation. State loading does not mutate that generation; it prepares a replacement Audio Unit and uses the same snapshot handoff. Editor and state-serialization access may be slow inside third-party code, but Sonexis does not hold a render-path lock while they run. VST3 metadata can still be decoded for compatibility, but Sonexis does not create a no-op runtime processor for that unsupported format.
 
 ### Models
 
@@ -53,7 +63,9 @@ The Default chain handles audio not claimed by an enabled app-specific chain. An
 
 - **Main thread:** SwiftUI/AppKit state, graph editing, and user interaction.
 - **Audio lifecycle queue:** capture/output creation, start, stop, recovery, and teardown.
-- **Real-time processing callback:** bounded buffer transformation only.
+- **Audio Unit lifecycle queues:** one serial preparation coordinator per hosted unit. These queues construct replacement render generations and never run graph rendering.
+- **Process Tap callback:** bounded buffer handoff only. It does not render the graph.
+- **Processing worker:** graph rendering and exclusive mutation of processing buffers and per-node DSP state. It consumes immutable graph snapshots and bounded commands at block boundaries.
 - **Recording writer queue:** disk I/O using buffers handed off by the callback.
 
 Do not move data between these domains casually. Prefer immutable snapshots, stable IDs, bounded preallocated storage, and explicit ownership.

@@ -1,435 +1,171 @@
 import AppKit
 import AVFoundation
-import AVFAudio
 import AudioToolbox
 import AudioToolbox.AUCocoaUIView
 import AudioUnit
 import CoreAudioKit
-import AudioToolbox
 import Foundation
 
+/// Main/lifecycle-side owner. It prepares replacement render states on a serial
+/// queue and publishes them for the next processing snapshot. It is never called
+/// by live rendering.
 final class AUPluginInstance: PluginInstance {
     let reference: PluginReference
-    private(set) var isReady: Bool = false
     var onReady: (() -> Void)?
-    private var audioUnit: AUAudioUnit?
-    private var renderBlock: AURenderBlock?
-    private var currentSampleRate: Double = 0
-    private var currentChannelCount: Int = 0
-    private var renderChannelCount: Int = 0
-    private var pendingConfigure = false
-    private var pendingSampleRate: Double = 0
-    private var pendingChannelCount: Int = 0
-    private var inputScratch: [[Float]] = []
-    private var cachedParameters: [PluginParameter] = []
-    private var parameterMap: [String: AUParameter] = [:]
-    private var sampleTime: Double = 0
-    private var loggedRenderFailure = false
-    private var debugRenderCounter = 0
-    private var debugInputPulled = false
-    private let debugParamLogs = false
-    private let debugRenderLogs = false
-    private var monoBufferList: UnsafeMutableAudioBufferListPointer?
-    private var stereoBufferList: UnsafeMutableAudioBufferListPointer?
-    private var didWarmUp = false
-    private var cachedEditorController: NSViewController?
-    private let debugEditorLogs = false
-
-    deinit {
-        monoBufferList?.unsafeMutablePointer.deallocate()
-        stereoBufferList?.unsafeMutablePointer.deallocate()
-    }
+    private let lifecycle: PluginRenderLifecycle
+    private let retirementQueue: DispatchQueue
 
     init(reference: PluginReference) {
         self.reference = reference
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.instantiateAudioUnit()
+        let retirementQueue = DispatchQueue(
+            label: "Sonexis.AUPluginInstance.retirement",
+            qos: .utility
+        )
+        self.retirementQueue = retirementQueue
+        self.lifecycle = PluginRenderLifecycle(
+            label: "Sonexis.AUPluginInstance.lifecycle",
+            initialStateData: reference.stateData
+        ) { format, stateData, completion in
+            AUPreparedRenderState.prepare(
+                reference: reference,
+                format: format,
+                stateData: stateData
+            ) { result in
+                completion(result.map {
+                    DeferredReleasePluginRenderState(
+                        state: $0,
+                        retirementQueue: retirementQueue
+                    ) as PluginRenderState
+                })
+            }
+        }
+        lifecycle.onPublication = { [weak self] in
+            DispatchQueue.main.async { self?.onReady?() }
         }
     }
 
     var displayName: String { reference.displayName }
     var vendorName: String { reference.vendor }
+    var renderState: PluginRenderState? { lifecycle.renderState }
+    var isReady: Bool { renderState != nil }
+    var failureDescription: String? { lifecycle.failureDescription }
 
-    func ensureFormat(sampleRate: Double, channelCount: Int) {
-        guard isReady else { return }
-        if currentSampleRate != sampleRate || currentChannelCount != channelCount {
-            requestConfigure(sampleRate: sampleRate, channelCount: channelCount)
-        }
-    }
-
-    func process(buffer: inout [[Float]], frameLength: Int, sampleRate: Double, channelCount: Int) {
-        guard isReady, let renderBlock, channelCount <= 2 else { return }
-        ensureFormat(sampleRate: sampleRate, channelCount: channelCount)
-        guard !pendingConfigure, currentChannelCount == channelCount else { return }
-
-        var actionFlags = AudioUnitRenderActionFlags()
-        var timeStamp = AudioTimeStamp()
-        timeStamp.mFlags = .sampleTimeValid
-        timeStamp.mSampleTime = sampleTime
-        sampleTime += Double(frameLength)
-
-        debugInputPulled = false
-
-        let status: OSStatus
-        let targetChannels = renderChannelCount > 0 ? renderChannelCount : channelCount
-        ensureInputScratch(frameLength: frameLength, channelCount: targetChannels)
-        if targetChannels == 1 {
-            if channelCount == 2 {
-                for frame in 0..<frameLength {
-                    inputScratch[0][frame] = 0.5 * (buffer[0][frame] + buffer[1][frame])
-                }
-            } else {
-                for frame in 0..<frameLength {
-                    inputScratch[0][frame] = buffer[0][frame]
-                }
-            }
-        } else {
-            for channel in 0..<targetChannels {
-                for frame in 0..<frameLength {
-                    inputScratch[channel][frame] = buffer[channel][frame]
-                }
-            }
-        }
-
-        let pullInput: AURenderPullInputBlock = { [weak self] _, _, _, _, ioData in
-            guard let self else { return noErr }
-            self.copyInterleavedInputTo(ioData, frameLength: frameLength, channelCount: targetChannels)
-            self.debugInputPulled = true
-            return noErr
-        }
-
-        if targetChannels == 1 {
-            status = buffer[0].withUnsafeMutableBufferPointer { outPtr in
-                guard let baseAddress = outPtr.baseAddress else { return noErr }
-                for frame in 0..<frameLength {
-                    baseAddress[frame] = inputScratch[0][frame]
-                }
-                let bufferList = getMonoBufferList()
-                bufferList[0] = AudioBuffer(
-                    mNumberChannels: 1,
-                    mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
-                    mData: baseAddress
-                )
-                return renderBlock(&actionFlags, &timeStamp, AUAudioFrameCount(frameLength), 0, bufferList.unsafeMutablePointer, pullInput)
-            }
-            if channelCount == 2 {
-                for frame in 0..<frameLength {
-                    buffer[1][frame] = buffer[0][frame]
-                }
-            }
-        } else {
-            status = buffer.withUnsafeMutableBufferPointer { channelBuffers in
-                channelBuffers[0].withUnsafeMutableBufferPointer { outPtr0 in
-                    guard let base0 = outPtr0.baseAddress else { return noErr }
-                    return channelBuffers[1].withUnsafeMutableBufferPointer { outPtr1 in
-                        guard let base1 = outPtr1.baseAddress else { return noErr }
-                        for frame in 0..<frameLength {
-                            base0[frame] = inputScratch[0][frame]
-                            base1[frame] = inputScratch[1][frame]
-                        }
-                        let bufferList = getStereoBufferList()
-                        bufferList[0] = AudioBuffer(
-                            mNumberChannels: 1,
-                            mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
-                            mData: base0
-                        )
-                        bufferList[1] = AudioBuffer(
-                            mNumberChannels: 1,
-                            mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
-                            mData: base1
-                        )
-                        return renderBlock(&actionFlags, &timeStamp, AUAudioFrameCount(frameLength), 0, bufferList.unsafeMutablePointer, pullInput)
-                    }
-                }
-            }
-        }
-
-        if status != noErr {
-            // On failure, keep dry buffer.
-            for channel in 0..<channelCount {
-                for frame in 0..<frameLength {
-                    buffer[channel][frame] = inputScratch[channel][frame]
-                }
-            }
-            if !loggedRenderFailure {
-                loggedRenderFailure = true
-                print("AU Render failed for \(reference.name) status=\(status)")
-            }
-        } else if loggedRenderFailure {
-            loggedRenderFailure = false
-        }
-
-        debugRenderCounter += 1
-        if debugRenderLogs, debugRenderCounter % 120 == 0 {
-            let inputRMS = computeRMS(inputScratch, frameLength: frameLength, channelCount: targetChannels)
-            let outputRMS = computeRMS(buffer, frameLength: frameLength, channelCount: channelCount)
-            let diffRMS = computeDiffRMS(
-                input: inputScratch,
-                output: buffer,
-                frameLength: frameLength,
-                channelCount: min(channelCount, targetChannels)
-            )
-            print("AU Render ok \(reference.name) frames=\(frameLength) inCh=\(channelCount) auCh=\(targetChannels) pulled=\(debugInputPulled) inRMS=\(inputRMS) outRMS=\(outputRMS) diffRMS=\(diffRMS)")
-        }
-    }
-
-    private func computeRMS(_ audio: [[Float]], frameLength: Int, channelCount: Int) -> Float {
-        guard frameLength > 0, channelCount > 0 else { return 0 }
-        var sum: Float = 0
-        for channel in 0..<min(channelCount, audio.count) {
-            var channelSum: Float = 0
-            let data = audio[channel]
-            for frame in 0..<min(frameLength, data.count) {
-                let sample = data[frame]
-                channelSum += sample * sample
-            }
-            sum += channelSum / Float(frameLength)
-        }
-        return sqrt(sum / Float(channelCount))
-    }
-
-    private func computeDiffRMS(
-        input: [[Float]],
-        output: [[Float]],
-        frameLength: Int,
-        channelCount: Int
-    ) -> Float {
-        guard frameLength > 0, channelCount > 0 else { return 0 }
-        var sum: Float = 0
-        for channel in 0..<min(channelCount, min(input.count, output.count)) {
-            var channelSum: Float = 0
-            let inputData = input[channel]
-            let outputData = output[channel]
-            for frame in 0..<min(frameLength, min(inputData.count, outputData.count)) {
-                let diff = outputData[frame] - inputData[frame]
-                channelSum += diff * diff
-            }
-            sum += channelSum / Float(frameLength)
-        }
-        return sqrt(sum / Float(channelCount))
-    }
-
-    func editorView() -> NSView? {
-        return nil
-    }
-
-    func requestEditor(completion: @escaping (NSView?, NSViewController?) -> Void) {
-        guard isReady, let audioUnit else {
-            completion(nil, nil)
-            return
-        }
-        if let cachedEditorController {
-            let cachedView = cachedEditorController.view
-            DispatchQueue.main.async {
-                if cachedView.superview != nil {
-                    cachedView.removeFromSuperview()
-                }
-                if self.debugEditorLogs {
-                    print("AU UI reuse cached controller for \(self.reference.name)")
-                }
-                completion(cachedView, cachedEditorController)
-            }
-            return
-        }
-        // NOTE: Some Apple AUs (e.g., AUNewPitch) report providesUserInterface=false but still return a UI.
-        // If this causes issues, revert to the strict providesUserInterface guard below.
-        // guard audioUnit.providesUserInterface else {
-        //     print("AU UI unavailable for \(reference.name): providesUserInterface=false")
-        //     completion(nil)
-        //     return
-        // }
-        let isAppleAU = reference.componentManufacturer == 1634758764
-        let timeout: TimeInterval = isAppleAU ? 0.8 : 3.0
-        var didComplete = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-            if !didComplete {
-                didComplete = true
-                print("AU UI timed out for \(self.reference.name) after \(timeout)s")
-                completion(nil, nil)
-            }
-        }
-        audioUnit.requestViewController(completionHandler: { controller in
-            DispatchQueue.main.async {
-                guard !didComplete else { return }
-                didComplete = true
-                if controller == nil {
-                    print("AU UI request returned nil for \(self.reference.name)")
-                }
-                if let controller {
-                    self.cachedEditorController = controller
-                    let view = controller.view
-                    if view.subviews.isEmpty {
-                        if self.debugEditorLogs {
-                            print("AU UI empty view for \(self.reference.name), trying Cocoa UI")
-                        }
-                        if let cocoaView = self.makeCocoaView() {
-                            completion(cocoaView, nil)
-                            return
-                        }
-                        if let genericController = self.makeGenericController() {
-                            self.cachedEditorController = genericController
-                            completion(genericController.view, genericController)
-                            return
-                        }
-                    }
-                    completion(view, controller)
-                    return
-                }
-                if self.debugEditorLogs {
-                    print("AU UI nil controller for \(self.reference.name), trying Cocoa UI")
-                }
-                if let cocoaView = self.makeCocoaView() {
-                    completion(cocoaView, nil)
-                    return
-                }
-                if self.debugEditorLogs {
-                    print("AU UI Cocoa UI missing for \(self.reference.name), trying generic controller")
-                }
-                if let genericController = self.makeGenericController() {
-                    self.cachedEditorController = genericController
-                    completion(genericController.view, genericController)
-                } else {
-                    if self.debugEditorLogs {
-                        print("AU UI failed for \(self.reference.name): no Cocoa or generic view")
-                    }
-                    completion(nil, nil)
-                }
-            }
-        })
-    }
-
-    private func makeCocoaView() -> NSView? {
-        guard let audioUnit else { return nil }
-        guard let v2Bridge = audioUnit as? AUAudioUnitV2Bridge else {
-            if debugEditorLogs {
-                print("AU Cocoa UI missing AUAudioUnitV2Bridge for \(reference.name)")
-            }
-            return nil
-        }
-        let audioUnitRef = v2Bridge.audioUnit
-        let cocoaInfoPtr = UnsafeMutablePointer<AudioUnitCocoaViewInfo>.allocate(capacity: 1)
-        defer { cocoaInfoPtr.deallocate() }
-        var dataSize = UInt32(MemoryLayout<AudioUnitCocoaViewInfo>.size)
-        let status = AudioUnitGetProperty(
-            audioUnitRef,
-            kAudioUnitProperty_CocoaUI,
-            kAudioUnitScope_Global,
-            0,
-            cocoaInfoPtr,
-            &dataSize
-        )
-        guard status == noErr else {
-            if debugEditorLogs {
-                print("AU Cocoa UI property failed for \(reference.name) status=\(status)")
-            }
-            return nil
-        }
-        let cocoaInfo = cocoaInfoPtr.pointee
-        let bundleURL = cocoaInfo.mCocoaAUViewBundleLocation.takeUnretainedValue() as URL
-        let className = cocoaInfo.mCocoaAUViewClass.takeUnretainedValue() as String
-        guard let bundle = Bundle(url: bundleURL) else {
-            if debugEditorLogs {
-                print("AU Cocoa UI failed to load bundle for \(reference.name) at \(bundleURL.path)")
-            }
-            return nil
-        }
-        if !bundle.isLoaded {
-            bundle.load()
-        }
-        if debugEditorLogs {
-            print("AU Cocoa UI bundle=\(bundleURL.path) class=\(className)")
-        }
-        guard let viewClass = bundle.classNamed(className) as? NSObject.Type else {
-            if debugEditorLogs {
-                print("AU Cocoa UI failed to find class \(className) for \(reference.name)")
-            }
-            return nil
-        }
-        let factory = viewClass.init()
-        if let cocoaFactory = factory as? AUCocoaUIBase {
-            let preferredSize = NSSize(width: 720, height: 520)
-            let view = cocoaFactory.uiView(forAudioUnit: audioUnitRef, with: preferredSize)
-            if debugEditorLogs, view == nil {
-                print("AU Cocoa UI factory returned nil view for \(reference.name)")
-            }
-            return view
-        }
-        if let viewController = factory as? NSViewController {
-            return viewController.view
-        }
-        if let view = factory as? NSView {
-            return view
-        }
-        if debugEditorLogs {
-            print("AU Cocoa UI factory unsupported type for \(reference.name)")
-        }
-        return nil
-    }
-
-    private func makeGenericController() -> NSViewController? {
-        guard let audioUnit else { return nil }
-        if #available(macOS 13.0, *) {
-            let controller = AUGenericViewController()
-            controller.auAudioUnit = audioUnit
-            return controller
-        }
-        return nil
+    func prepare(format: PluginRenderFormat) {
+        lifecycle.prepare(format: format)
     }
 
     func parameters() -> [PluginParameter] {
-        guard isReady, let tree = audioUnit?.parameterTree else { return [] }
-        if cachedParameters.isEmpty {
-            let params = tree.allParameters
-            cachedParameters = params.map { param in
-                let id = String(param.address)
-                parameterMap[id] = param
-                return PluginParameter(
-                    id: id,
-                    name: param.displayName,
-                    value: Double(param.value),
-                    minValue: Double(param.minValue),
-                    maxValue: Double(param.maxValue),
-                    unitName: param.unitName,
-                    groupName: nil,
-                    isReadOnly: !param.flags.contains(.flag_IsWritable)
-                )
-            }
-        } else {
-            cachedParameters = cachedParameters.map { param in
-                var updated = param
-                if let auParam = parameterMap[param.id] {
-                    updated.value = Double(auParam.value)
-                }
-                return updated
-            }
-        }
-        return cachedParameters
+        preparedState?.parameters() ?? []
     }
 
     func setParameter(id: String, value: Double) {
-        guard let parameter = parameterMap[id] else { return }
-        parameter.value = AUValue(value)
-        if debugParamLogs {
-            print("AU Param set \(reference.name) \(parameter.displayName) addr=\(parameter.address) value=\(value)")
-        }
+        // AUParameter is the Audio Unit API designed for control changes while
+        // rendering. No Sonexis lifecycle or publication lock is held here.
+        preparedState?.setParameter(id: id, value: value)
     }
 
     func stateData() -> Data? {
-        guard isReady, let audioUnit else { return nil }
-        guard let fullState = audioUnit.fullState else { return nil }
-        return try? PropertyListSerialization.data(fromPropertyList: fullState, format: .binary, options: 0)
+        // State reads may be slow inside a third-party unit, but they never hold
+        // a Sonexis lock needed by the processing worker.
+        preparedState?.stateData()
     }
 
     func loadState(_ data: Data) {
-        guard isReady, let audioUnit else { return }
-        guard let state = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else { return }
-        audioUnit.fullState = state
+        lifecycle.loadState(data)
     }
 
-    private func instantiateAudioUnit() {
+    func editorView() -> NSView? { nil }
+
+    func requestEditor(completion: @escaping (NSView?, NSViewController?) -> Void) {
+        guard let state = preparedState else {
+            completion(nil, nil)
+            return
+        }
+        state.requestEditor(completion: completion)
+    }
+
+    private var preparedState: AUPreparedRenderState? {
+        let state = renderState
+        if let deferred = state as? DeferredReleasePluginRenderState {
+            return deferred.wrappedState as? AUPreparedRenderState
+        }
+        return state as? AUPreparedRenderState
+    }
+}
+
+enum AUPreparationError: LocalizedError {
+    case invalidIdentity
+    case invalidFormat
+    case instantiation(String)
+    case configuration(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidIdentity: return "Audio Unit identity is incomplete."
+        case .invalidFormat: return "Audio Unit render format is invalid."
+        case .instantiation(let message): return "Audio Unit instantiation failed: \(message)"
+        case .configuration(let message): return "Audio Unit configuration failed: \(message)"
+        }
+    }
+}
+
+/// Fully configured render generation. After construction, render resources and
+/// format are immutable. Processing is the sole owner of scratch buffers and
+/// render timing; lifecycle replacement creates another instance instead.
+final class AUPreparedRenderState: PluginRenderState {
+    let format: PluginRenderFormat
+    private let reference: PluginReference
+    private let audioUnit: AUAudioUnit
+    private let renderBlock: AURenderBlock
+    private let renderChannelCount: Int
+    private var inputScratch: [[Float]]
+    private var sampleTime: Double = 0
+    private let monoBufferList: UnsafeMutableAudioBufferListPointer
+    private let stereoBufferList: UnsafeMutableAudioBufferListPointer
+    private var cachedParameters: [PluginParameter] = []
+    private var parameterMap: [String: AUParameter] = [:]
+    private var cachedEditorController: NSViewController?
+
+    private init(
+        reference: PluginReference,
+        format: PluginRenderFormat,
+        audioUnit: AUAudioUnit,
+        renderChannelCount: Int
+    ) {
+        self.reference = reference
+        self.format = format
+        self.audioUnit = audioUnit
+        self.renderBlock = audioUnit.renderBlock
+        self.renderChannelCount = renderChannelCount
+        self.inputScratch = [[Float]](
+            repeating: [Float](repeating: 0, count: format.maximumFrameCount),
+            count: renderChannelCount
+        )
+        self.monoBufferList = AudioBufferList.allocate(maximumBuffers: 1)
+        self.stereoBufferList = AudioBufferList.allocate(maximumBuffers: 2)
+    }
+
+    deinit {
+        monoBufferList.unsafeMutablePointer.deallocate()
+        stereoBufferList.unsafeMutablePointer.deallocate()
+    }
+
+    static func prepare(
+        reference: PluginReference,
+        format: PluginRenderFormat,
+        stateData: Data?,
+        completion: @escaping (Result<AUPreparedRenderState, Error>) -> Void
+    ) {
+        guard format.sampleRate > 0,
+              (1...2).contains(format.channelCount),
+              format.maximumFrameCount > 0 else {
+            completion(.failure(AUPreparationError.invalidFormat))
+            return
+        }
         guard let componentType = reference.componentType,
               let componentSubType = reference.componentSubType,
               let componentManufacturer = reference.componentManufacturer else {
+            completion(.failure(AUPreparationError.invalidIdentity))
             return
         }
 
@@ -440,180 +176,244 @@ final class AUPluginInstance: PluginInstance {
             componentFlags: 0,
             componentFlagsMask: 0
         )
-
-        AUAudioUnit.instantiate(with: description, options: []) { [weak self] unit, error in
-            guard let self else { return }
+        AUAudioUnit.instantiate(with: description, options: []) { unit, error in
             guard let unit else {
-                if let error {
-                    print("AU Instantiate failed for \(self.reference.name): \(error.localizedDescription)")
-                } else {
-                    print("AU Instantiate failed for \(self.reference.name): unknown error")
-                }
+                completion(.failure(AUPreparationError.instantiation(error?.localizedDescription ?? "unknown error")))
                 return
             }
-            self.audioUnit = unit
-            self.renderBlock = unit.renderBlock
-            self.isReady = true
-            if let state = self.reference.stateData {
-                self.loadState(state)
-            }
-            DispatchQueue.main.async {
-                self.onReady?()
+            do {
+                if let stateData,
+                   let state = try PropertyListSerialization.propertyList(
+                    from: stateData,
+                    options: [],
+                    format: nil
+                   ) as? [String: Any] {
+                    unit.fullState = state
+                }
+                let renderChannels = try configure(unit: unit, format: format)
+                let state = AUPreparedRenderState(
+                    reference: reference,
+                    format: format,
+                    audioUnit: unit,
+                    renderChannelCount: renderChannels
+                )
+                try state.warmUp()
+                completion(.success(state))
+            } catch {
+                completion(.failure(AUPreparationError.configuration(error.localizedDescription)))
             }
         }
     }
 
-    private func configureAudioUnit(sampleRate: Double, channelCount: Int) {
-        guard let audioUnit else { return }
-        do {
-            if audioUnit.renderResourcesAllocated {
-                audioUnit.deallocateRenderResources()
-            }
-            var desiredChannels = channelCount
-            if audioUnit.outputBusses.count > 0 {
-                let supported = audioUnit.outputBusses[0].supportedChannelCounts ?? []
-                let target = NSNumber(value: channelCount)
-                if !supported.isEmpty && !supported.contains(target) {
-                    if supported.contains(NSNumber(value: 1)) {
-                        desiredChannels = 1
-                    } else if let first = supported.first {
-                        desiredChannels = first.intValue
-                    }
+    private static func configure(unit: AUAudioUnit, format: PluginRenderFormat) throws -> Int {
+        var desiredChannels = format.channelCount
+        if unit.outputBusses.count > 0 {
+            let supported = unit.outputBusses[0].supportedChannelCounts ?? []
+            let requested = NSNumber(value: format.channelCount)
+            if !supported.isEmpty && !supported.contains(requested) {
+                if supported.contains(NSNumber(value: 1)) {
+                    desiredChannels = 1
+                } else if let first = supported.first {
+                    desiredChannels = first.intValue
                 }
             }
-            renderChannelCount = desiredChannels
-            audioUnit.maximumFramesToRender = 8192
-            guard let negotiatedFormat = AVAudioFormat(
+        }
+        guard (1...2).contains(desiredChannels),
+              let negotiatedFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
-                sampleRate: sampleRate,
+                sampleRate: format.sampleRate,
                 channels: AVAudioChannelCount(desiredChannels),
                 interleaved: false
-            ) else { return }
-            if audioUnit.inputBusses.count > 0 {
-                try audioUnit.inputBusses[0].setFormat(negotiatedFormat)
-                audioUnit.inputBusses[0].isEnabled = true
-            }
-            if audioUnit.outputBusses.count > 0 {
-                try audioUnit.outputBusses[0].setFormat(negotiatedFormat)
-                audioUnit.outputBusses[0].isEnabled = true
-            }
-            audioUnit.maximumFramesToRender = max(audioUnit.maximumFramesToRender, UInt32(4096))
-            audioUnit.shouldBypassEffect = false
-            try audioUnit.allocateRenderResources()
-            audioUnit.reset()
-            currentSampleRate = sampleRate
-            currentChannelCount = channelCount
-            cachedParameters = []
-            parameterMap = [:]
-            didWarmUp = false
-            warmUpIfNeeded(sampleRate: sampleRate, channelCount: renderChannelCount > 0 ? renderChannelCount : channelCount)
-        } catch {
-            // Ignore configuration failures.
-            print("AU Configure failed for \(reference.name): \(error.localizedDescription)")
+              ) else {
+            throw AUPreparationError.invalidFormat
         }
+        unit.maximumFramesToRender = AUAudioFrameCount(max(format.maximumFrameCount, 4_096))
+        if unit.inputBusses.count > 0 {
+            try unit.inputBusses[0].setFormat(negotiatedFormat)
+            unit.inputBusses[0].isEnabled = true
+        }
+        if unit.outputBusses.count > 0 {
+            try unit.outputBusses[0].setFormat(negotiatedFormat)
+            unit.outputBusses[0].isEnabled = true
+        }
+        unit.shouldBypassEffect = false
+        try unit.allocateRenderResources()
+        unit.reset()
+        return desiredChannels
     }
 
-    private func requestConfigure(sampleRate: Double, channelCount: Int) {
-        pendingSampleRate = sampleRate
-        pendingChannelCount = channelCount
-        guard !pendingConfigure else { return }
-        pendingConfigure = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.configureAudioUnit(sampleRate: self.pendingSampleRate, channelCount: self.pendingChannelCount)
-            self.pendingConfigure = false
-        }
-    }
+    @discardableResult
+    func process(
+        buffer: inout [[Float]],
+        frameLength: Int,
+        sampleRate: Double,
+        channelCount: Int
+    ) -> Bool {
+        guard sampleRate == format.sampleRate,
+              channelCount == format.channelCount,
+              frameLength > 0,
+              frameLength <= format.maximumFrameCount,
+              buffer.count >= channelCount else { return false }
 
-    private func getMonoBufferList() -> UnsafeMutableAudioBufferListPointer {
-        if let existing = monoBufferList {
-            return existing
-        }
-        let created = AudioBufferList.allocate(maximumBuffers: 1)
-        monoBufferList = created
-        return created
-    }
-
-    private func getStereoBufferList() -> UnsafeMutableAudioBufferListPointer {
-        if let existing = stereoBufferList {
-            return existing
-        }
-        let created = AudioBufferList.allocate(maximumBuffers: 2)
-        stereoBufferList = created
-        return created
-    }
-
-
-    private func ensureInputScratch(frameLength: Int, channelCount: Int) {
-        if inputScratch.count != channelCount {
-            inputScratch = [[Float]](repeating: [Float](repeating: 0, count: frameLength), count: channelCount)
-            return
-        }
-        let currentLength = inputScratch.first?.count ?? 0
-        guard currentLength < frameLength else { return }
-        let extra = frameLength - currentLength
-        for index in 0..<channelCount {
-            inputScratch[index].append(contentsOf: repeatElement(0, count: extra))
-        }
-    }
-
-    private func copyInterleavedInputTo(_ ioData: UnsafeMutablePointer<AudioBufferList>, frameLength: Int, channelCount: Int) {
-        let bufferList = UnsafeMutableAudioBufferListPointer(ioData)
-        for channel in 0..<min(channelCount, bufferList.count) {
-            guard let dst = bufferList[channel].mData else { continue }
-            let dstPtr = dst.assumingMemoryBound(to: Float.self)
+        if renderChannelCount == 1 {
             for frame in 0..<frameLength {
-                dstPtr[frame] = inputScratch[channel][frame]
+                inputScratch[0][frame] = channelCount == 2
+                    ? 0.5 * (buffer[0][frame] + buffer[1][frame])
+                    : buffer[0][frame]
             }
-        }
-    }
-
-    private func warmUpIfNeeded(sampleRate: Double, channelCount: Int) {
-        guard !didWarmUp, let renderBlock, let audioUnit else { return }
-        didWarmUp = true
-        let maxFrames = Int(audioUnit.maximumFramesToRender)
-        let frameLength = min(512, max(1, maxFrames))
-        let channels = max(1, min(2, channelCount))
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let bufferList = AudioBufferList.allocate(maximumBuffers: channels)
-            defer { bufferList.unsafeMutablePointer.deallocate() }
-
-            var channelBuffers: [[Float]] = []
-            channelBuffers.reserveCapacity(channels)
-            for _ in 0..<channels {
-                channelBuffers.append([Float](repeating: 0, count: frameLength))
-            }
-
-            for channel in 0..<channels {
-                channelBuffers[channel].withUnsafeMutableBufferPointer { ptr in
-                    guard let base = ptr.baseAddress else { return }
-                    bufferList[channel] = AudioBuffer(
-                        mNumberChannels: 1,
-                        mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
-                        mData: base
-                    )
+        } else {
+            for channel in 0..<renderChannelCount {
+                for frame in 0..<frameLength {
+                    inputScratch[channel][frame] = buffer[channel][frame]
                 }
             }
+        }
 
-            let pullInput: AURenderPullInputBlock = { _, _, _, _, ioData in
-                let ioList = UnsafeMutableAudioBufferListPointer(ioData)
-                for buffer in ioList {
-                    if let data = buffer.mData {
-                        memset(data, 0, Int(buffer.mDataByteSize))
+        var actionFlags = AudioUnitRenderActionFlags()
+        var timeStamp = AudioTimeStamp()
+        timeStamp.mFlags = .sampleTimeValid
+        timeStamp.mSampleTime = sampleTime
+        sampleTime += Double(frameLength)
+        let pullInput: AURenderPullInputBlock = { [self] _, _, _, _, ioData in
+            copyInput(to: ioData, frameLength: frameLength)
+            return noErr
+        }
+
+        let status: OSStatus
+        if renderChannelCount == 1 {
+            status = buffer[0].withUnsafeMutableBufferPointer { output in
+                guard let base = output.baseAddress else { return kAudio_ParamError }
+                monoBufferList[0] = AudioBuffer(
+                    mNumberChannels: 1,
+                    mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
+                    mData: base
+                )
+                return renderBlock(
+                    &actionFlags, &timeStamp, AUAudioFrameCount(frameLength), 0,
+                    monoBufferList.unsafeMutablePointer, pullInput
+                )
+            }
+            if status == noErr, channelCount == 2 {
+                for frame in 0..<frameLength { buffer[1][frame] = buffer[0][frame] }
+            }
+        } else {
+            status = buffer.withUnsafeMutableBufferPointer { channels in
+                channels[0].withUnsafeMutableBufferPointer { left in
+                    channels[1].withUnsafeMutableBufferPointer { right in
+                        guard let leftBase = left.baseAddress, let rightBase = right.baseAddress else {
+                            return kAudio_ParamError
+                        }
+                        stereoBufferList[0] = AudioBuffer(
+                            mNumberChannels: 1,
+                            mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
+                            mData: leftBase
+                        )
+                        stereoBufferList[1] = AudioBuffer(
+                            mNumberChannels: 1,
+                            mDataByteSize: UInt32(frameLength * MemoryLayout<Float>.size),
+                            mData: rightBase
+                        )
+                        return renderBlock(
+                            &actionFlags, &timeStamp, AUAudioFrameCount(frameLength), 0,
+                            stereoBufferList.unsafeMutablePointer, pullInput
+                        )
                     }
                 }
-                return noErr
             }
+        }
+        return status == noErr
+    }
 
-            var actionFlags = AudioUnitRenderActionFlags()
-            var timeStamp = AudioTimeStamp()
-            timeStamp.mFlags = .sampleTimeValid
-            timeStamp.mSampleTime = 0
+    private func copyInput(to ioData: UnsafeMutablePointer<AudioBufferList>, frameLength: Int) {
+        let buffers = UnsafeMutableAudioBufferListPointer(ioData)
+        for channel in 0..<min(renderChannelCount, buffers.count) {
+            guard let destination = buffers[channel].mData else { continue }
+            let samples = destination.assumingMemoryBound(to: Float.self)
+            for frame in 0..<frameLength { samples[frame] = inputScratch[channel][frame] }
+        }
+    }
 
-            for _ in 0..<10 {
-                _ = renderBlock(&actionFlags, &timeStamp, AUAudioFrameCount(frameLength), 0, bufferList.unsafeMutablePointer, pullInput)
-                timeStamp.mSampleTime += Double(frameLength)
+    private func warmUp() throws {
+        let frameLength = min(512, format.maximumFrameCount)
+        var silent = [[Float]](
+            repeating: [Float](repeating: 0, count: frameLength),
+            count: format.channelCount
+        )
+        for _ in 0..<10 {
+            guard process(
+                buffer: &silent,
+                frameLength: frameLength,
+                sampleRate: format.sampleRate,
+                channelCount: format.channelCount
+            ) else {
+                throw AUPreparationError.configuration("warm-up render failed")
+            }
+        }
+        sampleTime = 0
+    }
+
+    func parameters() -> [PluginParameter] {
+        guard let tree = audioUnit.parameterTree else { return [] }
+        if cachedParameters.isEmpty {
+            cachedParameters = tree.allParameters.map { parameter in
+                let id = String(parameter.address)
+                parameterMap[id] = parameter
+                return PluginParameter(
+                    id: id,
+                    name: parameter.displayName,
+                    value: Double(parameter.value),
+                    minValue: Double(parameter.minValue),
+                    maxValue: Double(parameter.maxValue),
+                    unitName: parameter.unitName,
+                    groupName: nil,
+                    isReadOnly: !parameter.flags.contains(.flag_IsWritable)
+                )
+            }
+        }
+        return cachedParameters.map { descriptor in
+            var descriptor = descriptor
+            if let parameter = parameterMap[descriptor.id] {
+                descriptor.value = Double(parameter.value)
+            }
+            return descriptor
+        }
+    }
+
+    func setParameter(id: String, value: Double) {
+        if parameterMap.isEmpty { _ = parameters() }
+        parameterMap[id]?.value = AUValue(value)
+    }
+
+    func stateData() -> Data? {
+        guard let fullState = audioUnit.fullState else { return nil }
+        return try? PropertyListSerialization.data(
+            fromPropertyList: fullState,
+            format: .binary,
+            options: 0
+        )
+    }
+
+    func requestEditor(completion: @escaping (NSView?, NSViewController?) -> Void) {
+        if let cachedEditorController {
+            DispatchQueue.main.async {
+                let view = cachedEditorController.view
+                view.removeFromSuperview()
+                completion(view, cachedEditorController)
+            }
+            return
+        }
+        audioUnit.requestViewController { [weak self] controller in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let controller {
+                    self.cachedEditorController = controller
+                    completion(controller.view, controller)
+                    return
+                }
+                let generic = AUGenericViewController()
+                generic.auAudioUnit = self.audioUnit
+                self.cachedEditorController = generic
+                completion(generic.view, generic)
             }
         }
     }

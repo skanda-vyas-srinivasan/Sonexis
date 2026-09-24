@@ -59,7 +59,7 @@ expect(captured == expected, "Final-output recording tap differs from transition
 // not silently bypass manual routing. Explicit dry wires retain their gain.
 let dry = [[Float]](repeating: [Float](repeating: 0.1, count: 256), count: 2)
 func graphOutput(nodes: [BeginnerNode], connections: [BeginnerConnection]) -> [[Float]] {
-    engine.processGraph(inputBuffer: dry, channelCount: 2, sampleRate: 48_000,
+    engine.graphProcessor.processGraph(inputBuffer: dry, channelCount: 2, sampleRate: 48_000,
         plan: GraphRoutingPlan(nodes: nodes, connections: connections, startID: start, endID: end,
             autoConnectEnd: false), snapshot: engine.currentProcessingSnapshot()).0
 }
@@ -72,17 +72,67 @@ engine.updateEffectGraphSplit(leftNodes: [], leftConnections: [], leftStartID: s
 publish()
 expect(render().allSatisfy { abs($0 - 0.1) < 0.000001 }, "Empty split lanes muted audio")
 
+// Graph publication runs on the main thread while the processing worker owns
+// and mutates per-node DSP state. Repeated removal must never let graph editing
+// touch the worker's dictionaries.
+let concurrencyNodes = (0..<8).map { index -> BeginnerNode in
+    switch index % 4 {
+    case 0: return BeginnerNode(type: .tremolo)
+    case 1: return BeginnerNode(type: .delay)
+    case 2: return BeginnerNode(type: .compressor)
+    default: return BeginnerNode(type: .bitcrusher)
+    }
+}
+let renderFinished = DispatchSemaphore(value: 0)
+DispatchQueue(label: "GraphTransitionIntegration.processing").async {
+    for _ in 0..<300 {
+        let output = render(64)
+        expect(output.allSatisfy(\.isFinite), "Concurrent graph edit produced non-finite audio")
+    }
+    renderFinished.signal()
+}
+for iteration in 0..<300 {
+    let retainedCount = iteration % (concurrencyNodes.count + 1)
+    engine.updateEffectChain(Array(concurrencyNodes.prefix(retainedCount)))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+}
+expect(renderFinished.wait(timeout: .now() + 10) == .success, "Concurrent render did not finish")
+engine.updateEffectChain([])
+publish()
+_ = render(64)
+expect(engine.graphProcessor.tremoloPhaseByNode.isEmpty, "Retired node state was not reclaimed at a block boundary")
+
+// Legacy/imported VST3 metadata remains representable, but the runtime must not
+// manufacture a ready-looking no-op processor for an unsupported format.
+let unsupportedHost = PluginHost()
+let unsupportedNode = BeginnerNode(
+    type: .plugin,
+    plugin: PluginReference(format: .vst3, identifier: "test.vst3", name: "Unsupported", vendor: "Test")
+)
+unsupportedHost.sync(nodes: [unsupportedNode])
+expect(unsupportedHost.processingRenderStates().isEmpty, "Unsupported VST3 created a runtime processor")
+expect(unsupportedHost.statusText(nodeId: unsupportedNode.id) == "VST3 unsupported", "Unsupported VST3 status was hidden")
+let audioUnitNode = BeginnerNode(
+    type: .plugin,
+    plugin: PluginReference(format: .au, identifier: "test.au", name: "Audio Unit", vendor: "Test")
+)
+unsupportedHost.sync(nodes: [audioUnitNode])
+var changedFormatNode = audioUnitNode
+changedFormatNode.plugin = PluginReference(format: .vst3, identifier: "test.vst3", name: "Unsupported", vendor: "Test")
+unsupportedHost.sync(nodes: [changedFormatNode])
+expect(unsupportedHost.processingRenderStates().isEmpty, "Changing a node to unsupported VST3 retained an Audio Unit render state")
+
 // Manual/automatic switches must advance a shared stateful effect only once.
 let tremolo = BeginnerNode(type: .tremolo)
 engine.updateEffectChain([tremolo]); publish(); _ = render()
-let before = engine.tremoloPhaseByNode[tremolo.id]!
+let before = engine.graphProcessor.tremoloPhaseByNode[tremolo.id]!
 engine.updateEffectGraph(nodes: [tremolo], connections: [
     BeginnerConnection(fromNodeId: start, toNodeId: tremolo.id),
     BeginnerConnection(fromNodeId: tremolo.id, toNodeId: end)], startID: start, endID: end)
 publish(); _ = render()
 let increment = tremolo.parameters.tremoloRate * 2 * Double.pi / 48_000 * 256
-let after = engine.tremoloPhaseByNode[tremolo.id]!
+let after = engine.graphProcessor.tremoloPhaseByNode[tremolo.id]!
 expect(abs(after - before - increment) < 0.000001, "Mode switch advanced shared tremolo twice")
 engine.updateEffectChain([tremolo]); publish(); _ = render()
-expect(abs(engine.tremoloPhaseByNode[tremolo.id]! - after - increment) < 0.000001, "Reverse switch advanced shared tremolo twice")
+expect(abs(engine.graphProcessor.tremoloPhaseByNode[tremolo.id]! - after - increment) < 0.000001, "Reverse switch advanced shared tremolo twice")
 print("PASS: real engine add/remove/reorder/rewire, bypass, split/manual/automatic, exact final-output tap, single stateful render per block")

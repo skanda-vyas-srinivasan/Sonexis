@@ -64,11 +64,11 @@ func decodePresetImportData(_ data: Data) throws -> SavedPreset {
         guard exportFile.version == 1 else {
             throw PresetImportError.unsupportedVersion(exportFile.version)
         }
-        return exportFile.preset
+        return try validatedPreset(exportFile.preset)
     }
 
     if let preset = try? isoDecoder.decode(SavedPreset.self, from: data) {
-        return preset
+        return try validatedPreset(preset)
     }
 
     let defaultDecoder = JSONDecoder()
@@ -76,14 +76,23 @@ func decodePresetImportData(_ data: Data) throws -> SavedPreset {
         guard exportFile.version == 1 else {
             throw PresetImportError.unsupportedVersion(exportFile.version)
         }
-        return exportFile.preset
+        return try validatedPreset(exportFile.preset)
     }
 
     if let preset = try? defaultDecoder.decode(SavedPreset.self, from: data) {
-        return preset
+        return try validatedPreset(preset)
     }
 
     throw PresetImportError.invalidFormat
+}
+
+private func validatedPreset(_ preset: SavedPreset) throws -> SavedPreset {
+    SavedPreset(
+        id: preset.id,
+        name: preset.name,
+        graph: try preset.graph.validatedForProcessing(),
+        createdDate: preset.createdDate
+    )
 }
 
 

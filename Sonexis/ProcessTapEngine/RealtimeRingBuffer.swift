@@ -9,7 +9,7 @@ final class RealtimeRingBuffer {
 
     init(capacityFrames: UInt32, channels: UInt32) throws {
         guard let pointer = SonexisAudioRingBufferCreate(capacityFrames, channels) else {
-            throw PrototypeError(message: "Could not allocate realtime audio ring buffer")
+            throw SonexisError(message: "Could not allocate realtime audio ring buffer")
         }
 
         self.pointer = pointer

@@ -19,9 +19,12 @@ struct ProcessingSnapshot {
     let manualGraphStartID: UUID?
     let manualGraphEndID: UUID?
     let manualGraphAutoConnectEnd: Bool
-    let effectChainOrder: [AudioEngine.EffectNode]
+    let effectChainOrder: [AudioGraphProcessor.EffectNode]
     let nodeParameters: [UUID: NodeEffectParameters]
     let nodeEnabled: [UUID: Bool]
+    /// Retains the exact prepared render generation used by this graph snapshot.
+    /// Older snapshots keep older Audio Units alive through in-flight blocks.
+    let pluginRenderStates: [UUID: PluginRenderState]
     let processingEnabled: Bool
     let limiterEnabled: Bool
     let isReconfiguring: Bool
@@ -121,6 +124,7 @@ struct ProcessingSnapshot {
         effectChainOrder: [],
         nodeParameters: [:],
         nodeEnabled: [:],
+        pluginRenderStates: [:],
         processingEnabled: true,
         limiterEnabled: true,
         isReconfiguring: false,
@@ -218,7 +222,8 @@ struct ResetFlags: OptionSet {
     static let bitcrusher = ResetFlags(rawValue: 1 << 11)
     static let rubberBand = ResetFlags(rawValue: 1 << 12)
     static let autoPan = ResetFlags(rawValue: 1 << 13)
-    static let all = ResetFlags(rawValue: 1 << 14)
+    static let tremolo = ResetFlags(rawValue: 1 << 14)
+    static let all = ResetFlags(rawValue: 1 << 15)
 }
 
 struct RubberBandScratch {

@@ -1,6 +1,6 @@
 # Sonexis 2.1.0 audit record
 
-Date: 2026-09-10. First audit pass completed on the available Mac. **Release acceptance is not complete.** Seven demonstrated issues are in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md); this document records coverage, passing results, stress limits, and verification gaps.
+Date: 2026-09-10. First audit pass completed on the available Mac. **Release acceptance is not complete.** This document records coverage, passing results, stress limits, and verification gaps.
 
 ## Environment and method
 

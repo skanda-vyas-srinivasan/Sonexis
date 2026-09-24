@@ -39,7 +39,9 @@ func render(_ engine: AudioEngine, value: Float, frames: Int = 256,
 
 let defaultID = UUID()
 let appID = UUID()
-let runtime = MultiChainAudioEngine()
+// Drive mixing from stopRecording() so this signal test does not race the
+// production wall-clock timer on slower CI runners.
+let runtime = MultiChainAudioEngine(schedulesRecordingMixerTimer: false)
 try runtime.configure([
     AudioChainDefinition(id: defaultID, target: nil, graph: emptyGraph(), effectsEnabled: true),
     AudioChainDefinition(

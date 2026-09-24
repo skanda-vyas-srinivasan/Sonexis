@@ -1,7 +1,7 @@
 import Accelerate
 import Foundation
 
-extension AudioEngine {
+extension AudioGraphProcessor {
     func normalizedBiquadStates(_ states: [BiquadState], channelCount: Int) -> [BiquadState] {
         guard states.count == channelCount else {
             return [BiquadState](repeating: BiquadState(), count: channelCount)
@@ -623,21 +623,6 @@ extension AudioEngine {
         } else {
             rubberBandSmoothedGain = safetyGain
         }
-    }
-
-    var tenBandGains: [Double] {
-        [
-            tenBand31,
-            tenBand62,
-            tenBand125,
-            tenBand250,
-            tenBand500,
-            tenBand1k,
-            tenBand2k,
-            tenBand4k,
-            tenBand8k,
-            tenBand16k
-        ]
     }
 
 }

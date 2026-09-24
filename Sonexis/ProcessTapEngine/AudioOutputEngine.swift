@@ -48,7 +48,7 @@ final class AudioOutputEngine {
         )
 
         guard let createdIOProcID else {
-            throw PrototypeError(message: "Create default output IOProc returned nil IOProcID")
+            throw SonexisError(message: "Create default output IOProc returned nil IOProcID")
         }
 
         self.deviceID = deviceID
@@ -59,7 +59,7 @@ final class AudioOutputEngine {
 
     func start() throws {
         guard let ioProcID else {
-            throw PrototypeError(message: "Default output IOProc was not created")
+            throw SonexisError(message: "Default output IOProc was not created")
         }
 
         try checkOSStatus(

@@ -20,6 +20,32 @@ Before making a change, read the files relevant to its scope:
 
 Release audits, evidence, handoff notes, and dated roadmap documents are historical records. Verify their date and compare them with current source before relying on them.
 
+## Writing GitHub issues
+
+Treat issue creation as publication. Draft locally or in the conversation unless the user explicitly asks to create, open, update, or publish an issue.
+
+Before publishing an issue:
+
+- search open and closed issues for duplicates;
+- inspect the current implementation and relevant documentation;
+- distinguish verified behavior from inference;
+- keep one user-visible or engineering outcome per issue;
+- confirm that the proposed work belongs in this repository.
+
+Use `.github/ISSUE_TEMPLATE/contributor_task.yml` for maintainer-scoped work. When creating an issue through the API or CLI, preserve the same structure:
+
+1. **Problem and motivation:** what is wrong or missing, who it affects, and why it matters.
+2. **Evidence or current behavior:** current source paths, reproducible observations, logs, screenshots, or documentation references. Never invent a bug or claim reproduction that was not performed.
+3. **Proposed scope:** the outcome to implement without prescribing unnecessary internals.
+4. **Acceptance criteria:** observable, testable completion conditions written as concise bullet points.
+5. **Validation plan:** exact automated suites and any manual, hardware, accessibility, migration, or listening checks.
+6. **Suggested starting points:** relevant files and symbols, verified against the current tree.
+7. **Out of scope:** adjacent work that should not be bundled.
+
+For bugs, also include minimal reproduction steps, expected versus actual behavior, and the relevant Sonexis/macOS/hardware environment. For feature proposals, include alternatives considered and identify any unresolved product decision instead of presenting it as implementation-ready.
+
+Apply only existing labels whose meaning is supported by the issue. Use `good first issue` only when the task is self-contained, low-risk, and does not require architectural decisions, persisted-data changes, live-audio expertise, or specialized hardware. Do not assign people, milestones, or projects unless the user requests it.
+
 ## Repository map
 
 - `Sonexis/AudioEngine/` — graph rendering, effects, Audio Units, and recording.

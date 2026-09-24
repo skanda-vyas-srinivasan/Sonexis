@@ -2,7 +2,37 @@ import Accelerate
 import AVFoundation
 import Foundation
 
-extension AudioEngine {
+extension AudioGraphProcessor {
+    func processTapBuffer(
+        frameCount: Int,
+        channelCount: Int,
+        sampleRate: Double
+    ) -> AVAudioPCMBuffer? {
+        let needsNewBuffer = processTapPCMBuffer == nil
+            || processTapPCMBufferFrameCapacity < frameCount
+            || processTapPCMBufferChannelCount != channelCount
+            || processTapPCMBufferSampleRate != sampleRate
+
+        if needsNewBuffer {
+            guard let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: sampleRate,
+                channels: AVAudioChannelCount(channelCount),
+                interleaved: false
+            ) else {
+                return nil
+            }
+            processTapPCMBuffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(frameCount)
+            )
+            processTapPCMBufferFrameCapacity = frameCount
+            processTapPCMBufferChannelCount = channelCount
+            processTapPCMBufferSampleRate = sampleRate
+        }
+        return processTapPCMBuffer
+    }
+
     func deinterleavedInput(
         channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
         frameLength: Int,
@@ -38,7 +68,7 @@ extension AudioEngine {
     }
 
     func interleavedData(from buffer: AVAudioPCMBuffer) -> [Float] {
-        let snapshot = currentProcessingSnapshot()
+        let snapshot = currentSnapshot()
         var output = renderGraphAudio(from: buffer, snapshot: snapshot)
         graphOutputTransition.process(&output, frames: Int(buffer.frameLength),
             channels: Int(buffer.format.channelCount), sampleRate: buffer.format.sampleRate,

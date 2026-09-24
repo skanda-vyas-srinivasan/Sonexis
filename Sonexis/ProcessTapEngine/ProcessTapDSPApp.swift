@@ -182,11 +182,11 @@ final class ProcessTapDSPApp {
         let streamIDs = try CoreAudioSupport.outputStreamIDs(defaultOutputDeviceID)
 
         guard !streamIDs.isEmpty else {
-            throw PrototypeError(message: "The default output device has no output streams")
+            throw SonexisError(message: "The default output device has no output streams")
         }
 
         guard let ownProcessObjectID = try CoreAudioSupport.processObjectID(forPID: getpid()) else {
-            throw PrototypeError(
+            throw SonexisError(
                 message: "This process is not present in the HAL process-object list. Playback mode refuses to start without self-exclusion because that can create recursive capture."
             )
         }
@@ -214,7 +214,7 @@ final class ProcessTapDSPApp {
 
         let channelCount = tapFormat.mChannelsPerFrame
         guard channelCount > 0 else {
-            throw PrototypeError(message: "Tap reported zero channels")
+            throw SonexisError(message: "Tap reported zero channels")
         }
 
         let ringCapacityFrames = max(UInt32(tapFormat.mSampleRate * 2.0), 4_096)
@@ -274,7 +274,7 @@ final class ProcessTapDSPApp {
 
     private func startIO() throws {
         guard let tapCaptureEngine, let audioOutputEngine else {
-            throw PrototypeError(message: "IO engines were not created")
+            throw SonexisError(message: "IO engines were not created")
         }
 
         try audioOutputEngine.start()

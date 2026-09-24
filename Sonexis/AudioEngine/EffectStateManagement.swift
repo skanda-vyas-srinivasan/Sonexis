@@ -1,7 +1,7 @@
 import Accelerate
 import Foundation
 
-extension AudioEngine {
+extension AudioGraphProcessor {
     func initializeEffectStates(channelCount: Int) {
         if bassBoostState.count != channelCount {
             bassBoostState = [BiquadState](repeating: BiquadState(), count: channelCount)
@@ -44,21 +44,6 @@ extension AudioEngine {
     }
 
 
-    private func updateBassBoostCoefficients(sampleRate: Double) {
-        if sampleRate != bassBoostLastSampleRate || bassBoostAmount != bassBoostLastAmount {
-            bassBoostLastSampleRate = sampleRate
-            bassBoostLastAmount = bassBoostAmount
-
-            let gainDb = min(max(bassBoostAmount, 0), 1) * 24.0
-            bassBoostCoefficients = BiquadCoefficients.lowShelf(
-                sampleRate: sampleRate,
-                frequency: 80,
-                gainDb: gainDb,
-                q: 0.8
-            )
-        }
-    }
-
     private func updateClarityCoefficients(sampleRate: Double, intensity: Double) {
         if sampleRate != clarityLastSampleRate || intensity != clarityLastAmount {
             clarityLastSampleRate = sampleRate
@@ -72,84 +57,6 @@ extension AudioEngine {
                 q: 0.7
             )
         }
-    }
-
-    private func updateDeMudCoefficients(sampleRate: Double) {
-        if sampleRate != deMudLastSampleRate || deMudStrength != deMudLastStrength {
-            deMudLastSampleRate = sampleRate
-            deMudLastStrength = deMudStrength
-
-            let gainDb = -min(max(deMudStrength, 0), 1) * 8.0 // Up to -8dB cut
-            deMudCoefficients = BiquadCoefficients.peakingEQ(
-                sampleRate: sampleRate,
-                frequency: 250, // 250Hz muddy range
-                gainDb: gainDb,
-                q: 1.5
-            )
-        }
-    }
-
-    private func updateSimpleEQCoefficients(sampleRate: Double) {
-        if sampleRate != eqLastSampleRate {
-            eqLastSampleRate = sampleRate
-        }
-
-        // Bass band (80Hz low shelf)
-        let bassGainDb = eqBass * 12.0 // -12 to +12 dB
-        eqBassCoefficients = BiquadCoefficients.lowShelf(
-            sampleRate: sampleRate,
-            frequency: 80,
-            gainDb: bassGainDb,
-            q: 0.7
-        )
-
-        // Mids band (1kHz peaking)
-        let midsGainDb = eqMids * 12.0 // -12 to +12 dB
-        eqMidsCoefficients = BiquadCoefficients.peakingEQ(
-            sampleRate: sampleRate,
-            frequency: 1000,
-            gainDb: midsGainDb,
-            q: 1.0
-        )
-
-        // Treble band (8kHz high shelf)
-        let trebleGainDb = eqTreble * 12.0 // -12 to +12 dB
-        eqTrebleCoefficients = BiquadCoefficients.highShelf(
-            sampleRate: sampleRate,
-            frequency: 8000,
-            gainDb: trebleGainDb,
-            q: 0.7
-        )
-    }
-
-    private func updateTenBandCoefficients(sampleRate: Double) {
-        let gains = tenBandGains.map { min(max($0, -12), 12) }
-
-        if tenBandCoefficients.count != tenBandFrequencies.count {
-            tenBandCoefficients = [BiquadCoefficients](repeating: BiquadCoefficients(), count: tenBandFrequencies.count)
-        }
-        if tenBandLastGains.count != gains.count {
-            tenBandLastGains = [Double](repeating: Double.nan, count: gains.count)
-        }
-
-        guard sampleRate != tenBandLastSampleRate || gains != tenBandLastGains else { return }
-        tenBandLastSampleRate = sampleRate
-        tenBandLastGains = gains
-
-        for index in 0..<tenBandFrequencies.count {
-            tenBandCoefficients[index] = BiquadCoefficients.peakingEQ(
-                sampleRate: sampleRate,
-                frequency: tenBandFrequencies[index],
-                gainDb: gains[index],
-                q: 1.0
-            )
-        }
-    }
-
-    func withEffectStateLock(_ work: () -> Void) {
-        effectStateLock.lock()
-        defer { effectStateLock.unlock() }
-        work()
     }
 
     func resetBassBoostState() {
@@ -712,18 +619,17 @@ extension AudioEngine {
     }
 
     func applyPendingResets() {
-        pendingResetsLock.lock()
-        let resets = pendingResets
-        pendingResets = []
-        pendingResetsLock.unlock()
+        let (resets, activeNodeIDs) = takePendingCommands()
+
+        if let activeNodeIDs {
+            retireInactiveNodeState(activeNodeIDs: activeNodeIDs)
+        }
 
         guard resets != [] else { return }
 
         if resets.contains(ResetFlags.all) {
             resetEffectStateUnlocked()
-            DispatchQueue.main.async {
-                self.effectLevels = [:]
-            }
+            onEffectLevels?([:])
             return
         }
 
@@ -736,6 +642,7 @@ extension AudioEngine {
         if resets.contains(ResetFlags.reverb) { resetReverbStateUnlocked() }
         if resets.contains(ResetFlags.delay) { resetDelayStateUnlocked() }
         if resets.contains(ResetFlags.autoPan) { resetAutoPanStateUnlocked(nodeId: nil) }
+        if resets.contains(ResetFlags.tremolo) { resetTremoloStateUnlocked(nodeId: nil) }
         if resets.contains(ResetFlags.chorus) { resetChorusStateUnlocked() }
         if resets.contains(ResetFlags.flanger) { resetFlangerStateUnlocked() }
         if resets.contains(ResetFlags.phaser) { resetPhaserStateUnlocked() }
@@ -743,17 +650,99 @@ extension AudioEngine {
         if resets.contains(ResetFlags.rubberBand) { resetRubberBandStateUnlocked() }
     }
 
-    func resetTenBandValues() {
-        tenBand31 = 0
-        tenBand62 = 0
-        tenBand125 = 0
-        tenBand250 = 0
-        tenBand500 = 0
-        tenBand1k = 0
-        tenBand2k = 0
-        tenBand4k = 0
-        tenBand8k = 0
-        tenBand16k = 0
+    /// Processing-worker only. This is deliberately called at a block boundary,
+    /// never from graph synchronization on the main thread.
+    private func retireInactiveNodeState(activeNodeIDs: Set<UUID>) {
+        func keepActiveNodes<Value>(_ dictionary: inout [UUID: Value]) {
+            dictionary = dictionary.filter { activeNodeIDs.contains($0.key) }
+        }
+
+        keepActiveNodes(&bassBoostStatesByNode)
+        keepActiveNodes(&bassBoostSmoothedGainByNode)
+        keepActiveNodes(&bassBoostVDSPDelayByNode)
+        keepActiveNodes(&enhancerSmoothedGainByNode)
+        keepActiveNodes(&enhancerLowVDSPDelayByNode)
+        keepActiveNodes(&enhancerMidVDSPDelayByNode)
+        keepActiveNodes(&enhancerHighVDSPDelayByNode)
+        keepActiveNodes(&clarityStatesByNode)
+        keepActiveNodes(&claritySmoothedGainByNode)
+        keepActiveNodes(&clarityVDSPDelayByNode)
+        keepActiveNodes(&nightcoreStatesByNode)
+        keepActiveNodes(&nightcoreSmoothedGainByNode)
+        keepActiveNodes(&deMudStatesByNode)
+        keepActiveNodes(&deMudSmoothedGainByNode)
+        keepActiveNodes(&deMudVDSPDelayByNode)
+        keepActiveNodes(&eqBassStatesByNode)
+        keepActiveNodes(&eqMidsStatesByNode)
+        keepActiveNodes(&eqTrebleStatesByNode)
+        keepActiveNodes(&eqBassVDSPDelayByNode)
+        keepActiveNodes(&eqMidsVDSPDelayByNode)
+        keepActiveNodes(&eqTrebleVDSPDelayByNode)
+        keepActiveNodes(&simpleEQSmoothedGainByNode)
+        keepActiveNodes(&appleThreeBandEQProcessorsByNode)
+        keepActiveNodes(&appleThreeBandEQDryScratchByNode)
+        keepActiveNodes(&appleThreeBandEQSmoothedGainByNode)
+        keepActiveNodes(&tenBandStatesByNode)
+        keepActiveNodes(&tenBandEQSmoothedGainByNode)
+        keepActiveNodes(&tenBandVDSPDelaysByNode)
+        keepActiveNodes(&compressorEnvelopeByNode)
+        keepActiveNodes(&compressorSmoothedGainByNode)
+        keepActiveNodes(&reverbStatesByNode)
+        keepActiveNodes(&reverbSmoothedGainByNode)
+        keepActiveNodes(&delayBuffersByNode)
+        keepActiveNodes(&delayWriteIndexByNode)
+        keepActiveNodes(&delaySmoothedGainByNode)
+        keepActiveNodes(&delayParameterStateByNode)
+        keepActiveNodes(&tremoloPhaseByNode)
+        keepActiveNodes(&tremoloSmoothedGainByNode)
+        keepActiveNodes(&autoPanPhaseByNode)
+        keepActiveNodes(&autoPanSmoothedGainByNode)
+        keepActiveNodes(&autoPanParameterStateByNode)
+        keepActiveNodes(&chorusBuffersByNode)
+        keepActiveNodes(&chorusWriteIndexByNode)
+        keepActiveNodes(&chorusPhaseByNode)
+        keepActiveNodes(&chorusSmoothedGainByNode)
+        keepActiveNodes(&chorusParameterStateByNode)
+        keepActiveNodes(&flangerBuffersByNode)
+        keepActiveNodes(&flangerWriteIndexByNode)
+        keepActiveNodes(&flangerPhaseByNode)
+        keepActiveNodes(&flangerSmoothedGainByNode)
+        keepActiveNodes(&flangerParameterStateByNode)
+        keepActiveNodes(&phaserStatesByNode)
+        keepActiveNodes(&phaserPhaseByNode)
+        keepActiveNodes(&phaserFeedbackSamplesByNode)
+        keepActiveNodes(&phaserSmoothedGainByNode)
+        keepActiveNodes(&phaserParameterStateByNode)
+        keepActiveNodes(&bitcrusherHoldCountersByNode)
+        keepActiveNodes(&bitcrusherHoldValuesByNode)
+        keepActiveNodes(&bitcrusherSmoothedGainByNode)
+        keepActiveNodes(&resampleBuffersByNode)
+        keepActiveNodes(&resampleWriteIndexByNode)
+        keepActiveNodes(&resampleReadPhaseByNode)
+        keepActiveNodes(&resampleCrossfadeRemainingByNode)
+        keepActiveNodes(&resampleCrossfadeTotalByNode)
+        keepActiveNodes(&resampleCrossfadeStartPhaseByNode)
+        keepActiveNodes(&resampleCrossfadeTargetPhaseByNode)
+        keepActiveNodes(&resampleSmoothedGainByNode)
+        keepActiveNodes(&ampSmoothedGainByNode)
+        keepActiveNodes(&distortionSmoothedGainByNode)
+        keepActiveNodes(&tapeSaturationSmoothedGainByNode)
+        keepActiveNodes(&signatureEffectStatesByNode)
+        keepActiveNodes(&stereoWidthSmoothedGainByNode)
+        keepActiveNodes(&rubberBandNodes)
+        keepActiveNodes(&rubberBandScratchByNode)
+        keepActiveNodes(&rubberBandSmoothedGainByNode)
+        keepActiveNodes(&pluginDryScratchByNode)
+        keepActiveNodes(&pluginWetScratchByNode)
+        keepActiveNodes(&pluginCrossfadeRemainingByNode)
+        keepActiveNodes(&pluginCrossfadeTotalByNode)
+        keepActiveNodes(&pluginCrossfadeOutRemainingByNode)
+        keepActiveNodes(&pluginCrossfadeOutTotalByNode)
+        keepActiveNodes(&pluginWasEnabledByNode)
+        keepActiveNodes(&pluginWasReadyByNode)
+        keepActiveNodes(&pluginStableOutputCountByNode)
+        keepActiveNodes(&pluginHasStableOutputByNode)
+        keepActiveNodes(&pluginReadyDelaySamplesByNode)
     }
 
     func resetCompressorState() {
@@ -791,6 +780,10 @@ extension AudioEngine {
 
     func resetAutoPanState() {
         enqueueReset(.autoPan)
+    }
+
+    func resetTremoloState() {
+        enqueueReset(.tremolo)
     }
 
     func resetFlangerState() {

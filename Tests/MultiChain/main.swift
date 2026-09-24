@@ -55,7 +55,7 @@ final class FakePipeline: AudioChainPipeline {
     }
     func start() throws {
         event("start\(number)")
-        if shouldFail { throw PrototypeError(message:"fixture failure") }
+        if shouldFail { throw SonexisError(message:"fixture failure") }
     }
     func stopImmediately(reason:String) { event("stop\(number)") }
 }

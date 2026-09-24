@@ -377,3 +377,56 @@ struct NodeEffectParameters: Codable, Equatable {
         afterglowSpace = try container.decodeIfPresent(Double.self, forKey: .afterglowSpace) ?? defaults.afterglowSpace
     }
 }
+
+extension NodeEffectParameters {
+    /// Applies the same bounds exposed by the editor before values reach DSP.
+    /// Non-finite imported values fall back to the domain default.
+    func sanitized() -> NodeEffectParameters {
+        var result = self
+        let fallback = Self.defaults()
+        func bound(
+            _ keyPath: WritableKeyPath<NodeEffectParameters, Double>,
+            _ range: ClosedRange<Double>
+        ) {
+            let value = result[keyPath: keyPath]
+            result[keyPath: keyPath] = value.isFinite
+                ? min(max(value, range.lowerBound), range.upperBound)
+                : fallback[keyPath: keyPath]
+        }
+
+        [\.bassBoostAmount, \.enhancerAmount, \.nightcoreIntensity, \.clarityAmount,
+         \.deMudStrength, \.compressorStrength, \.compressorMix, \.reverbMix,
+         \.reverbSize, \.stereoWidthAmount, \.delayFeedback, \.delayMix,
+         \.ampDrive, \.ampMix, \.distortionDrive, \.distortionMix, \.tremoloDepth,
+         \.autoPanDepth, \.chorusDepth, \.chorusMix, \.phaserDepth, \.flangerDepth,
+         \.flangerMix, \.bitcrusherMix, \.tapeSaturationDrive, \.tapeSaturationMix,
+         \.nightDriveIntensity, \.nightDriveWidth, \.chromePunchPunch, \.chromePunchBody,
+         \.midnightGlowGlow, \.midnightGlowWarmth, \.afterglowAir, \.afterglowSpace]
+            .forEach { bound($0, 0...1) }
+        [\.eqBass, \.eqMids, \.eqTreble].forEach { bound($0, -1...1) }
+        [\.ampInputGain, \.ampOutputGain, \.compressorMakeupDB].forEach { bound($0, -24...24) }
+        bound(\.compressorThresholdDB, -60...0)
+        bound(\.compressorRatio, 1...20)
+        bound(\.compressorAttackMS, 0.1...200)
+        bound(\.compressorReleaseMS, 5...2_000)
+        bound(\.delayTime, 0.01...2)
+        bound(\.tremoloRate, 0.1...20)
+        bound(\.autoPanRate, 0.05...8)
+        [\.chorusRate, \.phaserRate, \.flangerRate].forEach { bound($0, 0.1...5) }
+        bound(\.flangerFeedback, 0...0.95)
+        bound(\.bitcrusherBitDepth, BitcrusherParameterLimits.bitDepth)
+        bound(\.bitcrusherDownsample, BitcrusherParameterLimits.downsample)
+        bound(\.resampleRate, 0.5...2)
+        bound(\.resampleCrossfade, 0.05...0.6)
+        bound(\.rubberBandPitchSemitones, -12...12)
+
+        if tenBandGains.count != 10 {
+            result.tenBandGains = fallback.tenBandGains
+        } else {
+            result.tenBandGains = tenBandGains.enumerated().map { index, value in
+                value.isFinite ? min(max(value, -12), 12) : fallback.tenBandGains[index]
+            }
+        }
+        return result
+    }
+}

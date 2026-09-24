@@ -62,7 +62,7 @@ func render(depth: Double, downsample: Double, node: Bool, enabled: Bool = true)
         var audio = (0..<2).map { channel in
             (0..<1024).map { frame in Float(0.2 * sin(Double(frame + block * 1024) * (channel == 0 ? 0.13 : 0.17))) }
         }
-        engine.applyEffect(.bitcrusher, to: &audio, sampleRate: 48_000, channelCount: 2,
+        engine.graphProcessor.applyEffect(.bitcrusher, to: &audio, sampleRate: 48_000, channelCount: 2,
             frameLength: 1024, nodeId: node ? effect.id : nil, levelSnapshot: &levels, snapshot: snapshot)
         result.append(contentsOf: audio.flatMap { $0 })
     }
