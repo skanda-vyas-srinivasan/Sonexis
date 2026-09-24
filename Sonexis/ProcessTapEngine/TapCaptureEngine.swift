@@ -76,12 +76,12 @@ final class TapCaptureEngine {
         guard installedTapDescription.isExclusive == isExclusive,
               Set(installedTapDescription.processes) == Set(selectedIDs),
               isExclusive || !installedTapDescription.processes.contains(ownProcessObjectID) else {
-            throw PrototypeError(
+            throw SonexisError(
                 message: "Process tap self-exclusion verification failed. Refusing to start playback to avoid recursive capture."
             )
         }
         guard installedTapDescription.deviceUID == defaultOutput.uid else {
-            throw PrototypeError(
+            throw SonexisError(
                 message: "Process tap source UID mismatch. Expected \(defaultOutput.uid), got \(installedTapDescription.deviceUID ?? "nil")."
             )
         }
@@ -91,8 +91,8 @@ final class TapCaptureEngine {
         let createdTapFormat = try CoreAudioSupport.tapFormat(tapID)
         print("Tap format: \(createdTapFormat.formatSummary)")
         guard createdTapFormat.isPlaybackCompatible(with: outputStreamFormat) else {
-            throw PrototypeError(
-                message: "This PoC requires matching Float32 tap/output formats and does not perform sample-rate conversion. Tap: \(createdTapFormat.formatSummary). Output: \(outputStreamFormat.formatSummary)"
+            throw SonexisError(
+                message: "Sonexis requires matching Float32 tap/output formats and does not perform sample-rate conversion. Tap: \(createdTapFormat.formatSummary). Output: \(outputStreamFormat.formatSummary)"
             )
         }
 
@@ -166,7 +166,7 @@ final class TapCaptureEngine {
         )
 
         guard let createdIOProcID else {
-            throw PrototypeError(message: "Create tap aggregate IOProc returned nil IOProcID")
+            throw SonexisError(message: "Create tap aggregate IOProc returned nil IOProcID")
         }
 
         self.ringBuffer = ringBuffer
@@ -175,7 +175,7 @@ final class TapCaptureEngine {
 
     func start() throws {
         guard let ioProcID else {
-            throw PrototypeError(message: "Tap aggregate IOProc was not created")
+            throw SonexisError(message: "Tap aggregate IOProc was not created")
         }
 
         try checkOSStatus(
@@ -240,7 +240,7 @@ final class TapCaptureEngine {
     }
 
     private func createPrivateAggregateDevice(tapUID: String) throws -> AudioDeviceID {
-        let aggregateUID = "com.sonexis.prototype.ProcessTapDSP.aggregate.\(UUID().uuidString)"
+        let aggregateUID = "com.sonexis.runtime.ProcessTapDSP.aggregate.\(UUID().uuidString)"
         let tapEntry: [String: Any] = [
             kAudioSubTapUIDKey: tapUID,
             kAudioSubTapDriftCompensationKey: true

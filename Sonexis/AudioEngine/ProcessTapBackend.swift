@@ -37,7 +37,7 @@ extension AudioEngine {
             audioProcessor: self,
             captureTarget: captureTarget
         )
-        graphOutputTransition.reset() // No processing worker is running yet.
+        graphProcessor.graphOutputTransition.reset() // No processing worker is running yet.
         processTapEngine = engine
         resetOutputMeter()
         resetProcessTapInputMeter()
@@ -122,6 +122,11 @@ extension AudioEngine: ProcessTapAudioProcessor {
             channelCount: channelCount,
             sampleRate: sampleRate
         )
+        pluginHost.prepareAll(format: PluginRenderFormat(
+            sampleRate: sampleRate,
+            channelCount: channelCount,
+            maximumFrameCount: maxFrameCount
+        ))
     }
 
     func processSystemAudio(
@@ -175,7 +180,7 @@ extension AudioEngine: ProcessTapAudioProcessor {
         publishProcessTapInputMeter(rawPeak: rawInputPeak, trimmedPeak: trimmedInputPeak)
 
         let sampleCount = frameCount * channelCount
-        let processed = interleavedData(from: buffer)
+        let processed = graphProcessor.interleavedData(from: buffer)
         processed.withUnsafeBufferPointer { processedBuffer in
             guard let processedBase = processedBuffer.baseAddress else {
                 copyProcessTapBypass(input: input, output: output, sampleCount: sampleCount)
@@ -220,31 +225,11 @@ extension AudioEngine: ProcessTapAudioProcessor {
         channelCount: Int,
         sampleRate: Double
     ) -> AVAudioPCMBuffer? {
-        let needsNewBuffer = processTapPCMBuffer == nil
-            || processTapPCMBufferFrameCapacity < frameCount
-            || processTapPCMBufferChannelCount != channelCount
-            || processTapPCMBufferSampleRate != sampleRate
-
-        if needsNewBuffer {
-            guard let format = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: sampleRate,
-                channels: AVAudioChannelCount(channelCount),
-                interleaved: false
-            ) else {
-                return nil
-            }
-
-            processTapPCMBuffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(frameCount)
-            )
-            processTapPCMBufferFrameCapacity = frameCount
-            processTapPCMBufferChannelCount = channelCount
-            processTapPCMBufferSampleRate = sampleRate
-        }
-
-        return processTapPCMBuffer
+        graphProcessor.processTapBuffer(
+            frameCount: frameCount,
+            channelCount: channelCount,
+            sampleRate: sampleRate
+        )
     }
 
     private func copyProcessTapBypass(

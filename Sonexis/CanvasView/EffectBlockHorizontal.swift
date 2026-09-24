@@ -10,7 +10,7 @@ struct EffectBlockHorizontal: View {
     let isDropAnimating: Bool
     let tileStyle: AccentStyle
     let nodeScale: CGFloat
-    let isPluginLoading: Bool
+    let pluginStatusText: String?
     let onRemove: () -> Void
     let onUpdate: () -> Void
     let onParameterChange: () -> Void
@@ -84,8 +84,8 @@ struct EffectBlockHorizontal: View {
                             }
                         }
                         .overlay(alignment: .bottom) {
-                            if isPluginLoading {
-                                Text("Loading...")
+                            if let pluginStatusText {
+                                Text(pluginStatusText)
                                     .font(.system(size: 9, weight: .semibold))
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)

@@ -711,7 +711,9 @@ struct CanvasView: View {
                             isDropAnimating: isDropAnimating,
                             tileStyle: accentPalette[effectValue.accentIndex % accentPalette.count],
                             nodeScale: nodeScale,
-                            isPluginLoading: effectValue.type == .plugin && !audioEngine.isPluginReady(effectValue.id),
+                            pluginStatusText: effectValue.type == .plugin
+                                ? audioEngine.pluginStatusText(effectValue.id)
+                                : nil,
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     removeEffect(id: effectValue.id)

@@ -1,7 +1,7 @@
 import Accelerate
 import Foundation
 
-extension AudioEngine {
+extension AudioGraphProcessor {
     func processManualGraph(
         channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
         frameLength: Int,
@@ -86,9 +86,7 @@ extension AudioEngine {
         levelUpdateCounter += 1
         if levelUpdateCounter % 8 == 0 {
             let snapshot = levelSnapshot
-            DispatchQueue.main.async {
-                self.effectLevels = snapshot
-            }
+            onEffectLevels?(snapshot)
         }
     }
 

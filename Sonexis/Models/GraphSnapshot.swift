@@ -89,6 +89,113 @@ struct GraphSnapshot: Codable {
     }
 }
 
+enum GraphValidationError: LocalizedError {
+    case invalid(String)
+
+    var errorDescription: String? {
+        guard case .invalid(let message) = self else { return nil }
+        return message
+    }
+}
+
+extension GraphSnapshot {
+    /// Structural errors are rejected. Numeric effect parameters are sanitized
+    /// to their documented domain because older persisted files may predate bounds.
+    func validatedForProcessing() throws -> GraphSnapshot {
+        var result = self
+        let nodeIDs = nodes.map(\.id)
+        guard Set(nodeIDs).count == nodeIDs.count else {
+            throw GraphValidationError.invalid("The graph contains duplicate node IDs.")
+        }
+        guard nodes.allSatisfy({ $0.position.x.isFinite && $0.position.y.isFinite }) else {
+            throw GraphValidationError.invalid("The graph contains a non-finite node position.")
+        }
+
+        let terminals: [UUID]
+        if graphMode == .split {
+            guard let leftStartNodeID, let leftEndNodeID,
+                  let rightStartNodeID, let rightEndNodeID else {
+                throw GraphValidationError.invalid("A split graph is missing lane endpoints.")
+            }
+            terminals = [leftStartNodeID, leftEndNodeID, rightStartNodeID, rightEndNodeID]
+        } else {
+            terminals = [startNodeID, endNodeID]
+        }
+        guard Set(terminals).count == terminals.count,
+              Set(nodeIDs).isDisjoint(with: terminals) else {
+            throw GraphValidationError.invalid("Graph node and endpoint IDs must be unique.")
+        }
+
+        func sanitizedEdges(_ edges: [BeginnerConnection], label: String) throws -> [BeginnerConnection] {
+            var seen: Set<String> = []
+            let allIDs = Set(nodeIDs + terminals)
+            return try edges.map { edge in
+                guard allIDs.contains(edge.fromNodeId), allIDs.contains(edge.toNodeId) else {
+                    throw GraphValidationError.invalid("The \(label) contains an unknown endpoint.")
+                }
+                guard edge.fromNodeId != edge.toNodeId else {
+                    throw GraphValidationError.invalid("The \(label) contains a self-connection.")
+                }
+                guard edge.gain.isFinite else {
+                    throw GraphValidationError.invalid("The \(label) contains a non-finite gain.")
+                }
+                guard seen.insert("\(edge.fromNodeId.uuidString):\(edge.toNodeId.uuidString)").inserted else {
+                    throw GraphValidationError.invalid("The \(label) contains a duplicate connection.")
+                }
+                var sanitized = edge
+                sanitized.gain = min(max(edge.gain, 0), 1)
+                return sanitized
+            }
+        }
+        result.connections = try sanitizedEdges(connections, label: "graph")
+        result.autoGainOverrides = try sanitizedEdges(
+            autoGainOverrides,
+            label: "automatic gain overrides"
+        )
+
+        if graphMode == .split {
+            let leftIDs = Set(nodes.filter { $0.lane == .left }.map(\.id) + [terminals[0], terminals[1]])
+            let rightIDs = Set(nodes.filter { $0.lane == .right }.map(\.id) + [terminals[2], terminals[3]])
+            guard (connections + autoGainOverrides).allSatisfy({
+                (leftIDs.contains($0.fromNodeId) && leftIDs.contains($0.toNodeId))
+                    || (rightIDs.contains($0.fromNodeId) && rightIDs.contains($0.toNodeId))
+            }) else {
+                throw GraphValidationError.invalid("A split graph connection crosses lane endpoints.")
+            }
+        }
+
+        if wiringMode == .manual {
+            var outgoing: [UUID: [UUID]] = [:]
+            for edge in connections { outgoing[edge.fromNodeId, default: []].append(edge.toNodeId) }
+            var visiting: Set<UUID> = []
+            var visited: Set<UUID> = []
+            func visit(_ id: UUID) -> Bool {
+                if visiting.contains(id) { return false }
+                if visited.contains(id) { return true }
+                visiting.insert(id)
+                for next in outgoing[id] ?? [] where !visit(next) { return false }
+                visiting.remove(id)
+                visited.insert(id)
+                return true
+            }
+            guard (nodeIDs + terminals).allSatisfy({ visit($0) }) else {
+                throw GraphValidationError.invalid("Manual graph cycles are not supported.")
+            }
+        }
+
+        result.nodes = nodes.map { node in
+            var node = node
+            node.parameters = node.parameters.sanitized()
+            return node
+        }
+        return result
+    }
+
+    func validateForIndependentProcessing() throws {
+        _ = try validatedForProcessing()
+    }
+}
+
 extension GraphSnapshot {
     /// Stable saved-content comparison: wire IDs are transient, and dictionary-backed
     /// gain overrides have no meaningful ordering. Layout only matters when it

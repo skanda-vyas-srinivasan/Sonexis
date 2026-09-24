@@ -32,7 +32,7 @@ final class LegacyGraphRenderer {
         // Explicit wires still honor their gains; disconnected effects do not
         // qualify for this fallback and continue to require manual routing.
         if nodes.isEmpty && connections.isEmpty {
-            return (snapshot.limiterEnabled ? engine.applySoftLimiter(inputBuffer) : inputBuffer, [:])
+            return (snapshot.limiterEnabled ? engine.graphProcessor.applySoftLimiter(inputBuffer) : inputBuffer, [:])
         }
 
         // Clear and reuse pre-allocated scratch buffers (avoids allocation)
@@ -87,7 +87,7 @@ final class LegacyGraphRenderer {
             )
 
             var processed = merged
-            engine.applyEffect(
+            engine.graphProcessor.applyEffect(
                 node.type,
                 to: &processed,
                 sampleRate: sampleRate,
@@ -97,7 +97,7 @@ final class LegacyGraphRenderer {
                 levelSnapshot: &levelSnapshot,
                 snapshot: snapshot
             )
-            engine.sanitizeEffectOutput(
+            engine.graphProcessor.sanitizeEffectOutput(
                 &processed,
                 effect: node.type,
                 nodeId: node.id,
@@ -124,7 +124,7 @@ final class LegacyGraphRenderer {
             frameLength: inputBuffer.first?.count ?? 0,
             channelCount: channelCount
         )
-        let limited = snapshot.limiterEnabled ? engine.applySoftLimiter(mixed) : mixed
+        let limited = snapshot.limiterEnabled ? engine.graphProcessor.applySoftLimiter(mixed) : mixed
 
         return (limited, levelSnapshot)
     }

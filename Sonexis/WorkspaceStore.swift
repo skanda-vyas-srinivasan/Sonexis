@@ -59,7 +59,7 @@ final class WorkspaceStore: ObservableObject {
               ["graphMode", "wiringMode", "autoConnectEnd", "nodes", "connections",
                "autoGainOverrides", "startNodeID", "endNodeID", "hasNodeParameters"]
                 .allSatisfy({ graph[$0] != nil }) else { throw RecoveryError.invalidGraph }
-        let result = try JSONDecoder().decode(WorkspaceSnapshot.self, from: data)
+        var result = try JSONDecoder().decode(WorkspaceSnapshot.self, from: data)
         let nodes = result.graph.nodes
         var ids = nodes.map(\.id) + [result.graph.startNodeID, result.graph.endNodeID]
         ids += [result.graph.leftStartNodeID, result.graph.leftEndNodeID,
@@ -69,6 +69,7 @@ final class WorkspaceStore: ObservableObject {
               nodes.allSatisfy({ $0.position.x.isFinite && $0.position.y.isFinite }) else {
             throw RecoveryError.invalidGraph
         }
+        result.graph = try result.graph.validatedForProcessing()
         return result
     }
 

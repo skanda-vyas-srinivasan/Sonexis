@@ -5,6 +5,7 @@ final class PluginHost {
     private var editorIDs: [UUID: UUID] = [:]
     private var instances: [UUID: PluginInstance] = [:]
     private var references: [UUID: PluginReference] = [:]
+    private var renderFormat: PluginRenderFormat?
     private let lock = NSLock()
     private let debugLifecycle = true
     var onPluginReady: ((UUID) -> Void)?
@@ -34,7 +35,9 @@ final class PluginHost {
         )
         let nodeIds = Set(nextReferences.keys)
 
-        if references == nextReferences && nodeIds.allSatisfy({ instances[$0] != nil }) {
+        if references == nextReferences && nodeIds.allSatisfy({
+            instances[$0] != nil || nextReferences[$0]?.format == .vst3
+        }) {
             if debugLifecycle, !nodeIds.isEmpty {
                 print("PluginHost sync skipped: unchanged plugin nodes=\(nodeIds.count)")
             }
@@ -54,17 +57,33 @@ final class PluginHost {
             if let existingRef = references[node.id], existingRef == reference {
                 continue
             }
+            // A node that changes plug-in identity must not retain its previous
+            // processor, especially when imported VST3 metadata is unsupported.
+            instances.removeValue(forKey: node.id)
             references[node.id] = reference
+            guard let instance = makeInstance(for: reference) else { continue }
             if debugLifecycle {
                 print("PluginHost creating plugin instance: node=\(node.id), name=\(reference.name)")
             }
-            let instance = makeInstance(for: reference)
             if let auInstance = instance as? AUPluginInstance {
                 auInstance.onReady = { [weak self] in
                     self?.onPluginReady?(node.id)
                 }
             }
             instances[node.id] = instance
+            if let renderFormat {
+                instance.prepare(format: renderFormat)
+            }
+        }
+    }
+
+    func prepareAll(format: PluginRenderFormat) {
+        lock.lock()
+        renderFormat = format
+        let currentInstances = Array(instances.values)
+        lock.unlock()
+        for instance in currentInstances {
+            instance.prepare(format: format)
         }
     }
 
@@ -74,16 +93,37 @@ final class PluginHost {
         return instances[nodeId]
     }
 
+    /// Called while publishing a graph snapshot, never from the processing path.
+    /// The copied dictionary retains instances until that snapshot finishes use.
+    func processingRenderStates() -> [UUID: PluginRenderState] {
+        lock.lock()
+        defer { lock.unlock() }
+        return instances.compactMapValues(\.renderState)
+    }
+
     func isReady(nodeId: UUID) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         return instances[nodeId]?.isReady ?? false
     }
 
-    func stateData(for nodeId: UUID) -> Data? {
+    func statusText(nodeId: UUID) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        return instances[nodeId]?.stateData()
+        if references[nodeId]?.format == .vst3 {
+            return "VST3 unsupported"
+        }
+        if let failure = instances[nodeId]?.failureDescription {
+            return failure
+        }
+        return instances[nodeId]?.isReady == true ? nil : "Loading..."
+    }
+
+    func stateData(for nodeId: UUID) -> Data? {
+        lock.lock()
+        let instance = instances[nodeId]
+        lock.unlock()
+        return instance?.stateData()
     }
 
     func openEditor(for nodeId: UUID, fallbackView: NSView?) {
@@ -122,12 +162,13 @@ final class PluginHost {
         }
     }
 
-    private func makeInstance(for reference: PluginReference) -> PluginInstance {
+    private func makeInstance(for reference: PluginReference) -> PluginInstance? {
         switch reference.format {
         case .au:
             return AUPluginInstance(reference: reference)
         case .vst3:
-            return VST3PluginInstance(reference: reference)
+            // Preserve imported VST3 metadata, but do not expose a fake processor.
+            return nil
         }
     }
 }
@@ -151,5 +192,9 @@ extension AudioEngine {
 
     func isPluginReady(_ nodeId: UUID) -> Bool {
         pluginHost.isReady(nodeId: nodeId)
+    }
+
+    func pluginStatusText(_ nodeId: UUID) -> String? {
+        pluginHost.statusText(nodeId: nodeId)
     }
 }

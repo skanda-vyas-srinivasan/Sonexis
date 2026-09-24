@@ -18,6 +18,7 @@ case "${1:-}" in
     graph-routing)
         run_test test-compiled-graph.sh
         run_test test-graph-transition-integration.sh
+        run_test test-audio-unit-lifecycle.sh
         run_test test-graph-transitions.sh
         run_test test-multichain.sh
         ;;

@@ -39,9 +39,9 @@ for fixture in fixtures {
         oldEngine.updateEffectGraph(nodes: fixture.nodes, connections: fixture.edges, startID: start, endID: end, autoConnectEnd: fixture.auto)
         newEngine.updateEffectGraph(nodes: fixture.nodes, connections: fixture.edges, startID: start, endID: end, autoConnectEnd: fixture.auto)
         publish()
-        oldEngine.applyPendingResets(); newEngine.applyPendingResets()
-        oldEngine.initializeEffectStates(channelCount: channels)
-        newEngine.initializeEffectStates(channelCount: channels)
+        oldEngine.graphProcessor.applyPendingResets(); newEngine.graphProcessor.applyPendingResets()
+        oldEngine.graphProcessor.initializeEffectStates(channelCount: channels)
+        newEngine.graphProcessor.initializeEffectStates(channelCount: channels)
         let legacy = LegacyGraphRenderer(engine: oldEngine)
         let oldSnapshot = oldEngine.currentProcessingSnapshot()
         let newSnapshot = newEngine.currentProcessingSnapshot()
@@ -52,7 +52,7 @@ for fixture in fixtures {
             let old = legacy.processGraph(inputBuffer: input, channelCount: channels, sampleRate: 48_000,
                 nodes: fixture.nodes, connections: fixture.edges, startID: start, endID: end,
                 autoConnectEnd: fixture.auto, snapshot: oldSnapshot)
-            let new = newEngine.processGraph(inputBuffer: input, channelCount: channels, sampleRate: 48_000,
+            let new = newEngine.graphProcessor.processGraph(inputBuffer: input, channelCount: channels, sampleRate: 48_000,
                 plan: newSnapshot.manualRoutingPlan, snapshot: newSnapshot)
             for channel in 0..<channels {
                 for frame in 0..<count {
@@ -92,7 +92,7 @@ let endpointCases: [(UUID?, UUID?)] = [(nil, nil), (start, nil), (nil, end)]
 for endpoints in endpointCases {
     let plan = GraphRoutingPlan(nodes: [], connections: [], startID: endpoints.0, endID: endpoints.1, autoConnectEnd: false)
     let input: [[Float]] = [[0.1, -0.2]]
-    expect(engine.processGraph(inputBuffer: input, channelCount: 1, sampleRate: 48_000,
+    expect(engine.graphProcessor.processGraph(inputBuffer: input, channelCount: 1, sampleRate: 48_000,
         plan: plan, snapshot: engine.currentProcessingSnapshot()).0 == input, "Missing endpoint lost passthrough")
 }
 engine.updateEffectGraph(nodes: [a], connections: wiring, startID: start, endID: end)
@@ -129,7 +129,7 @@ for count in [4, 16, 48] {
     let input = [[Float]](repeating: [Float](repeating: 0.01, count: 128), count: 2)
     func renderOld() { _ = legacy.processGraph(inputBuffer: input, channelCount: 2, sampleRate: 48_000,
         nodes: benchNodes, connections: connections, startID: start, endID: end, autoConnectEnd: false, snapshot: oldSnapshot) }
-    func renderNew() { _ = newEngine.processGraph(inputBuffer: input, channelCount: 2, sampleRate: 48_000, plan: plan, snapshot: newSnapshot) }
+    func renderNew() { _ = newEngine.graphProcessor.processGraph(inputBuffer: input, channelCount: 2, sampleRate: 48_000, plan: plan, snapshot: newSnapshot) }
     for _ in 0..<50 { renderOld(); renderNew() }
     func time(_ run: () -> Void) -> Double {
         let start = DispatchTime.now().uptimeNanoseconds

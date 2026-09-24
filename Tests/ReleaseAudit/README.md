@@ -2,7 +2,6 @@
 
 These exercise the real engine independently of audio devices and user storage.
 They are diagnostic probes, not tests asserting that known failures are correct.
-The main issue report is [sonexis_issues_version210release.md](../../sonexis_issues_version210release.md).
 
 From the repository root:
 

@@ -34,7 +34,7 @@ for _ in 0..<30 {try f.write(from:buffer)}
 let player=Process();player.executableURL=URL(fileURLWithPath:"/usr/bin/afplay");player.arguments=[wav.path]
 try player.run();defer{if player.isRunning{player.terminate();player.waitUntilExit()}}
 RunLoop.main.run(until:Date().addingTimeInterval(0.5))
-guard let id=try CoreAudioSupport.processObjectID(forPID:player.processIdentifier) else{throw PrototypeError(message:"Generated tone process missing from HAL")}
+guard let id=try CoreAudioSupport.processObjectID(forPID:player.processIdentifier) else{throw SonexisError(message:"Generated tone process missing from HAL")}
 print("AUDIT SOURCE resolved PID=\(player.processIdentifier) object=\(id)")
 let probe=Probe();probe.engine.processTapInputTrimDB=0;probe.engine.processTapOutputMakeupDB=0;probe.engine.processTapOutputCeilingEnabled=true;probe.engine.updateEffectChain([]);probe.engine.publishProcessingState()
 let pipeline=ProcessTapDSPEngine(audioProcessor:probe,fixedSelection:.only([id]))

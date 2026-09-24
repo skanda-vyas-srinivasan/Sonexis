@@ -14,7 +14,7 @@ Feature scope is closed. Additional work should address demonstrated defects or 
 | --- | --- | --- | --- |
 | 1 | Establish the release baseline | Record source revision plus working-tree state, build configuration, machine, and test commands | Recorded in the audit |
 | 2 | Test and reproduce | Run regression suites and targeted stress, audio, security/input-validation, tutorial, and UI/accessibility checks; retain logs and reproducers | First pass complete; see audit coverage and gaps |
-| 3 | Agree on and fix proven issues | Work through `sonexis_issues_version210release.md` by severity; attach before/after evidence to each fix | 210-01–04 and 210-06–07 fixed; 210-05 deferred |
+| 3 | Agree on and fix proven issues | Work through demonstrated defects by severity; attach before/after evidence to each fix | 210-01–04 and 210-06–07 fixed; 210-05 deferred |
 | 4 | Complete real-device acceptance | Check live app routing, listening, recovery, tutorial interaction, fresh launch, and upgrade in a release candidate | Available-device checks passed; real sleep/wake requires an attended run |
 | 5 | Prepare the release | Set version/build, commit the reviewed changes, prepare release notes and signed/notarized app and installer | 2.1.0 (5), notes and builds complete; refresh internal DMG, then Developer ID/notary credentials remain unavailable |
 | 6 | Verify and publish | Install the exact candidate DMG, check launch/update behavior, then approve publication of that artifact | Blocked until a signed/notarized artifact exists; nothing published |
@@ -54,7 +54,7 @@ Feature scope is closed. Additional work should address demonstrated defects or 
 
 ## Evidence rules
 
-Only demonstrated defects go in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md). Each entry needs severity, exact reproduction, expected/actual results, evidence paths, affected source, and scope limits. Passing checks and blocked/unavailable checks belong in the separate audit record. A missing test, speculative risk, or visual preference is not a proven defect.
+Record demonstrated defects with severity, exact reproduction, expected and actual results, evidence paths, affected source, and scope limits. Passing checks and blocked or unavailable checks belong in the audit record. A missing test, speculative risk, or visual preference is not a proven defect.
 
 Use temporary test data and offline audio for destructive/malformed-input tests. Preserve the user's real presets and workspace. Findings are to be reviewed before implementation; this audit does not authorize unrelated product changes.
 
@@ -75,7 +75,7 @@ Next: on a machine with the Developer ID certificate and notary credentials, sig
 
 ## First audit outcome — 2026-09-10
 
-The [audit record](RELEASE-2.1.0-AUDIT.md) documents passing regressions and additional stress checks. Seven observed issues are recorded in [sonexis_issues_version210release.md](../sonexis_issues_version210release.md), including the live-recording frame loss found during real-device acceptance. Device recovery and final installer acceptance remain open; an attempted or blocked check has not been marked passed.
+The [audit record](RELEASE-2.1.0-AUDIT.md) documents passing regressions, additional stress checks, and the live-recording frame loss found during real-device acceptance. Device recovery and final installer acceptance remain open; an attempted or blocked check has not been marked passed.
 
 ## Fix progress
 

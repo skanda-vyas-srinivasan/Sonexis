@@ -10,7 +10,7 @@ struct CoreAudioError: Error, CustomStringConvertible {
     }
 }
 
-struct PrototypeError: Error, CustomStringConvertible {
+struct SonexisError: Error, CustomStringConvertible {
     let message: String
 
     var description: String { message }
@@ -161,7 +161,7 @@ enum CoreAudioSupport {
         try checkOSStatus(status, operation: operation)
 
         guard let value else {
-            throw PrototypeError(message: "\(operation) returned nil")
+            throw SonexisError(message: "\(operation) returned nil")
         }
         return value.takeRetainedValue() as String
     }
@@ -274,7 +274,7 @@ enum CoreAudioSupport {
         try checkOSStatus(status, operation: "Read process tap description")
 
         guard let value else {
-            throw PrototypeError(message: "Read process tap description returned nil")
+            throw SonexisError(message: "Read process tap description returned nil")
         }
         return value.takeRetainedValue()
     }

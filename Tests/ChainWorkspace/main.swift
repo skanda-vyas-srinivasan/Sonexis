@@ -181,7 +181,7 @@ var rejectPractice = false
 var rejectRestore = false
 let lessonRuntime = MultiChainAudioEngine(resolve: { target in
     if (rejectPractice && target.bundleID == "test.practice") || (rejectRestore && target.bundleID == "test.original") {
-        throw PrototypeError(message: "test route unavailable")
+        throw SonexisError(message: "test route unavailable")
     }
     return []
 }, makePipeline: { _, _ in FakePipeline() })
@@ -372,7 +372,7 @@ pendingLesson.shutdown()
 final class TutorialStartPipeline: AudioChainPipeline {
     let shouldFail: () -> Bool
     init(shouldFail: @escaping () -> Bool) { self.shouldFail = shouldFail }
-    func start() throws { if shouldFail() { throw PrototypeError(message: "test start failure") } }
+    func start() throws { if shouldFail() { throw SonexisError(message: "test start failure") } }
     func stopImmediately(reason: String) {}
 }
 var failTutorialStart = true

@@ -9,6 +9,95 @@ defer { try? FileManager.default.removeItem(at: root) }
 let graph = GraphSnapshot(graphMode: .single, wiringMode: .automatic,
     nodes: [BeginnerNode(type: .bassBoost, position: .zero)], connections: [],
     startNodeID: UUID(), endNodeID: UUID())
+
+// Every persisted effect parameter shares one domain validation boundary.
+let parameterNames = [
+    "bassBoostAmount", "enhancerAmount", "nightcoreIntensity", "clarityAmount", "deMudStrength",
+    "eqBass", "eqMids", "eqTreble", "compressorStrength", "compressorThresholdDB", "compressorRatio",
+    "compressorAttackMS", "compressorReleaseMS", "compressorMakeupDB", "compressorMix", "reverbMix",
+    "reverbSize", "stereoWidthAmount", "delayTime", "delayFeedback", "delayMix", "ampInputGain",
+    "ampDrive", "ampOutputGain", "ampMix", "distortionDrive", "distortionMix", "tremoloRate",
+    "tremoloDepth", "autoPanRate", "autoPanDepth", "chorusRate", "chorusDepth", "chorusMix",
+    "phaserRate", "phaserDepth", "flangerRate", "flangerDepth", "flangerFeedback", "flangerMix",
+    "bitcrusherBitDepth", "bitcrusherDownsample", "bitcrusherMix", "tapeSaturationDrive",
+    "tapeSaturationMix", "resampleRate", "resampleCrossfade", "rubberBandPitchSemitones",
+    "nightDriveIntensity", "nightDriveWidth", "chromePunchPunch", "chromePunchBody", "midnightGlowGlow",
+    "midnightGlowWarmth", "afterglowAir", "afterglowSpace"
+]
+var hostileParameters = Dictionary(uniqueKeysWithValues: parameterNames.map { ($0, 1e100 as Any) })
+hostileParameters["tenBandGains"] = Array(repeating: 1e100, count: 12)
+let hostileData = try JSONSerialization.data(withJSONObject: hostileParameters)
+let sanitizedParameters = try JSONDecoder().decode(NodeEffectParameters.self, from: hostileData).sanitized()
+for child in Mirror(reflecting: sanitizedParameters).children {
+    if let value = child.value as? Double {
+        expect(value.isFinite && abs(value) < 10_000, "Parameter \(child.label ?? "unknown") was not bounded")
+    }
+}
+expect(sanitizedParameters.tenBandGains.count == 10 && sanitizedParameters.tenBandGains.allSatisfy { (-12...12).contains($0) },
+       "Fixed-size EQ bands were not repaired")
+
+var invalidGraph = graph
+invalidGraph.connections = [BeginnerConnection(fromNodeId: UUID(), toNodeId: graph.endNodeID)]
+expect((try? invalidGraph.validatedForProcessing()) == nil, "Unknown connection endpoint was accepted")
+invalidGraph = graph
+invalidGraph.wiringMode = .manual
+invalidGraph.connections = [
+    BeginnerConnection(fromNodeId: graph.startNodeID, toNodeId: graph.nodes[0].id),
+    BeginnerConnection(fromNodeId: graph.nodes[0].id, toNodeId: graph.startNodeID)
+]
+expect((try? invalidGraph.validatedForProcessing()) == nil, "Manual graph cycle was accepted")
+invalidGraph = graph
+invalidGraph.connections = [
+    BeginnerConnection(fromNodeId: graph.startNodeID, toNodeId: graph.endNodeID),
+    BeginnerConnection(fromNodeId: graph.startNodeID, toNodeId: graph.endNodeID)
+]
+expect((try? invalidGraph.validatedForProcessing()) == nil, "Duplicate graph edge was accepted")
+invalidGraph = graph
+invalidGraph.nodes[0].position.x = .infinity
+expect((try? invalidGraph.validatedForProcessing()) == nil, "Non-finite node position was accepted")
+
+for (input, expected) in [(-1.0, 0.0), (0.0, 0.0), (1.0, 1.0), (2.0, 1.0), (1e100, 1.0)] {
+    var gainGraph = graph
+    gainGraph.connections = [BeginnerConnection(
+        fromNodeId: graph.startNodeID,
+        toNodeId: graph.endNodeID,
+        gain: input
+    )]
+    gainGraph.autoGainOverrides = [BeginnerConnection(
+        fromNodeId: graph.startNodeID,
+        toNodeId: graph.endNodeID,
+        gain: input
+    )]
+    let sanitized = try gainGraph.validatedForProcessing()
+    expect(sanitized.connections[0].gain == expected, "Manual gain \(input) was not sanitized")
+    expect(sanitized.autoGainOverrides[0].gain == expected, "Automatic gain \(input) was not sanitized")
+
+    let roundTrip = try JSONDecoder().decode(
+        GraphSnapshot.self,
+        from: JSONEncoder().encode(sanitized)
+    )
+    expect(roundTrip.connections[0].gain == expected, "Sanitized manual gain did not round trip")
+    expect(roundTrip.autoGainOverrides[0].gain == expected, "Sanitized automatic gain did not round trip")
+}
+for invalidGain in [Double.nan, Double.infinity, -Double.infinity] {
+    var manualGainGraph = graph
+    manualGainGraph.connections = [BeginnerConnection(
+        fromNodeId: graph.startNodeID,
+        toNodeId: graph.endNodeID,
+        gain: invalidGain
+    )]
+    expect((try? manualGainGraph.validatedForProcessing()) == nil, "Non-finite manual gain was accepted")
+
+    var automaticGainGraph = graph
+    automaticGainGraph.autoGainOverrides = [BeginnerConnection(
+        fromNodeId: graph.startNodeID,
+        toNodeId: graph.endNodeID,
+        gain: invalidGain
+    )]
+    expect((try? automaticGainGraph.validatedForProcessing()) == nil, "Non-finite automatic gain was accepted")
+}
+print("PASS: centralized parameter sanitization and malformed graph rejection")
+
 var changed = graph
 changed.nodes[0].parameters.bassBoostAmount = 0.9
 let directory = root.appendingPathComponent("normal")

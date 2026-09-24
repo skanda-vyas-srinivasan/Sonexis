@@ -1,0 +1,92 @@
+name: Contributor task
+description: Define a verified, scoped task that is ready for a contributor
+title: "[Task]: "
+labels:
+  - help wanted
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for maintainer-scoped implementation work. Search existing issues and verify the current code before publishing. Use the bug or feature form when the work still needs reproduction or product discussion.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and motivation
+      description: Explain what is wrong or missing, who it affects, and why resolving it matters.
+      placeholder: Describe the problem rather than only naming a preferred implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and current behavior
+      description: Link current source paths, documentation, logs, screenshots, or reproducible observations. Separate verified facts from assumptions.
+      placeholder: |
+        - Current behavior:
+        - Evidence:
+        - Relevant files or symbols:
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: State the intended outcome and important constraints without prescribing unnecessary internals.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable, testable conditions that define completion.
+      placeholder: |
+        - The affected workflow behaves as described.
+        - Existing behavior outside this scope is preserved.
+        - Relevant documentation is updated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Name the automated suites and any manual, hardware, accessibility, migration, or listening checks required.
+      placeholder: |
+        Automated:
+        - `Scripts/test-group.sh ...`
+
+        Manual:
+        - Describe checks automation cannot establish.
+    validations:
+      required: true
+
+  - type: textarea
+    id: starting-points
+    attributes:
+      label: Suggested starting points
+      description: List current files, types, or functions likely to be relevant. Verify every path before submitting.
+      placeholder: |
+        - `Sonexis/...`
+        - `Tests/...`
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Identify adjacent behavior that should not be bundled into this task.
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Expected risk
+      description: Choose the highest expected review level. Maintainers may revise this during triage.
+      options:
+        - Low (documentation, isolated tests, or non-behavioral tooling)
+        - Medium (localized product behavior or UI changes)
+        - High (audio, capture, persistence, permissions, dependencies, or project configuration)
+    validations:
+      required: true

@@ -26,12 +26,14 @@ final class ChainWorkspaceStore {
     private var backup: URL { directory.appendingPathComponent("chains.backup.json") }
 
     private func decode(_ data: Data) throws -> ChainWorkspaceDocument {
-        let document = try JSONDecoder().decode(ChainWorkspaceDocument.self, from: data)
-        guard document.version == 1 else { throw PrototypeError(message: "Unsupported chain workspace version") }
+        var document = try JSONDecoder().decode(ChainWorkspaceDocument.self, from: data)
+        guard document.version == 1 else { throw SonexisError(message: "Unsupported chain workspace version") }
         _ = try AudioChainRoutingPlan(chains: document.chains, resolve: { _ in [] })
-        for chain in document.chains { try chain.graph.validateForIndependentProcessing() }
+        for index in document.chains.indices {
+            document.chains[index].graph = try document.chains[index].graph.validatedForProcessing()
+        }
         guard document.chains.contains(where: { $0.id == document.selectedID }) else {
-            throw PrototypeError(message: "Selected chain is missing")
+            throw SonexisError(message: "Selected chain is missing")
         }
         return document
     }
@@ -62,7 +64,7 @@ final class ChainWorkspaceStore {
                 return document
             } catch {
                 blocked = true
-                throw PrototypeError(message: "Chain workspace could not be restored. Original files are preserved; autosave is paused.")
+                throw SonexisError(message: "Chain workspace could not be restored. Original files are preserved; autosave is paused.")
             }
         }
     }

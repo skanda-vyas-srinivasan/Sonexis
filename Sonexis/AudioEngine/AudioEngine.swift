@@ -78,7 +78,14 @@ class AudioEngine: ObservableObject {
         updateProcessingSnapshot()
         pluginHost.onPluginReady = { [weak self] _ in
             DispatchQueue.main.async {
-                self?.pluginStatusToken += 1
+                guard let self else { return }
+                self.pluginStatusToken += 1
+                self.scheduleSnapshotUpdate()
+            }
+        }
+        graphProcessor.onEffectLevels = { [weak self] levels in
+            DispatchQueue.main.async {
+                self?.effectLevels = levels
             }
         }
     }
@@ -473,7 +480,7 @@ class AudioEngine: ObservableObject {
     @Published var tremoloEnabled = false {
         didSet {
             if !tremoloEnabled {
-                tremoloPhase = 0
+                resetTremoloState()
             }
             scheduleSnapshotUpdate()
         }
@@ -678,6 +685,7 @@ class AudioEngine: ObservableObject {
     var currentGraphSnapshot: GraphSnapshot?
     @Published var graphSnapshotRevision = 0
     @Published var currentPresetComparisonData: Data?
+    let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000]
 
     var deviceListMonitorTimer: DispatchSourceTimer?
     var deviceListMonitorListener: AudioObjectPropertyListenerBlock?
@@ -704,261 +712,24 @@ class AudioEngine: ObservableObject {
     var nodeParameters: [UUID: NodeEffectParameters] = [:]
     var nodeEnabled: [UUID: Bool] = [:]
     let pluginHost = PluginHost()
-    var levelUpdateCounter = 0
+    let graphProcessor = AudioGraphProcessor()
     var outputMeterUpdateCounter = 0
     var outputMeterSmoothedRMS: Float = 0
     var outputMeterSmoothedPeak: Float = 0
-    let effectStateLock = NSLock()
-    private let snapshotLock = NSLock()
+    // Protects facade-side editable graph models during snapshot construction.
+    // It is never acquired by AudioGraphProcessor or live plug-in rendering.
+    let graphModelLock = NSLock()
     private var snapshotUpdateScheduled = false
-    private var processingSnapshot = ProcessingSnapshot.empty
-    var pendingResets: ResetFlags = []
-    let pendingResetsLock = NSLock()
+    // Main-thread graph bookkeeping. Mutable DSP objects are never inspected here.
+    var activeRubberBandPitchNodeIDs: Set<UUID> = []
     var isReconfiguring = false
     var restartWorkItem: DispatchWorkItem?
     let restartDebounceInterval: TimeInterval = 0.25
 
-    // Bass boost state
-    var bassBoostState: [BiquadState] = []
-    var bassBoostCoefficients = BiquadCoefficients()
-    var bassBoostLastSampleRate: Double = 0
-    var bassBoostLastAmount: Double = -1
-    var bassBoostStatesByNode: [UUID: [BiquadState]] = [:]
-    var bassBoostSmoothedGain: Float = 0
-    var bassBoostSmoothedGainByNode: [UUID: Float] = [:]
-    // vDSP biquad delay states (4 floats per channel)
-    var bassBoostVDSPDelay: [[Float]] = []
-    var bassBoostVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var biquadScratchBuffer: [Float] = []  // Scratch for wet signal
-    var biquadScratchBuffer2: [Float] = [] // Second scratch for multi-band EQ
-
-    // Enhancer state
-    var enhancerSmoothedGain: Float = 0
-    var enhancerSmoothedGainByNode: [UUID: Float] = [:]
-    var enhancerLowVDSPDelay: [[Float]] = []
-    var enhancerMidVDSPDelay: [[Float]] = []
-    var enhancerHighVDSPDelay: [[Float]] = []
-    var enhancerLowVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var enhancerMidVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var enhancerHighVDSPDelayByNode: [UUID: [[Float]]] = [:]
-
-
-    // Clarity state (high shelf boost)
-    var clarityState: [BiquadState] = []
-    var clarityCoefficients = BiquadCoefficients()
-    var clarityLastSampleRate: Double = 0
-    var clarityLastAmount: Double = -1
-    var clarityStatesByNode: [UUID: [BiquadState]] = [:]
-    var claritySmoothedGain: Float = 0
-    var claritySmoothedGainByNode: [UUID: Float] = [:]
-    var clarityVDSPDelay: [[Float]] = []
-    var clarityVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var nightcoreStatesByNode: [UUID: [BiquadState]] = [:]
-    var nightcoreSmoothedGain: Float = 0
-    var nightcoreSmoothedGainByNode: [UUID: Float] = [:]
-
-    // De-mud state (mid frequency cut)
-    var deMudState: [BiquadState] = []
-    var deMudCoefficients = BiquadCoefficients()
-    var deMudLastSampleRate: Double = 0
-    var deMudLastStrength: Double = -1
-    var deMudStatesByNode: [UUID: [BiquadState]] = [:]
-    var deMudSmoothedGain: Float = 0
-    var deMudSmoothedGainByNode: [UUID: Float] = [:]
-    var deMudVDSPDelay: [[Float]] = []
-    var deMudVDSPDelayByNode: [UUID: [[Float]]] = [:]
-
-    // Simple EQ state (3 bands)
-    var eqBassState: [BiquadState] = []
-    var eqBassCoefficients = BiquadCoefficients()
-    var eqMidsState: [BiquadState] = []
-    var eqMidsCoefficients = BiquadCoefficients()
-    var eqTrebleState: [BiquadState] = []
-    var eqTrebleCoefficients = BiquadCoefficients()
-    var eqLastSampleRate: Double = 0
-    var eqBassStatesByNode: [UUID: [BiquadState]] = [:]
-    var eqMidsStatesByNode: [UUID: [BiquadState]] = [:]
-    var eqBassVDSPDelay: [[Float]] = []
-    var eqMidsVDSPDelay: [[Float]] = []
-    var eqTrebleVDSPDelay: [[Float]] = []
-    var eqBassVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var eqMidsVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var eqTrebleVDSPDelayByNode: [UUID: [[Float]]] = [:]
-    var eqTrebleStatesByNode: [UUID: [BiquadState]] = [:]
-    var simpleEQSmoothedGain: Float = 0
-    var simpleEQSmoothedGainByNode: [UUID: Float] = [:]
-    var appleThreeBandEQProcessorsByNode: [UUID: AppleThreeBandEQProcessor] = [:]
-    var appleThreeBandEQDryScratchByNode: [UUID: [[Float]]] = [:]
-    var appleThreeBandEQSmoothedGainByNode: [UUID: Float] = [:]
-
-    // 10-band EQ state (peaking filters)
-    let tenBandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
-    var tenBandStates: [[BiquadState]] = []
-    var tenBandCoefficients: [BiquadCoefficients] = []
-    var tenBandLastSampleRate: Double = 0
-    var tenBandLastGains: [Double] = []
-    var tenBandStatesByNode: [UUID: [[BiquadState]]] = [:]
-    var tenBandEQSmoothedGain: Float = 0
-    var tenBandEQSmoothedGainByNode: [UUID: Float] = [:]
-    // vDSP delays: [band][channel][4 floats]
-    var tenBandVDSPDelays: [[[Float]]] = []
-    var tenBandVDSPDelaysByNode: [UUID: [[[Float]]]] = [:]
-
-    // Compressor state (stereo-linked detector envelope)
-    var compressorEnvelope: Float = 1
-    var compressorEnvelopeByNode: [UUID: Float] = [:]
-    var compressorSmoothedGain: Float = 0
-    var compressorSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Reverb tank (parallel comb filters with all-pass diffusion)
-    var reverbState = ReverbTankState()
-    var reverbStatesByNode: [UUID: ReverbTankState] = [:]
-    var reverbSmoothedGain: Float = 0
-    var reverbSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Delay buffer (circular buffer for echo)
-    var delayBuffer: [[Float]] = []
-    var delayWriteIndex = 0
-    var delayBuffersByNode: [UUID: [[Float]]] = [:]
-    var delayWriteIndexByNode: [UUID: Int] = [:]
-    var delaySmoothedGain: Float = 0
-    var delaySmoothedGainByNode: [UUID: Float] = [:]
-    var delayParameterState = ModulatedEffectParameterState()
-    var delayParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
-
-    // Tremolo state (LFO phase)
-    var tremoloPhase: Double = 0
-    var tremoloPhaseByNode: [UUID: Double] = [:]
-    var tremoloSmoothedGain: Float = 0
-    var tremoloSmoothedGainByNode: [UUID: Float] = [:]
-    var autoPanPhase: Double = 0
-    var autoPanPhaseByNode: [UUID: Double] = [:]
-    var autoPanSmoothedGain: Float = 0
-    var autoPanSmoothedGainByNode: [UUID: Float] = [:]
-    var autoPanParameterState = ModulatedEffectParameterState()
-    var autoPanParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
-
-    // Chorus state (delay modulation)
-    var chorusBuffer: [[Float]] = []
-    var chorusWriteIndex = 0
-    var chorusPhase: Double = 0
-    var chorusBuffersByNode: [UUID: [[Float]]] = [:]
-    var chorusWriteIndexByNode: [UUID: Int] = [:]
-    var chorusPhaseByNode: [UUID: Double] = [:]
-    var chorusSmoothedGain: Float = 0
-    var chorusSmoothedGainByNode: [UUID: Float] = [:]
-    var chorusParameterState = ModulatedEffectParameterState()
-    var chorusParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
-
-    // Flanger state (short delay modulation with feedback)
-    var flangerBuffer: [[Float]] = []
-    var flangerWriteIndex = 0
-    var flangerPhase: Double = 0
-    var flangerBuffersByNode: [UUID: [[Float]]] = [:]
-    var flangerWriteIndexByNode: [UUID: Int] = [:]
-    var flangerPhaseByNode: [UUID: Double] = [:]
-    var flangerSmoothedGain: Float = 0
-    var flangerSmoothedGainByNode: [UUID: Float] = [:]
-    var flangerParameterState = ModulatedEffectParameterState()
-    var flangerParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
-
-    // Phaser state (all-pass)
-    let phaserStageCount = 4
-    var phaserStates: [[AllPassState]] = []
-    var phaserStatesByNode: [UUID: [[AllPassState]]] = [:]
-    var phaserPhase: Double = 0
-    var phaserPhaseByNode: [UUID: Double] = [:]
-    var phaserFeedbackSamples: [Float] = []
-    var phaserFeedbackSamplesByNode: [UUID: [Float]] = [:]
-    var phaserSmoothedGain: Float = 0
-    var phaserSmoothedGainByNode: [UUID: Float] = [:]
-    var phaserParameterState = ModulatedEffectParameterState()
-    var phaserParameterStateByNode: [UUID: ModulatedEffectParameterState] = [:]
-
-    // Resampling state
-    var resampleBuffer: [[Float]] = []
-    var resampleWriteIndex = 0
-    var resampleReadPhase: Double = 0
-    var resampleCrossfadeRemaining = 0
-    var resampleCrossfadeTotal = 0
-    var resampleCrossfadeStartPhase: Double = 0
-    var resampleCrossfadeTargetPhase: Double = 0
-    var resampleBuffersByNode: [UUID: [[Float]]] = [:]
-    var resampleWriteIndexByNode: [UUID: Int] = [:]
-    var resampleReadPhaseByNode: [UUID: Double] = [:]
-    var resampleCrossfadeRemainingByNode: [UUID: Int] = [:]
-    var resampleCrossfadeTotalByNode: [UUID: Int] = [:]
-    var resampleCrossfadeStartPhaseByNode: [UUID: Double] = [:]
-    var resampleCrossfadeTargetPhaseByNode: [UUID: Double] = [:]
-    var resampleSmoothedGain: Float = 0
-    var resampleSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Rubber Band state
-    var rubberBandNodes: [UUID: RubberBandWrapper] = [:]
-    var rubberBandGlobalByType: [EffectType: RubberBandWrapper] = [:]
-    var rubberBandScratchByNode: [UUID: RubberBandScratch] = [:]
-    var rubberBandScratchGlobal = RubberBandScratch()
-    var rubberBandSmoothedGain: Float = 0
-    var rubberBandSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Bitcrusher state
-    var bitcrusherHoldCounters: [Int] = []
-    var bitcrusherHoldValues: [Float] = []
-    var bitcrusherHoldCountersByNode: [UUID: [Int]] = [:]
-    var bitcrusherHoldValuesByNode: [UUID: [Float]] = [:]
-    var bitcrusherSmoothedGain: Float = 0
-    var bitcrusherSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Distortion state (stateless effect, but needs smoothing)
-    var ampSmoothedGain: Float = 0
-    var ampSmoothedGainByNode: [UUID: Float] = [:]
-    var distortionSmoothedGain: Float = 0
-    var distortionSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Tape Saturation state
-    var tapeSaturationSmoothedGain: Float = 0
-    var tapeSaturationSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Signature effect combo blocks
-    var signatureEffectStatesByNode: [UUID: SignatureEffectDSPState] = [:]
-    var signatureEffectStatesByType: [EffectType: SignatureEffectDSPState] = [:]
-
-    // Stereo Width state
-    var stereoWidthSmoothedGain: Float = 0
-    var stereoWidthSmoothedGainByNode: [UUID: Float] = [:]
-
-    // Plugin crossfade state
-    var pluginDryScratchByNode: [UUID: [[Float]]] = [:]
-    var pluginWetScratchByNode: [UUID: [[Float]]] = [:]
-    var pluginCrossfadeRemainingByNode: [UUID: Int] = [:]
-    var pluginCrossfadeTotalByNode: [UUID: Int] = [:]
-    var pluginCrossfadeOutRemainingByNode: [UUID: Int] = [:]
-    var pluginCrossfadeOutTotalByNode: [UUID: Int] = [:]
-    var pluginWasEnabledByNode: [UUID: Bool] = [:]
-    var pluginWasReadyByNode: [UUID: Bool] = [:]
-    var pluginStableOutputCountByNode: [UUID: Int] = [:]
-    var pluginHasStableOutputByNode: [UUID: Bool] = [:]
-    var pluginReadyDelaySamplesByNode: [UUID: Int] = [:]
-
-    // Pre-allocated buffers
-    var interleavedOutputBuffer: [Float] = []
-    var interleavedOutputCapacity: Int = 0
-    var processingBuffer: [[Float]] = []
-    var processingFrameCapacity: Int = 0
-    var deinterleavedInputBuffer: [[Float]] = []
-    var deinterleavedInputCapacity: Int = 0
-    var processTapPCMBuffer: AVAudioPCMBuffer?
-    var processTapPCMBufferFrameCapacity: Int = 0
-    var processTapPCMBufferChannelCount: Int = 0
-    var processTapPCMBufferSampleRate: Double = 0
-    // Per-block output storage; routing caches are used only during publication.
-    var graphOutputBuffers: [UUID: [[Float]]] = [:]
+    // Routing plans are prepared on the main thread and embedded in immutable snapshots.
     private let manualRoutingCache = GraphRoutingPlanCache()
     private let splitLeftRoutingCache = GraphRoutingPlanCache()
     private let splitRightRoutingCache = GraphRoutingPlanCache()
-    let graphOutputTransition = GraphOutputTransition()
-    var dspFaultCountsByEffect: [EffectType: Int] = [:]
-    var dspFaultCountsByNode: [UUID: Int] = [:]
 
     func scheduleSnapshotUpdate() {
         if !Thread.isMainThread {
@@ -1010,7 +781,7 @@ class AudioEngine: ObservableObject {
         var localNodeParameters: [UUID: NodeEffectParameters] = [:]
         var localNodeEnabled: [UUID: Bool] = [:]
 
-        withEffectStateLock {
+        withGraphModelLock {
             chain = effectChainOrder
             manualNodes = manualGraphNodes
             manualConnections = manualGraphConnections
@@ -1032,7 +803,7 @@ class AudioEngine: ObservableObject {
             localNodeEnabled = nodeEnabled
         }
 
-        let chainOrder = chain.map { EffectNode(id: $0.id, type: $0.type) }
+        let chainOrder = chain.map { AudioGraphProcessor.EffectNode(id: $0.id, type: $0.type) }
         let graphSignature = computeGraphSignature(
             manualNodes: manualNodes,
             manualConnections: manualConnections,
@@ -1070,6 +841,7 @@ class AudioEngine: ObservableObject {
             effectChainOrder: chainOrder,
             nodeParameters: localNodeParameters,
             nodeEnabled: localNodeEnabled,
+            pluginRenderStates: pluginHost.processingRenderStates(),
             processingEnabled: processingEnabled,
             limiterEnabled: limiterEnabled,
             isReconfiguring: isReconfiguring,
@@ -1153,16 +925,11 @@ class AudioEngine: ObservableObject {
                 startID: splitRightStartID, endID: splitRightEndID, autoConnectEnd: splitAutoConnect)
         )
 
-        snapshotLock.lock()
-        processingSnapshot = snapshot
-        snapshotLock.unlock()
+        graphProcessor.publish(snapshot)
     }
 
     func currentProcessingSnapshot() -> ProcessingSnapshot {
-        snapshotLock.lock()
-        let snapshot = processingSnapshot
-        snapshotLock.unlock()
-        return snapshot
+        graphProcessor.currentSnapshot()
     }
 
     func currentProcessTapRuntimeSettings() -> ProcessTapRuntimeSettings {
@@ -1196,7 +963,7 @@ class AudioEngine: ObservableObject {
         splitRightConnections: [BeginnerConnection],
         splitRightStartID: UUID?,
         splitRightEndID: UUID?,
-        chainOrder: [EffectNode],
+        chainOrder: [AudioGraphProcessor.EffectNode],
         nodeEnabled: [UUID: Bool]
     ) -> Int {
         var hasher = Hasher()
@@ -1247,9 +1014,54 @@ class AudioEngine: ObservableObject {
     }
 
     func enqueueReset(_ reset: ResetFlags) {
-        pendingResetsLock.lock()
-        pendingResets.insert(reset)
-        pendingResetsLock.unlock()
+        graphProcessor.enqueueReset(reset)
+    }
+
+    /// Publishes node liveness to the processing worker. The worker applies this
+    /// command at the next block boundary, so main-thread graph edits never touch
+    /// mutable per-node DSP state.
+    func enqueueActiveNodeIDs(_ nodeIDs: Set<UUID>) {
+        graphProcessor.enqueueActiveNodeIDs(nodeIDs)
+    }
+
+    func withGraphModelLock(_ work: () -> Void) {
+        graphModelLock.lock()
+        defer { graphModelLock.unlock() }
+        work()
+    }
+
+    func resetBassBoostState() { enqueueReset(.bassBoost) }
+    func resetClarityState() { enqueueReset(.clarity) }
+    func resetDeMudState() { enqueueReset(.deMud) }
+    func resetEQState() { enqueueReset(.eq) }
+    func resetTenBandEQState() { enqueueReset(.tenBandEQ) }
+    func resetCompressorState() { enqueueReset(.compressor) }
+    func resetReverbState() { enqueueReset(.reverb) }
+    func resetDelayState() { enqueueReset(.delay) }
+    func resetChorusState() { enqueueReset(.chorus) }
+    func resetAutoPanState() { enqueueReset(.autoPan) }
+    func resetTremoloState() { enqueueReset(.tremolo) }
+    func resetFlangerState() { enqueueReset(.flanger) }
+    func resetPhaserState() { enqueueReset(.phaser) }
+    func resetBitcrusherState() { enqueueReset(.bitcrusher) }
+    func resetEffectState() { enqueueReset(.all) }
+
+    func resetTenBandValues() {
+        tenBand31 = 0
+        tenBand62 = 0
+        tenBand125 = 0
+        tenBand250 = 0
+        tenBand500 = 0
+        tenBand1k = 0
+        tenBand2k = 0
+        tenBand4k = 0
+        tenBand8k = 0
+        tenBand16k = 0
+    }
+
+    var tenBandGains: [Double] {
+        [tenBand31, tenBand62, tenBand125, tenBand250, tenBand500,
+         tenBand1k, tenBand2k, tenBand4k, tenBand8k, tenBand16k]
     }
 
     func updateTapFormat(frameLength: Int, channelCount: Int, sampleRate: Double) {

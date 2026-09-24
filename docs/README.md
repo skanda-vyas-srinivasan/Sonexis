@@ -16,4 +16,4 @@ Start with [Architecture](ARCHITECTURE.md) for the current codebase and runtime 
 - [2.1.0 audit](RELEASE-2.1.0-AUDIT.md)
 - [`release-2.1.0-evidence/`](release-2.1.0-evidence/) — retained logs, fixtures, screenshots, and verification records
 
-`SESSION-HANDOFF.md`, `TOMORROW-CHANGES.md`, and the root release-issue record are historical working notes. Confirm their dates and current code before relying on them for new work.
+`SESSION-HANDOFF.md` is a historical working note. Confirm its date and compare it with current code before relying on it.

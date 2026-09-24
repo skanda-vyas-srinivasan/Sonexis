@@ -1,7 +1,7 @@
 import Accelerate
 import Foundation
 
-extension AudioEngine {
+extension AudioGraphProcessor {
     func applyEffect(
         _ effect: EffectType,
         to processedAudio: inout [[Float]],
@@ -1554,14 +1554,7 @@ extension AudioEngine {
                 levelSnapshot[nodeId] = 0
                 return
             }
-            guard let instance = pluginHost.instance(for: nodeId) else { return }
-            if !instance.isReady {
-                pluginWasReadyByNode[nodeId] = false
-                pluginStableOutputCountByNode[nodeId] = 0
-                pluginHasStableOutputByNode[nodeId] = false
-                pluginReadyDelaySamplesByNode[nodeId] = 0
-                return
-            }
+            guard let renderState = snapshot.pluginRenderStates[nodeId] else { return }
             let wasEnabled = pluginWasEnabledByNode[nodeId] ?? false
             let wasReady = pluginWasReadyByNode[nodeId] ?? false
             pluginWasEnabledByNode[nodeId] = true
@@ -1580,12 +1573,25 @@ extension AudioEngine {
                 }
             }
             pluginDryScratchByNode[nodeId] = dryScratch
-            instance.process(
+            let rendered = renderState.process(
                 buffer: &processedAudio,
                 frameLength: frameLength,
                 sampleRate: sampleRate,
                 channelCount: channelCount
             )
+            if !rendered {
+                processedAudio = dryScratch
+                pluginWasReadyByNode[nodeId] = false
+                pluginStableOutputCountByNode[nodeId] = 0
+                pluginHasStableOutputByNode[nodeId] = false
+                pluginReadyDelaySamplesByNode[nodeId] = 0
+                levelSnapshot[nodeId] = computeRMS(
+                    processedAudio,
+                    frameLength: frameLength,
+                    channelCount: channelCount
+                )
+                return
+            }
             var wetScratch = ensurePluginWetScratch(nodeId: nodeId, channelCount: channelCount, frameLength: frameLength)
             for channel in 0..<channelCount {
                 for frame in 0..<frameLength {

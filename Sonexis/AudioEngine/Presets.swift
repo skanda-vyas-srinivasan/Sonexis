@@ -369,7 +369,7 @@ extension AudioEngine {
 
     func updateEffectChain(_ chain: [BeginnerNode]) {
         let activeChain = chain.filter { !$0.type.isRetired }
-        withEffectStateLock {
+        withGraphModelLock {
             effectChainOrder = activeChain
             useManualGraph = false
             useSplitGraph = false
@@ -427,7 +427,7 @@ extension AudioEngine {
         let activeConnections = connections.filter {
             activeNodeIds.contains($0.fromNodeId) && activeNodeIds.contains($0.toNodeId)
         }
-        withEffectStateLock {
+        withGraphModelLock {
             manualGraphNodes = activeNodes
             manualGraphConnections = activeConnections
             manualGraphStartID = startID
@@ -486,7 +486,7 @@ extension AudioEngine {
         let activeRightConnections = rightConnections.filter {
             activeRightIds.contains($0.fromNodeId) && activeRightIds.contains($0.toNodeId)
         }
-        withEffectStateLock {
+        withGraphModelLock {
             splitLeftNodes = activeLeftNodes
             splitLeftConnections = activeLeftConnections
             splitLeftStartID = leftStartID
@@ -569,15 +569,20 @@ extension AudioEngine {
 
     func updateEffectNodeRuntimeState(_ nodes: [BeginnerNode]) {
         let activeNodes = nodes.filter { !$0.type.isRetired }
-        withEffectStateLock {
+        withGraphModelLock {
             syncNodeState(activeNodes)
         }
         scheduleSnapshotUpdate()
     }
 
     private func syncNodeState(_ nodes: [BeginnerNode]) {
+        let nodes = nodes.map { node -> BeginnerNode in
+            var node = node
+            node.parameters = node.parameters.sanitized()
+            return node
+        }
         let ids = Set(nodes.map { $0.id })
-        let activeRubberBandPitchIDs = Set(
+        let nextRubberBandPitchIDs = Set(
             nodes
                 .filter {
                     $0.type == .rubberBandPitch
@@ -586,108 +591,13 @@ extension AudioEngine {
                 }
                 .map { $0.id }
         )
-        let shouldResetRubberBandPitch = rubberBandNodes.keys.contains { !activeRubberBandPitchIDs.contains($0) }
-            || nodes.contains {
-                $0.type == .rubberBandPitch
-                    && (!$0.isEnabled || abs($0.parameters.rubberBandPitchSemitones) <= 0.01)
-            }
-
-        if shouldResetRubberBandPitch {
+        if !activeRubberBandPitchNodeIDs.subtracting(nextRubberBandPitchIDs).isEmpty {
             enqueueReset(.rubberBand)
         }
+        activeRubberBandPitchNodeIDs = nextRubberBandPitchIDs
 
         nodeParameters = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.parameters) })
         nodeEnabled = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.isEnabled) })
-
-        func keepActiveNodes<Value>(_ dictionary: inout [UUID: Value]) {
-            dictionary = dictionary.filter { ids.contains($0.key) }
-        }
-
-        keepActiveNodes(&bassBoostStatesByNode)
-        keepActiveNodes(&bassBoostSmoothedGainByNode)
-        keepActiveNodes(&bassBoostVDSPDelayByNode)
-        keepActiveNodes(&enhancerSmoothedGainByNode)
-        keepActiveNodes(&enhancerLowVDSPDelayByNode)
-        keepActiveNodes(&enhancerMidVDSPDelayByNode)
-        keepActiveNodes(&enhancerHighVDSPDelayByNode)
-        keepActiveNodes(&clarityStatesByNode)
-        keepActiveNodes(&claritySmoothedGainByNode)
-        keepActiveNodes(&clarityVDSPDelayByNode)
-        keepActiveNodes(&nightcoreStatesByNode)
-        keepActiveNodes(&nightcoreSmoothedGainByNode)
-        keepActiveNodes(&deMudStatesByNode)
-        keepActiveNodes(&deMudSmoothedGainByNode)
-        keepActiveNodes(&deMudVDSPDelayByNode)
-        keepActiveNodes(&eqBassStatesByNode)
-        keepActiveNodes(&eqMidsStatesByNode)
-        keepActiveNodes(&eqTrebleStatesByNode)
-        keepActiveNodes(&eqBassVDSPDelayByNode)
-        keepActiveNodes(&eqMidsVDSPDelayByNode)
-        keepActiveNodes(&eqTrebleVDSPDelayByNode)
-        keepActiveNodes(&simpleEQSmoothedGainByNode)
-        keepActiveNodes(&appleThreeBandEQProcessorsByNode)
-        keepActiveNodes(&appleThreeBandEQDryScratchByNode)
-        keepActiveNodes(&appleThreeBandEQSmoothedGainByNode)
-        keepActiveNodes(&tenBandStatesByNode)
-        keepActiveNodes(&tenBandEQSmoothedGainByNode)
-        keepActiveNodes(&tenBandVDSPDelaysByNode)
-        keepActiveNodes(&compressorEnvelopeByNode)
-        keepActiveNodes(&compressorSmoothedGainByNode)
-        keepActiveNodes(&reverbStatesByNode)
-        keepActiveNodes(&reverbSmoothedGainByNode)
-        keepActiveNodes(&delayBuffersByNode)
-        keepActiveNodes(&delayWriteIndexByNode)
-        keepActiveNodes(&delaySmoothedGainByNode)
-        keepActiveNodes(&delayParameterStateByNode)
-        keepActiveNodes(&tremoloPhaseByNode)
-        keepActiveNodes(&tremoloSmoothedGainByNode)
-        keepActiveNodes(&autoPanPhaseByNode)
-        keepActiveNodes(&autoPanSmoothedGainByNode)
-        keepActiveNodes(&autoPanParameterStateByNode)
-        keepActiveNodes(&chorusBuffersByNode)
-        keepActiveNodes(&chorusWriteIndexByNode)
-        keepActiveNodes(&chorusPhaseByNode)
-        keepActiveNodes(&chorusSmoothedGainByNode)
-        keepActiveNodes(&chorusParameterStateByNode)
-        keepActiveNodes(&flangerBuffersByNode)
-        keepActiveNodes(&flangerWriteIndexByNode)
-        keepActiveNodes(&flangerPhaseByNode)
-        keepActiveNodes(&flangerSmoothedGainByNode)
-        keepActiveNodes(&flangerParameterStateByNode)
-        keepActiveNodes(&phaserStatesByNode)
-        keepActiveNodes(&phaserPhaseByNode)
-        keepActiveNodes(&phaserFeedbackSamplesByNode)
-        keepActiveNodes(&phaserSmoothedGainByNode)
-        keepActiveNodes(&phaserParameterStateByNode)
-        keepActiveNodes(&bitcrusherHoldCountersByNode)
-        keepActiveNodes(&bitcrusherHoldValuesByNode)
-        keepActiveNodes(&bitcrusherSmoothedGainByNode)
-        keepActiveNodes(&resampleBuffersByNode)
-        keepActiveNodes(&resampleWriteIndexByNode)
-        keepActiveNodes(&resampleReadPhaseByNode)
-        keepActiveNodes(&resampleCrossfadeRemainingByNode)
-        keepActiveNodes(&resampleCrossfadeTotalByNode)
-        keepActiveNodes(&resampleCrossfadeStartPhaseByNode)
-        keepActiveNodes(&resampleCrossfadeTargetPhaseByNode)
-        keepActiveNodes(&resampleSmoothedGainByNode)
-        keepActiveNodes(&ampSmoothedGainByNode)
-        keepActiveNodes(&distortionSmoothedGainByNode)
-        keepActiveNodes(&tapeSaturationSmoothedGainByNode)
-        keepActiveNodes(&signatureEffectStatesByNode)
-        keepActiveNodes(&stereoWidthSmoothedGainByNode)
-        keepActiveNodes(&rubberBandNodes)
-        keepActiveNodes(&rubberBandScratchByNode)
-        keepActiveNodes(&rubberBandSmoothedGainByNode)
-        keepActiveNodes(&pluginDryScratchByNode)
-        keepActiveNodes(&pluginWetScratchByNode)
-        keepActiveNodes(&pluginCrossfadeRemainingByNode)
-        keepActiveNodes(&pluginCrossfadeTotalByNode)
-        keepActiveNodes(&pluginCrossfadeOutRemainingByNode)
-        keepActiveNodes(&pluginCrossfadeOutTotalByNode)
-        keepActiveNodes(&pluginWasEnabledByNode)
-        keepActiveNodes(&pluginWasReadyByNode)
-        keepActiveNodes(&pluginStableOutputCountByNode)
-        keepActiveNodes(&pluginHasStableOutputByNode)
-        keepActiveNodes(&pluginReadyDelaySamplesByNode)
+        enqueueActiveNodeIDs(ids)
     }
 }

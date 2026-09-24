@@ -38,6 +38,7 @@
 		6A183A1EFF524A58ABD5EA97 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF11C6BF5F0846D0B1A6F5C8 /* OnboardingOverlay.swift */; };
 		6CDD090FD8393BDBF1E0ED6B /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */; };
 		A9EC19000000000000000002 /* AudioProcessingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC19000000000000000001 /* AudioProcessingState.swift */; };
+		A9EC39000000000000000002 /* AudioGraphProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC39000000000000000001 /* AudioGraphProcessor.swift */; };
 		A9EC20000000000000000002 /* PluginInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC20000000000000000001 /* PluginInstance.swift */; };
 		A9EC21000000000000000002 /* AUPluginInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC21000000000000000001 /* AUPluginInstance.swift */; };
 		A9EC22000000000000000002 /* AppleThreeBandEQProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9EC22000000000000000001 /* AppleThreeBandEQProcessor.swift */; };
@@ -153,6 +154,7 @@
 		B30616271FFD0E7417F8DCF0 /* IO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IO.swift; sourceTree = "<group>"; };
 		B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		A9EC19000000000000000001 /* AudioProcessingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProcessingState.swift; sourceTree = "<group>"; };
+		A9EC39000000000000000001 /* AudioGraphProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioGraphProcessor.swift; sourceTree = "<group>"; };
 		A9EC20000000000000000001 /* PluginInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginInstance.swift; sourceTree = "<group>"; };
 		A9EC21000000000000000001 /* AUPluginInstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AUPluginInstance.swift; sourceTree = "<group>"; };
 		A9EC22000000000000000001 /* AppleThreeBandEQProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleThreeBandEQProcessor.swift; sourceTree = "<group>"; };
@@ -253,6 +255,7 @@
 			children = (
 				A9EC09000000000000000001 /* MultiChainAudioEngine.swift */,
 				B7F2AEA99F6236F4EA31648D /* AudioEngine.swift */,
+				A9EC39000000000000000001 /* AudioGraphProcessor.swift */,
 				A9EC19000000000000000001 /* AudioProcessingState.swift */,
 				A9EC01000000000000000001 /* AudioRecordingSession.swift */,
 				A9EC02000000000000000001 /* GraphOutputTransition.swift */,
@@ -530,6 +533,7 @@
 				78DC5CC2951744FBA534E231 /* PresetView.swift in Sources */,
 				AA0000010000000000000001 /* SonexisApp.swift in Sources */,
 				6CDD090FD8393BDBF1E0ED6B /* AudioEngine.swift in Sources */,
+				A9EC39000000000000000002 /* AudioGraphProcessor.swift in Sources */,
 				A9EC19000000000000000002 /* AudioProcessingState.swift in Sources */,
 				A9EC20000000000000000002 /* PluginInstance.swift in Sources */,
 				A9EC21000000000000000002 /* AUPluginInstance.swift in Sources */,
