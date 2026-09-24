@@ -1,0 +1,31 @@
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - main1
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Debug app
+        run: |
+          xcodebuild \
+            -project Sonexis.xcodeproj \
+            -scheme Sonexis \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath .build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Run offline regression suites
+        run: Scripts/test-all.sh

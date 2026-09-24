@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a focused improvement to Sonexis
+title: "[Idea]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user need before describing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain how the idea should work from a user's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: audio
+    attributes:
+      label: Audio, compatibility, or UI implications
+      description: Note latency, routing, preset compatibility, accessibility, or hardware considerations.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and roadmap documents for this request.
+          required: true
