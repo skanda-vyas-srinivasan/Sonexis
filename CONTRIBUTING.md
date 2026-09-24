@@ -110,7 +110,7 @@ A good pull request includes:
 
 Pull requests are labeled automatically from their changed paths. Area labels identify the affected subsystem; `validation:` labels identify checks that automation cannot complete; and `risk: elevated` flags changes involving audio processing, capture, persisted data, permissions, dependencies, or project configuration.
 
-Path labels are a review aid, not a substitute for judgment. In the pull request template, select one overall risk level and describe any mismatch between the automatic labels and the actual behavior change. Contributors should report the manual checks they performed and explicitly list relevant scenarios they could not test.
+Path labels are a review aid, not a substitute for judgment. In the pull request template, write one overall risk level as `Risk level: Low`, `Risk level: Medium`, or `Risk level: High`, and describe any mismatch between the automatic labels and the actual behavior change. Contributors should report the manual checks they performed and explicitly list relevant scenarios they could not test.
 
 Changes carrying `validation: manual-audio`, `validation: manual-ui`, `validation: migration-review`, or `validation: security-review` require the corresponding maintainer review before release. Code ownership automatically requests maintainer review for the most sensitive paths when code-owner reviews are enabled in the repository ruleset.
 

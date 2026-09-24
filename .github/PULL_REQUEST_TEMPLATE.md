@@ -18,11 +18,11 @@ Select every affected area. Automatic labels based on changed files will help re
 - [ ] Build, permissions, dependencies, or release tooling
 - [ ] Tests or documentation only
 
-Select exactly one risk level:
+Risk level: <!-- Replace this comment with Low, Medium, or High -->
 
-- [ ] Low — documentation, tests, or an isolated non-behavioral change
-- [ ] Medium — ordinary UI or internal behavior with limited blast radius
-- [ ] High — real-time audio, routing, recording, persistence format, permissions, dependencies, or release behavior
+- **Low:** Documentation, tests, or an isolated non-behavioral change.
+- **Medium:** Ordinary UI or internal behavior with limited blast radius.
+- **High:** Real-time audio, routing, recording, persistence format, permissions, dependencies, or release behavior.
 
 ## Verification
 
