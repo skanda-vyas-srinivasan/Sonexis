@@ -19,7 +19,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build Debug app
         run: |
           if xcodebuild \
@@ -72,7 +72,7 @@ jobs:
           - group: ui-logic
             name: UI logic
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Download Debug products
         uses: actions/download-artifact@v7
         with:
