@@ -144,6 +144,7 @@ final class MultiChainAudioEngine: ObservableObject {
     private let recordingPrerollChunks = 12
     private var mixerTimer: DispatchSourceTimer?
     private let mixerQueue = DispatchQueue(label: "Sonexis.CombinedRecordingMixer", qos: .userInitiated)
+    private let schedulesRecordingMixerTimer: Bool
     private let resolve: Resolver
     private let makePipeline: PipelineFactory
     private let lifecycleQueue: DispatchQueue
@@ -154,11 +155,13 @@ final class MultiChainAudioEngine: ObservableObject {
 
     init(resolve: @escaping Resolver = { Set(try $0.processObjectIDs(excluding: kAudioObjectUnknown)) },
          makePipeline: PipelineFactory? = nil,
-         operationTimeout: TimeInterval = 10) {
+         operationTimeout: TimeInterval = 10,
+         schedulesRecordingMixerTimer: Bool = true) {
         let queue = DispatchQueue(label: "Sonexis.AudioLifecycle", qos: .userInitiated)
         self.lifecycleQueue = queue
         self.resolve = resolve
         self.operationTimeout = operationTimeout
+        self.schedulesRecordingMixerTimer = schedulesRecordingMixerTimer
         self.makePipeline = makePipeline ?? {
             ProcessTapDSPEngine(audioProcessor: $0, fixedSelection: $1, lifecycleQueue: queue)
         }
@@ -528,7 +531,7 @@ extension MultiChainAudioEngine {
             }
             isRecording = true
             recordingStartedAt = Date()
-            startMixerTimer()
+            if schedulesRecordingMixerTimer { startMixerTimer() }
         } catch {
             recordingWarningText = "Recording failed: \(error.localizedDescription)"
             recordingIssuePresented = true
