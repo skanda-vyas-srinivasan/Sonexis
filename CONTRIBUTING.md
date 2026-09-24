@@ -99,7 +99,7 @@ Do not play test tones, capture live audio, modify real user data, sign, notariz
 
 A good pull request includes:
 
-- a concise problem statement and the chosen solution;
+- a concise problem statement and the chosen solution of at least one complete sentence;
 - the affected user workflow;
 - test commands and their results;
 - compatibility or migration notes;

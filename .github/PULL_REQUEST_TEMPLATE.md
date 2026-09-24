@@ -1,6 +1,6 @@
 ## What changed
 
-Describe the problem and the solution.
+<!-- In at least one complete sentence, describe the problem and solution. Minimum: 40 non-whitespace characters. -->
 
 ## User impact
 

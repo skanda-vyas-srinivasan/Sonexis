@@ -8,11 +8,25 @@ permissions:
   contents: read
 
 jobs:
-  risk-declaration:
+  description-and-risk:
+    name: Description and risk
     runs-on: ubuntu-latest
     env:
       PR_BODY: ${{ github.event.pull_request.body }}
     steps:
+      - name: Require a meaningful change description
+        shell: bash
+        run: |
+          description=$(printf '%s\n' "$PR_BODY" | awk '
+            /^## What changed[[:space:]]*$/ { capture = 1; next }
+            capture && /^## / { exit }
+            capture && $0 !~ /^[[:space:]]*<!--[[:print:]]*-->[[:space:]]*$/ { print }
+          ')
+          character_count=$(printf '%s' "$description" | tr -d '[:space:]' | wc -c | tr -d '[:space:]')
+          if [[ "$character_count" -lt 40 ]]; then
+            echo "::error title=Change description too short::Write at least one useful sentence under 'What changed' (minimum 40 non-whitespace characters; found $character_count)."
+            exit 1
+          fi
       - name: Require a declared risk level
         shell: bash
         run: |
