@@ -27,6 +27,18 @@ xcodebuild \
   build
 ```
 
+The local link checker covers inline Markdown links and images, reference
+definitions, and HTML href/src attributes in README.md, CONTRIBUTING.md,
+docs/README.md, and Markdown files under Scripts/. It resolves relative paths
+from each source document and removes query strings and fragments before
+checking. External URLs, email addresses, and fragment-only links are ignored.
+It does not validate fragment anchors or generated documentation.
+
+Run python3 Scripts/check-local-doc-links.py for the repository-wide check.
+Add --self-test to exercise valid and missing-link fixtures. Reference-style
+links are checked at their definitions; other Markdown extensions are not
+parsed.
+
 Then run:
 
 ```sh

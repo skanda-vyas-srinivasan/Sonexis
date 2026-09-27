@@ -19,6 +19,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v7
+      - name: Check local documentation links
+        run: python3 Scripts/check-local-doc-links.py
       - name: Build Debug app
         run: |
           if xcodebuild \
