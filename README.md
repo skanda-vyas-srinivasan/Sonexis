@@ -1,6 +1,5 @@
 # Sonexis
 
-## IMPORTANT FOR DEVS: SONEXIS IS UNDERGOING AN ARCHITECTURAL CHANGE
 
 <p align="center">
   <img src="Branding/sonexis-mark.png" width="128" alt="Sonexis logo">
